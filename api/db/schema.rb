@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_05_18_064701) do
+ActiveRecord::Schema[8.1].define(version: 2026_05_18_115427) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -46,7 +46,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_18_064701) do
     t.string "name"
     t.string "phone"
     t.string "preferred_contact_method"
+    t.string "preferred_time"
+    t.date "preferred_tour_date"
     t.string "status"
+    t.decimal "target_price"
+    t.string "tour_type"
     t.datetime "updated_at", null: false
     t.index ["created_at"], name: "index_leads_on_created_at"
     t.index ["listing_id"], name: "index_leads_on_listing_id"

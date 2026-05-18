@@ -14,12 +14,17 @@ module Api
                 :email,
                 :phone,
                 :preferred_contact_method,
+                :preferred_time,
+                :preferred_tour_date,
+                :tour_type,
+                :target_price,
                 :message,
                 :status,
                 :listing_id,
                 :created_at
               ]
             ).merge(
+              target_price: lead.target_price&.to_f,
               listing: lead.listing ? {
                 id: lead.listing.id,
                 title: lead.listing.title,
@@ -51,6 +56,10 @@ module Api
           :email,
           :phone,
           :preferred_contact_method,
+          :preferred_time,
+          :preferred_tour_date,
+          :tour_type,
+          :target_price,
           :message,
           :listing_id
         )

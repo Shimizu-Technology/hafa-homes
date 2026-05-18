@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
-import { Link, Route, Routes, useParams, useSearchParams } from 'react-router-dom'
+import { Link, Route, Routes, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Brand } from './components/Brand'
 import {
   ArrowLeft,
@@ -18,18 +18,23 @@ import {
   Maximize2,
   Menu,
   Mail,
+  ChevronLeft,
+  ChevronRight as ChevronRightIcon,
   MessageSquare,
   Phone,
   Ruler,
   Search,
+  Share2,
   ShieldCheck,
   SlidersHorizontal,
+  TrendingUp,
   Waves,
   X,
 } from 'lucide-react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
+const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
 
 type Village = {
   id: number
@@ -114,6 +119,10 @@ type LeadPayload = {
   email: string
   phone: string
   preferred_contact_method: string
+  preferred_time?: string
+  preferred_tour_date?: string
+  tour_type?: string
+  target_price?: string
   message: string
   listing_id?: number
 }
@@ -203,6 +212,18 @@ function currency(value: number, kind: string) {
   return kind === 'rent' ? `${formatted}/mo` : formatted
 }
 
+
+function tourDateOptions(count = 4) {
+  return Array.from({ length: count }, (_, index) => {
+    const date = new Date()
+    date.setDate(date.getDate() + index + 1)
+    return {
+      value: date.toISOString().slice(0, 10),
+      label: date.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric' }),
+    }
+  })
+}
+
 function App() {
   return (
     <Routes>
@@ -224,6 +245,7 @@ function SearchPage() {
   const [viewMode, setViewMode] = useState<'list' | 'map'>('list')
   const [saveSearchOpen, setSaveSearchOpen] = useState(false)
   const [fullMapOpen, setFullMapOpen] = useState(false)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const kind = (searchParams.get('kind') as 'sale' | 'rent') || 'sale'
   const village = searchParams.get('village') || ''
   const propertyType = searchParams.get('property_type') || ''
@@ -239,6 +261,12 @@ function SearchPage() {
 
   const listings = data?.listings ?? []
   const featureList = features ? features.split(',').filter(Boolean) : []
+
+  useEffect(() => {
+    if (window.matchMedia('(max-width: 767px)').matches) {
+      setViewMode('map')
+    }
+  }, [])
 
   function setParam(key: string, value: string) {
     const next = new URLSearchParams(searchParams)
@@ -256,9 +284,20 @@ function SearchPage() {
 
   return (
     <Shell>
-      <HeroHeader kind={kind} onKindChange={(value) => setParam('kind', value)} />
+      <MobileAppSearchHeader
+        kind={kind}
+        viewMode={viewMode}
+        listingsCount={listings.length}
+        onKindChange={(value) => setParam('kind', value)}
+        onViewModeChange={setViewMode}
+        onFilterClick={() => setShowFilters((value) => !value)}
+        onMenuClick={() => setMobileMenuOpen(true)}
+      />
+      <div className="hidden md:block">
+        <HeroHeader kind={kind} onKindChange={(value) => setParam('kind', value)} />
+      </div>
 
-      <section className="relative z-10 mx-auto -mt-10 max-w-7xl px-5">
+      <section className="relative z-10 mx-auto hidden max-w-7xl px-5 md:-mt-10 md:block">
         <div className="rounded-[2rem] border border-black/5 bg-white p-4 shadow-2xl shadow-[#0f3d35]/10">
           <div className="grid gap-3 lg:grid-cols-[1fr_auto_auto] lg:items-center">
             <div className="flex items-center gap-3 rounded-2xl border border-[#dce5df] px-4 py-3 text-[#50625e]">
@@ -337,38 +376,41 @@ function SearchPage() {
         </div>
       </section>
 
-      <section className={`mx-auto max-w-7xl gap-6 px-5 py-6 md:py-8 ${viewMode === 'map' ? 'grid' : 'grid lg:grid-cols-[1fr_420px]'}`}>
+      <section className={`mx-auto max-w-7xl gap-6 py-0 md:px-5 md:py-8 ${viewMode === 'map' ? 'grid' : 'grid px-5 pt-6 lg:grid-cols-[1fr_420px]'}`}>
         <div>
-          <SectionHeading
-            kicker="Demo listings"
-            title={`Latest Guam ${kind === 'sale' ? 'homes for sale' : 'rentals'}`}
-            action={
-              <div className="hidden items-center gap-2 md:flex">
-                <button onClick={() => setSaveSearchOpen(true)} className="inline-flex items-center gap-2 rounded-full border border-[#d7ded9] bg-white px-4 py-2 text-sm font-semibold"><Bell size={16} /> Save search</button>
-                <button onClick={() => setViewMode(viewMode === 'list' ? 'map' : 'list')} className="inline-flex items-center gap-2 rounded-full border border-[#d7ded9] bg-white px-4 py-2 text-sm font-semibold"><Map size={16} /> {viewMode === 'list' ? 'Map view' : 'List view'}</button>
-                <Link to="/admin/sync" className="inline-flex items-center gap-2 rounded-full border border-[#d7ded9] bg-white px-4 py-2 text-sm font-semibold"><DatabaseZap size={16} /> MLS sync</Link>
-              </div>
-            }
-          />
+          <div className="hidden md:block">
+            <SectionHeading
+              kicker="Demo listings"
+              title={`Latest Guam ${kind === 'sale' ? 'homes for sale' : 'rentals'}`}
+              action={
+                <div className="hidden items-center gap-2 md:flex">
+                  <button onClick={() => setSaveSearchOpen(true)} className="inline-flex items-center gap-2 rounded-full border border-[#d7ded9] bg-white px-4 py-2 text-sm font-semibold"><Bell size={16} /> Save search</button>
+                  <button onClick={() => setViewMode(viewMode === 'list' ? 'map' : 'list')} className="inline-flex items-center gap-2 rounded-full border border-[#d7ded9] bg-white px-4 py-2 text-sm font-semibold"><Map size={16} /> {viewMode === 'list' ? 'Map view' : 'List view'}</button>
+                  <Link to="/admin/sync" className="inline-flex items-center gap-2 rounded-full border border-[#d7ded9] bg-white px-4 py-2 text-sm font-semibold"><DatabaseZap size={16} /> MLS sync</Link>
+                </div>
+              }
+            />
+          </div>
 
           {isLoading && <StateCard>Loading demo listings...</StateCard>}
           {isError && <StateCard tone="error">Start the Rails API on port 3000 or set VITE_API_URL to load seed listings.</StateCard>}
           {!isLoading && listings.length === 0 && <StateCard>No demo listings match those filters yet.</StateCard>}
 
-          <div className="mb-4 grid grid-cols-2 gap-3 md:hidden">
-            <button onClick={() => setViewMode('list')} className={`rounded-2xl px-4 py-3 text-sm font-bold ${viewMode === 'list' ? 'bg-[#0f3d35] text-white' : 'bg-white text-[#0f3d35]'}`}>List</button>
-            <button onClick={() => setViewMode('map')} className={`rounded-2xl px-4 py-3 text-sm font-bold ${viewMode === 'map' ? 'bg-[#0f3d35] text-white' : 'bg-white text-[#0f3d35]'}`}>Map</button>
-          </div>
-
           {viewMode === 'map' ? (
-            <MapPanel listings={listings} onExpand={() => setFullMapOpen(true)} />
+            fullMapOpen ? (
+              <div className="h-[calc(100svh-330px)] min-h-[420px] max-h-[560px] rounded-none border border-black/5 bg-[#dbe8df] md:min-h-[760px] md:rounded-[2rem]" />
+            ) : (
+              <MapPanel listings={listings} onExpand={() => setFullMapOpen(true)} />
+            )
           ) : (
             <div className="grid gap-4">
               {listings.map((listing) => <ListingCard key={listing.id} listing={listing} />)}
             </div>
           )}
 
-          <button onClick={() => setSaveSearchOpen(true)} className="mt-5 w-full rounded-2xl bg-[#0f3d35] px-4 py-3 text-sm font-bold text-white md:hidden">Save this search</button>
+          {viewMode === 'list' && (
+            <button onClick={() => setSaveSearchOpen(true)} className="mt-5 w-full rounded-2xl bg-[#0f3d35] px-4 py-3 text-sm font-bold text-white md:hidden">Save this search</button>
+          )}
         </div>
 
         {viewMode === 'list' && <SearchAside listings={listings} />}
@@ -379,7 +421,63 @@ function SearchPage() {
         filters={{ kind, village, property_type: propertyType, features, beds, max_price: maxPrice }}
       />
       <FullMapModal open={fullMapOpen} onClose={() => setFullMapOpen(false)} listings={listings} />
+      <MobileMenuDrawer open={mobileMenuOpen} onClose={() => setMobileMenuOpen(false)} />
     </Shell>
+  )
+}
+
+function MobileAppSearchHeader({
+  kind,
+  viewMode,
+  listingsCount,
+  onKindChange,
+  onViewModeChange,
+  onFilterClick,
+  onMenuClick,
+}: {
+  kind: 'sale' | 'rent'
+  viewMode: 'list' | 'map'
+  listingsCount: number
+  onKindChange: (value: 'sale' | 'rent') => void
+  onViewModeChange: (value: 'list' | 'map') => void
+  onFilterClick: () => void
+  onMenuClick: () => void
+}) {
+  return (
+    <header className="safe-top sticky top-0 z-40 border-b border-white/10 bg-[#0f3d35] text-white shadow-xl shadow-[#0f3d35]/20 md:hidden">
+      <div className="px-4 pb-3 pt-3">
+        <div className="flex items-center justify-between gap-3">
+          <Brand light />
+          <button onClick={onMenuClick} className="grid h-11 w-11 place-items-center rounded-full border border-white/20 text-white/86">
+            <Menu size={22} />
+          </button>
+        </div>
+        <div className="mt-4 grid grid-cols-[1fr_auto] gap-2">
+          <div className="flex min-h-12 items-center gap-2 rounded-2xl bg-white px-3 text-[#53645f]">
+            <Search size={17} />
+            <span className="text-sm font-semibold">Address, village, or MLS</span>
+          </div>
+          <button className="rounded-2xl bg-[#e99f3e] px-4 text-sm font-bold text-[#25170b]">Save</button>
+        </div>
+        <div className="mt-3 grid grid-cols-3 gap-2 text-sm font-bold">
+          <button onClick={onFilterClick} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl bg-white/10 text-white/86"><SlidersHorizontal size={17} /> Filter</button>
+          <button onClick={() => onViewModeChange('map')} className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl ${viewMode === 'map' ? 'bg-white text-[#0f3d35]' : 'bg-white/10 text-white/86'}`}><Map size={17} /> Map</button>
+          <button onClick={() => onViewModeChange('list')} className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl ${viewMode === 'list' ? 'bg-white text-[#0f3d35]' : 'bg-white/10 text-white/86'}`}><Menu size={17} /> List</button>
+        </div>
+        <div className="mt-3 flex items-center justify-between gap-3 rounded-2xl bg-white/10 p-1 text-sm font-bold">
+          {(['sale', 'rent'] as const).map((option) => (
+            <button
+              key={option}
+              onClick={() => onKindChange(option)}
+              className={`min-h-10 flex-1 rounded-xl capitalize ${kind === option ? 'bg-white text-[#0f3d35]' : 'text-white/75'}`}
+            >
+              {option === 'sale' ? 'Buy' : 'Rent'}
+            </button>
+          ))}
+          <span className="px-3 text-xs uppercase tracking-[0.14em] text-white/68">{listingsCount} found</span>
+        </div>
+      </div>
+    </header>
   )
 }
 
@@ -452,51 +550,127 @@ function ListingCard({ listing }: { listing: Listing }) {
 function ListingDetailPage() {
   const { id = '' } = useParams()
   const [leadOpen, setLeadOpen] = useState(false)
+  const [priceTrackerOpen, setPriceTrackerOpen] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [photoIndex, setPhotoIndex] = useState(0)
   const { data, isLoading, isError } = useQuery({ queryKey: ['listing', id], queryFn: () => fetchListing(id), enabled: Boolean(id) })
   const listing = data?.listing
+  const photos = listing?.photos?.length ? listing.photos : listing ? [{ id: 0, url: listing.primary_photo_url, position: 1, alt_text: listing.title }] : []
+
+  async function shareListing() {
+    if (!listing) return
+    const shareData = { title: listing.title, text: `${listing.title} — ${currency(listing.price, listing.listing_kind)}`, url: window.location.href }
+
+    try {
+      if (navigator.share) await navigator.share(shareData)
+      else await navigator.clipboard?.writeText(window.location.href)
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return
+      console.warn('Unable to share listing', error)
+    }
+  }
 
   return (
-    <Shell compact>
-      <section className="mx-auto max-w-7xl px-5 py-6">
-        <Link to="/" className="inline-flex items-center gap-2 text-sm font-bold text-[#0f705e]"><ArrowLeft size={16} /> Back to search</Link>
-        {isLoading && <StateCard>Loading listing...</StateCard>}
-        {isError && <StateCard tone="error">Unable to load listing.</StateCard>}
-        {listing && (
-          <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_390px]">
-            <div>
-              <div className="grid gap-3 overflow-hidden rounded-[2rem] md:grid-cols-2">
-                {(listing.photos?.length ? listing.photos : [{ id: 0, url: listing.primary_photo_url, position: 1, alt_text: listing.title }]).slice(0, 4).map((photo) => (
-                  <img key={photo.id} src={photo.url} alt="" className="h-72 w-full object-cover first:md:col-span-2" />
-                ))}
-              </div>
-              <div className="mt-6 rounded-[2rem] bg-white p-6 shadow-sm">
-                <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#7b8a84]">{listing.village.name} · {listing.property_type}</p>
-                <h1 className="mt-2 text-4xl font-semibold tracking-[-0.05em] md:text-5xl">{listing.title}</h1>
-                <p className="mt-4 text-3xl font-bold tracking-[-0.04em]">{currency(listing.price, listing.listing_kind)}</p>
-                <PropertyStats listing={listing} large />
-                <p className="mt-6 max-w-3xl text-base leading-8 text-[#5f6d68]">{listing.description}</p>
-                <FeaturePills features={listing.features} />
+    <main className="min-h-screen bg-[#f6f1e8] pb-28 text-[#17211f] md:pb-0">
+      {isLoading && <div className="p-5"><StateCard>Loading listing...</StateCard></div>}
+      {isError && <div className="p-5"><StateCard tone="error">Unable to load listing.</StateCard></div>}
+      {listing && (
+        <>
+          <div className="mobile-detail-header sticky top-0 z-40 border-b border-white/10 bg-[#0f3d35] px-4 pb-4 text-white shadow-xl shadow-[#0f3d35]/15 md:hidden">
+            <div className="flex items-center justify-between gap-3">
+              <Link to="/" className="inline-flex min-h-12 items-center gap-2 rounded-full bg-white/10 px-4 text-sm font-bold hover:bg-white/15 active:scale-[0.98]"><ArrowLeft size={18} /> Search</Link>
+              <div className="flex items-center gap-2">
+                <button onClick={() => setLeadOpen(true)} className="min-h-12 rounded-2xl bg-[#e99f3e] px-5 text-sm font-bold text-[#25170b] hover:bg-[#f2ad4e] active:scale-[0.98]">Schedule tour</button>
+                <button onClick={() => setMenuOpen(true)} className="grid h-12 w-12 place-items-center rounded-full bg-white/10 hover:bg-white/15 active:scale-[0.98]"><Menu size={20} /></button>
               </div>
             </div>
-            <aside className="lg:sticky lg:top-6 lg:self-start">
-              <div className="rounded-[2rem] border border-black/5 bg-white p-6 shadow-xl shadow-[#0f3d35]/10">
-                <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#7b8a84]">Request info</p>
-                <h2 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">Ask about this property</h2>
-                <p className="mt-3 text-sm leading-6 text-[#66746f]">Capture a lead for Mike/investor demo. Later this routes to assigned agents or property managers.</p>
-                <button onClick={() => setLeadOpen(true)} className="mt-5 w-full rounded-2xl bg-[#0f3d35] px-4 py-3 text-sm font-bold text-white">Request showing</button>
-                <button className="mt-3 w-full rounded-2xl border border-[#d7ded9] px-4 py-3 text-sm font-bold text-[#0f3d35]">Save listing</button>
-                <dl className="mt-6 space-y-3 text-sm">
-                  <InfoRow label="MLS/demo ID" value={listing.external_id || `HH-${listing.id}`} />
-                  <InfoRow label="Agent" value={listing.agent_name || 'Hafa Homes Demo Team'} />
-                  <InfoRow label="Brokerage" value={listing.brokerage_name || 'Demo Brokerage'} />
-                </dl>
-              </div>
-            </aside>
           </div>
-        )}
-      </section>
-      {listing && <LeadModal listing={listing} open={leadOpen} onClose={() => setLeadOpen(false)} />}
-    </Shell>
+
+          <div className="hidden bg-[#0f3d35] px-5 py-5 text-white md:block"><div className="mx-auto max-w-7xl"><TopNav /></div></div>
+
+          <section className="mx-auto max-w-7xl md:px-5 md:py-6">
+            <Link to="/" className="mb-6 hidden items-center gap-2 text-sm font-bold text-[#0f705e] md:inline-flex"><ArrowLeft size={16} /> Back to search</Link>
+            <div className="grid gap-6 lg:grid-cols-[1fr_390px]">
+              <div>
+                <div className="relative mx-4 mt-5 overflow-hidden rounded-[2rem] bg-[#0f3d35] shadow-xl shadow-[#0f3d35]/10 md:mx-0 md:mt-0">
+                  <img
+                    src={photos[photoIndex]?.url || listing.primary_photo_url}
+                    alt=""
+                    className="h-[40svh] min-h-[300px] w-full object-cover md:h-[560px]"
+                  />
+                  {photos.length > 1 && (
+                    <>
+                      <button onClick={() => setPhotoIndex((photoIndex - 1 + photos.length) % photos.length)} className="absolute left-3 top-1/2 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-white/90 text-[#0f3d35] shadow-lg hover:bg-white active:scale-95"><ChevronLeft size={22} /></button>
+                      <button onClick={() => setPhotoIndex((photoIndex + 1) % photos.length)} className="absolute right-3 top-1/2 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-white/90 text-[#0f3d35] shadow-lg hover:bg-white active:scale-95"><ChevronRightIcon size={22} /></button>
+                    </>
+                  )}
+                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-[#0f3d35]/70 to-transparent p-4 text-center text-sm font-bold text-white">
+                    {photos.length > 1 ? `${photoIndex + 1} of ${photos.length}` : '1 photo'}
+                  </div>
+                </div>
+
+                <div className="relative z-10 mx-4 mt-5 rounded-[2rem] bg-white p-5 shadow-xl shadow-[#0f3d35]/10 md:mx-0 md:mt-6 md:p-6">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-4xl font-semibold tracking-[-0.06em] md:text-5xl">{currency(listing.price, listing.listing_kind)}</p>
+                      <h1 className="mt-2 text-xl font-semibold leading-snug tracking-[-0.03em] md:text-4xl">{listing.address}</h1>
+                      <p className="mt-1 text-sm font-semibold text-[#66746f]">{listing.village.name} · {listing.property_type}</p>
+                    </div>
+                    <span className="inline-flex shrink-0 items-center gap-2 rounded-full bg-[#e9f5ef] px-3 py-2 text-sm font-bold text-[#0f705e]"><span className="h-3 w-3 rounded-full bg-[#32aa42]" /> {listing.status}</span>
+                  </div>
+
+                  <div className="mt-6 grid grid-cols-4 gap-3 text-center">
+                    <DetailStat icon={<BedDouble />} value={`${listing.beds}`} label="Beds" />
+                    <DetailStat icon={<Bath />} value={`${listing.baths}`} label="Baths" />
+                    <DetailStat icon={<Ruler />} value={listing.square_feet?.toLocaleString() || '—'} label="Sqft" />
+                    <DetailStat icon={<TrendingUp />} value={listing.listing_kind === 'rent' ? 'Rent' : 'Est.'} label={listing.listing_kind === 'rent' ? 'Monthly' : 'Payment'} />
+                  </div>
+
+                  <p className="mt-7 max-w-3xl text-base leading-8 text-[#3d4d48]">{listing.description}</p>
+                  <FeaturePills features={listing.features} />
+                </div>
+              </div>
+
+              <aside className="hidden lg:sticky lg:top-6 lg:block lg:self-start">
+                <div className="rounded-[2rem] border border-black/5 bg-white p-6 shadow-xl shadow-[#0f3d35]/10">
+                  <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#7b8a84]">Request info</p>
+                  <h2 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">Ask about this property</h2>
+                  <p className="mt-3 text-sm leading-6 text-[#66746f]">Schedule a tour, track price changes, or save this listing for later.</p>
+                  <button onClick={() => setLeadOpen(true)} className="mt-5 w-full rounded-2xl bg-[#0f3d35] px-4 py-3 text-sm font-bold text-white">Schedule Tour</button>
+                  <button onClick={() => setPriceTrackerOpen(true)} className="mt-3 w-full rounded-2xl border border-[#d7ded9] px-4 py-3 text-sm font-bold text-[#0f3d35]">Add price tracker</button>
+                  <dl className="mt-6 space-y-3 text-sm">
+                    <InfoRow label="MLS/demo ID" value={listing.external_id || `HH-${listing.id}`} />
+                    <InfoRow label="Agent" value={listing.agent_name || 'Hafa Homes Demo Team'} />
+                    <InfoRow label="Brokerage" value={listing.brokerage_name || 'Demo Brokerage'} />
+                  </dl>
+                </div>
+              </aside>
+            </div>
+          </section>
+
+          <nav className="safe-bottom fixed inset-x-0 bottom-0 z-50 mx-4 mb-3 grid grid-cols-3 rounded-[1.5rem] border border-black/5 bg-white/95 px-3 pt-3 text-center text-xs font-bold text-[#0f3d35] shadow-2xl shadow-[#0f3d35]/15 backdrop-blur md:hidden">
+            <button onClick={shareListing} className="flex min-h-16 flex-col items-center justify-center gap-1"><Share2 size={23} /> Share</button>
+            <button onClick={() => setPriceTrackerOpen(true)} className="flex min-h-16 flex-col items-center justify-center gap-1"><TrendingUp size={23} /> Price alert</button>
+            <button onClick={() => setSaved((value) => !value)} className="flex min-h-16 flex-col items-center justify-center gap-1"><Heart size={25} fill={saved ? '#0f3d35' : 'none'} /> {saved ? 'Saved' : 'Save'}</button>
+          </nav>
+
+          <MobileMenuDrawer open={menuOpen} onClose={() => setMenuOpen(false)} />
+          <LeadModal listing={listing} open={leadOpen} onClose={() => setLeadOpen(false)} />
+          <PriceTrackerModal listing={listing} open={priceTrackerOpen} onClose={() => setPriceTrackerOpen(false)} />
+        </>
+      )}
+    </main>
+  )
+}
+
+function DetailStat({ icon, value, label }: { icon: React.ReactNode; value: string; label: string }) {
+  return (
+    <div className="rounded-2xl bg-[#f6f1e8] p-3 ring-1 ring-[#eadfce] md:p-3">
+      <div className="mx-auto grid h-9 w-9 place-items-center text-[#0f3d35] [&_svg]:h-7 [&_svg]:w-7">{icon}</div>
+      <p className="mt-2 text-lg font-extrabold leading-none tracking-[-0.03em]">{value}</p>
+      <p className="mt-1 text-xs font-bold text-[#53645f]">{label}</p>
+    </div>
   )
 }
 
@@ -619,29 +793,169 @@ function SyncPage() {
 
 function MapPanel({ listings, onExpand, immersive = false }: { listings: Listing[]; onExpand?: () => void; immersive?: boolean }) {
   const points = listings.filter((listing) => listing.latitude && listing.longitude)
-  const mapHeight = immersive ? 'h-[100svh]' : 'min-h-[72svh] md:min-h-[760px]'
+  const mapHeight = immersive ? 'h-[100svh]' : 'h-[calc(100svh-330px)] min-h-[420px] max-h-[560px] md:h-auto md:max-h-none md:min-h-[760px]'
+
+  if (!MAPBOX_TOKEN) {
+    return <FallbackMapPanel listings={listings} onExpand={onExpand} immersive={immersive} />
+  }
 
   return (
-    <div className={`overflow-hidden border border-black/5 bg-[#dbe8df] shadow-sm ${immersive ? 'h-[100svh] rounded-none' : 'rounded-[2rem]'}`}>
+    <div className={`relative overflow-hidden border border-black/5 bg-[#dbe8df] shadow-sm ${immersive ? 'h-[100svh] rounded-none' : 'rounded-none md:rounded-[2rem]'}`}>
+      <RealMap listings={points} immersive={immersive} className={mapHeight} />
+      <MapOverlayHeader listingsCount={points.length} onExpand={onExpand} realMap />
+      {!immersive && (
+        <div className="absolute bottom-5 left-5 z-10 hidden max-w-md rounded-3xl bg-white/92 p-4 text-sm leading-6 text-[#53645f] shadow-xl shadow-[#0f3d35]/10 backdrop-blur md:block">
+          Tap a price marker to open the listing details. Use full map for the best search experience.
+        </div>
+      )}
+    </div>
+  )
+}
+
+function RealMap({ listings, className, immersive }: { listings: Listing[]; className: string; immersive: boolean }) {
+  const containerRef = useRef<HTMLDivElement | null>(null)
+  const mapRef = useRef<any>(null)
+  const mapboxRef = useRef<any>(null)
+  const markersRef = useRef<any[]>([])
+  const [mapReady, setMapReady] = useState(false)
+  const [mapError, setMapError] = useState(false)
+  const navigate = useNavigate()
+
+  useEffect(() => {
+    if (!containerRef.current || mapRef.current) return
+
+    let cancelled = false
+
+    async function initializeMap() {
+      const [mapboxModule] = await Promise.all([
+        import('mapbox-gl'),
+        import('mapbox-gl/dist/mapbox-gl.css'),
+      ])
+      if (cancelled || !containerRef.current) return
+
+      const mapbox = mapboxModule.default
+      mapbox.accessToken = MAPBOX_TOKEN
+      mapboxRef.current = mapbox
+
+      const map = new mapbox.Map({
+        container: containerRef.current,
+        style: 'mapbox://styles/mapbox/outdoors-v12',
+        center: [144.7937, 13.4443],
+        zoom: immersive ? 10.8 : 10.2,
+        attributionControl: false,
+      })
+
+      map.addControl(new mapbox.NavigationControl({ showCompass: false }), 'bottom-right')
+      map.addControl(new mapbox.AttributionControl({ compact: true }), 'bottom-left')
+      map.on('load', () => setMapReady(true))
+      mapRef.current = map
+    }
+
+    setMapError(false)
+    initializeMap().catch((error) => {
+      console.warn('Unable to initialize Mapbox map', error)
+      if (!cancelled) setMapError(true)
+    })
+
+    return () => {
+      cancelled = true
+      markersRef.current.forEach((marker) => marker.remove())
+      markersRef.current = []
+      mapRef.current?.remove()
+      mapRef.current = null
+      mapboxRef.current = null
+      setMapReady(false)
+      setMapError(false)
+    }
+  }, [immersive])
+
+  useEffect(() => {
+    const map = mapRef.current
+    const mapbox = mapboxRef.current
+    if (!map || !mapbox || !mapReady) return
+
+    markersRef.current.forEach((marker) => marker.remove())
+    markersRef.current = []
+
+    const bounds = new mapbox.LngLatBounds()
+
+    listings.forEach((listing) => {
+      if (!listing.latitude || !listing.longitude) return
+
+      const markerElement = document.createElement('button')
+      markerElement.type = 'button'
+      markerElement.className = 'hafa-map-marker'
+      markerElement.textContent = currency(listing.price, listing.listing_kind).replace('/mo', '')
+      markerElement.setAttribute('aria-label', `Open ${listing.title}`)
+      markerElement.addEventListener('click', () => navigate(`/listings/${listing.id}`))
+
+      const marker = new mapbox.Marker({ element: markerElement, anchor: 'center' })
+        .setLngLat([listing.longitude, listing.latitude])
+        .addTo(map)
+
+      markersRef.current.push(marker)
+      bounds.extend([listing.longitude, listing.latitude])
+    })
+
+    if (!bounds.isEmpty()) {
+      map.fitBounds(bounds, {
+        padding: immersive ? 96 : { top: 130, right: 70, bottom: 120, left: 70 },
+        maxZoom: 12.2,
+        duration: 650,
+      })
+    }
+  }, [listings, immersive, navigate, mapReady])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+    const timeout = window.setTimeout(() => map.resize(), 120)
+    return () => window.clearTimeout(timeout)
+  }, [immersive])
+
+  if (mapError) {
+    return (
+      <div className={`grid w-full place-items-center bg-[#dbe8df] px-6 text-center ${className}`}>
+        <div className="rounded-3xl bg-white/90 p-5 shadow-xl shadow-[#0f3d35]/10">
+          <p className="text-sm font-bold text-[#0f3d35]">Map temporarily unavailable</p>
+          <p className="mt-2 max-w-xs text-sm leading-6 text-[#53645f]">Listings are still available in list view while the map finishes loading.</p>
+        </div>
+      </div>
+    )
+  }
+
+  return <div ref={containerRef} className={`w-full ${className}`} />
+}
+
+function MapOverlayHeader({ listingsCount, onExpand, realMap = false }: { listingsCount: number; onExpand?: () => void; realMap?: boolean }) {
+  return (
+    <div className="absolute left-3 right-3 top-3 z-20 flex items-center justify-between gap-2 rounded-2xl bg-white/90 p-2 shadow-lg shadow-[#0f3d35]/10 backdrop-blur md:left-5 md:right-5 md:top-5 md:rounded-3xl md:p-4">
+      <div className="min-w-0">
+        <p className="hidden text-xs font-bold uppercase tracking-[0.2em] text-[#0f705e] md:block">{realMap ? 'Interactive map' : 'Map concept'}</p>
+        <h3 className="truncate text-sm font-extrabold tracking-[-0.03em] text-[#17211f] md:mt-1 md:text-xl">Map</h3>
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        <span className="rounded-full bg-[#edf4ef] px-3 py-2 text-xs font-bold text-[#0f3d35] md:hidden">{listingsCount} listings</span>
+        <span className="hidden rounded-full bg-[#0f3d35] px-3 py-1 text-xs font-bold text-white md:inline-flex">{listingsCount} pins</span>
+        {onExpand && (
+          <button onClick={onExpand} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-[#d7ded9] bg-white px-3 text-xs font-bold text-[#0f3d35] md:min-h-0 md:rounded-full md:py-2">
+            <Maximize2 size={14} /> <span className="hidden sm:inline">Open full map</span><span className="sm:hidden">Full</span>
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function FallbackMapPanel({ listings, onExpand, immersive = false }: { listings: Listing[]; onExpand?: () => void; immersive?: boolean }) {
+  const points = listings.filter((listing) => listing.latitude && listing.longitude)
+  const mapHeight = immersive ? 'h-[100svh]' : 'h-[calc(100svh-330px)] min-h-[420px] max-h-[560px] md:h-auto md:max-h-none md:min-h-[760px]'
+
+  return (
+    <div className={`overflow-hidden border border-black/5 bg-[#dbe8df] shadow-sm ${immersive ? 'h-[100svh] rounded-none' : 'rounded-none md:rounded-[2rem]'}`}>
       <div className={`relative ${mapHeight} bg-[radial-gradient(circle_at_30%_20%,rgba(15,112,94,0.18),transparent_24%),radial-gradient(circle_at_70%_70%,rgba(233,159,62,0.22),transparent_26%),linear-gradient(135deg,#e8f0ea,#c9ddd1)] p-3 md:p-5`}>
         <div className="absolute inset-0 opacity-35 [background-image:linear-gradient(rgba(15,61,53,.16)_1px,transparent_1px),linear-gradient(90deg,rgba(15,61,53,.16)_1px,transparent_1px)] [background-size:42px_42px]" />
-        <div className="relative z-10 rounded-3xl bg-white/88 p-3 shadow-lg shadow-[#0f3d35]/10 backdrop-blur md:flex md:items-center md:justify-between md:p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#0f705e] md:text-xs">Map concept</p>
-              <h3 className="text-lg font-semibold tracking-[-0.04em] md:text-xl">Guam listing map</h3>
-            </div>
-            <span className="shrink-0 rounded-full bg-[#edf4ef] px-3 py-1 text-[11px] font-bold text-[#0f3d35] md:hidden">{points.length} listings</span>
-          </div>
-          <div className="mt-3 flex items-center gap-2 md:mt-0">
-            <span className="hidden rounded-full bg-[#0f3d35] px-3 py-1 text-xs font-bold text-white md:inline-flex">{points.length} pins</span>
-            {onExpand && (
-              <button onClick={onExpand} className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-2xl border border-[#d7ded9] bg-white px-4 text-sm font-bold text-[#0f3d35] md:min-h-0 md:flex-none md:rounded-full md:px-3 md:py-2 md:text-xs">
-                <Maximize2 size={14} /> Open full map
-              </button>
-            )}
-          </div>
-        </div>
+        <MapOverlayHeader listingsCount={points.length} onExpand={onExpand} />
         {points.map((listing, index) => {
           const left = 18 + ((index * 23) % 62)
           const top = 24 + ((index * 29) % 52)
@@ -657,8 +971,8 @@ function MapPanel({ listings, onExpand, immersive = false }: { listings: Listing
           )
         })}
         {!immersive && (
-          <div className="absolute bottom-3 left-3 right-3 z-10 rounded-3xl bg-white/92 p-4 text-sm leading-6 text-[#53645f] backdrop-blur md:bottom-5 md:left-5 md:right-5">
-            Use full map for an app-like search surface. The backend already stores latitude/longitude for real map pins; Mapbox can replace this placeholder when we deploy with a token.
+          <div className="absolute bottom-5 left-5 z-10 hidden max-w-md rounded-3xl bg-white/92 p-4 text-sm leading-6 text-[#53645f] backdrop-blur md:block">
+            Add <code className="rounded bg-[#edf4ef] px-1 font-bold text-[#0f3d35]">VITE_MAPBOX_TOKEN</code> to enable the real interactive Mapbox map.
           </div>
         )}
       </div>
@@ -775,6 +1089,106 @@ function LeadsPage() {
   )
 }
 
+function MobileMenuDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const links = [
+    ['Search', '/'],
+    ['Villages', '/villages'],
+    ['Military relocation', '/military'],
+    ['Saved homes', '/saved'],
+    ['MLS sync', '/admin/sync'],
+    ['Lead inbox', '/admin/leads'],
+  ]
+
+  return (
+    <div className={`fixed inset-0 z-[90] md:hidden ${open ? 'pointer-events-auto' : 'pointer-events-none'}`}>
+      <button
+        aria-label="Close menu"
+        onClick={onClose}
+        className={`absolute inset-0 bg-black/45 backdrop-blur-sm transition-opacity duration-300 ease-out ${open ? 'opacity-100' : 'opacity-0'}`}
+      />
+      <div className={`safe-top absolute bottom-0 right-0 top-0 w-[84vw] max-w-sm bg-[#0f3d35] p-5 text-white shadow-2xl transition-transform duration-300 ease-out ${open ? 'translate-x-0' : 'translate-x-full'}`}>
+        <div className="flex items-center justify-between gap-4">
+          <Brand light />
+          <button onClick={onClose} className="grid h-11 w-11 place-items-center rounded-full bg-white/10 hover:bg-white/15 active:scale-95"><X size={20} /></button>
+        </div>
+        <div className="mt-8 grid gap-3">
+          {links.map(([label, href], index) => (
+            <Link
+              key={href}
+              to={href}
+              onClick={onClose}
+              style={{ transitionDelay: open ? `${80 + index * 25}ms` : '0ms' }}
+              className={`rounded-2xl bg-white/10 px-4 py-4 text-lg font-bold text-white/90 hover:translate-x-1 hover:bg-white/15 ${open ? 'translate-x-0 opacity-100' : 'translate-x-4 opacity-0'}`}
+            >
+              {label}
+            </Link>
+          ))}
+        </div>
+        <div className={`absolute bottom-6 left-5 right-5 rounded-3xl bg-white/10 p-4 text-sm leading-6 text-white/72 transition-all delay-200 duration-300 ${open ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0'}`}>
+          Hafa Homes is a Guam-first housing search demo built around map search, local filters, and agent workflows.
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function PriceTrackerModal({ listing, open, onClose }: { listing: Listing; open: boolean; onClose: () => void }) {
+  const mutation = useMutation({ mutationFn: createLead })
+  if (!open) return null
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const form = new FormData(event.currentTarget)
+    mutation.mutate({
+      listing_id: listing.id,
+      lead_type: 'price_tracker',
+      name: String(form.get('name') || 'Price tracker user'),
+      email: String(form.get('email') || ''),
+      phone: String(form.get('phone') || ''),
+      preferred_contact_method: 'email',
+      target_price: String(form.get('target_price') || ''),
+      message: `Target price: ${String(form.get('target_price') || '')}`, 
+    })
+  }
+
+  return (
+    <div className="fixed inset-0 z-[75] grid place-items-center bg-black/50 p-5 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-[2rem] bg-white/95 p-6 shadow-2xl">
+        {mutation.isSuccess ? (
+          <div className="py-8 text-center">
+            <CheckCircle2 className="mx-auto text-[#0f705e]" size={44} />
+            <h2 className="mt-4 text-3xl font-semibold tracking-[-0.05em]">Price tracker saved</h2>
+            <p className="mt-3 text-sm leading-6 text-[#66746f]">We captured the target price. Later this can become a dedicated alerts workflow.</p>
+            <button onClick={onClose} className="mt-6 w-full rounded-2xl bg-[#0f3d35] px-4 py-3 text-sm font-bold text-white">Close</button>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit}>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#0f705e]">Price Watch</p>
+                <h2 className="mt-2 text-3xl font-semibold tracking-[-0.05em]">Set your target price</h2>
+              </div>
+              <button type="button" onClick={onClose} className="grid h-11 w-11 place-items-center rounded-full border border-[#d7ded9]"><X size={20} /></button>
+            </div>
+            <p className="mt-3 text-sm leading-6 text-[#66746f]">Current price: <strong>{currency(listing.price, listing.listing_kind)}</strong></p>
+            <div className="mt-5 grid gap-3">
+              <Input name="target_price" label="Target price" inputMode="numeric" placeholder="450000" required />
+              <Input name="email" label="Email for alerts" type="email" required />
+              <Input name="name" label="Name" defaultValue="Hafa Homes user" />
+              <Input name="phone" label="Phone optional" />
+            </div>
+            {mutation.isError && <p className="mt-3 text-sm font-semibold text-red-700">Unable to save tracker right now.</p>}
+            <div className="mt-5 grid grid-cols-2 gap-3">
+              <button disabled={mutation.isPending} className="rounded-2xl bg-[#0f3d35] px-4 py-3 text-sm font-bold text-white disabled:opacity-60">{mutation.isPending ? 'Saving...' : 'Add'}</button>
+              <button type="button" onClick={onClose} className="rounded-2xl bg-[#edf0ec] px-4 py-3 text-sm font-bold text-[#17211f]">Cancel</button>
+            </div>
+          </form>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean; onClose: () => void }) {
   const mutation = useMutation({ mutationFn: createLead })
   if (!open) return null
@@ -789,6 +1203,9 @@ function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean
       email: String(form.get('email') || ''),
       phone: String(form.get('phone') || ''),
       preferred_contact_method: String(form.get('preferred_contact_method') || 'phone'),
+      preferred_time: String(form.get('preferred_time') || 'morning'),
+      preferred_tour_date: String(form.get('preferred_tour_date') || ''),
+      tour_type: String(form.get('tour_type') || 'in_person'),
       message: String(form.get('message') || ''),
     })
   }
@@ -807,10 +1224,39 @@ function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean
           <form onSubmit={handleSubmit}>
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#7b8a84]">Request showing</p>
-                <h2 className="mt-2 text-3xl font-semibold tracking-[-0.05em]">{listing.title}</h2>
+                <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#0f705e]">Schedule Tour</p>
+                <h2 className="mt-2 text-3xl font-semibold tracking-[-0.05em]">Request a showing</h2>
               </div>
               <button type="button" onClick={onClose} className="rounded-full border border-[#d7ded9] px-3 py-2 text-sm font-bold">Close</button>
+            </div>
+            <div className="mt-5 rounded-3xl bg-[#f6f1e8] p-4">
+              <div className="flex items-center gap-4">
+                <img src="/hafa-homes-mark.svg" alt="" className="h-16 w-16 rounded-2xl" />
+                <div>
+                  <p className="text-lg font-bold text-[#17211f]">Hafa Homes Demo Team</p>
+                  <p className="text-sm font-semibold text-[#66746f]">hello@hafahomes.com</p>
+                  <p className="text-sm font-semibold text-[#66746f]">(671) 555-0199</p>
+                </div>
+              </div>
+              <p className="mt-4 text-sm font-semibold text-[#304942]">{listing.address}</p>
+            </div>
+            <div className="mt-5 grid grid-cols-2 gap-3">
+              <label className="cursor-pointer">
+                <input type="radio" name="tour_type" value="in_person" defaultChecked className="peer sr-only" />
+                <span className="block rounded-2xl border border-[#d7ded9] px-4 py-3 text-center text-sm font-bold text-[#304942] peer-checked:border-[#17a9df] peer-checked:text-[#17a9df]">In Person</span>
+              </label>
+              <label className="cursor-pointer">
+                <input type="radio" name="tour_type" value="virtual" className="peer sr-only" />
+                <span className="block rounded-2xl border border-[#d7ded9] px-4 py-3 text-center text-sm font-bold text-[#304942] peer-checked:border-[#17a9df] peer-checked:text-[#17a9df]">Virtual</span>
+              </label>
+            </div>
+            <div className="mt-5 grid grid-cols-4 gap-2 text-center text-xs font-bold text-[#53645f]">
+              {tourDateOptions().map((day, index) => (
+                <label key={day.value} className="cursor-pointer">
+                  <input type="radio" name="preferred_tour_date" value={day.value} defaultChecked={index === 0} className="peer sr-only" />
+                  <span className="block rounded-2xl border border-[#d7ded9] px-2 py-3 peer-checked:border-[#17a9df] peer-checked:text-[#17a9df]">{day.label}</span>
+                </label>
+              ))}
             </div>
             <div className="mt-5 grid gap-3">
               <Input name="name" label="Name" required />
@@ -825,13 +1271,21 @@ function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean
                 </select>
               </label>
               <label className="grid gap-2 text-sm font-semibold text-[#304942]">
+                Select time
+                <select name="preferred_time" className="min-h-12 rounded-2xl border border-[#dce5df] px-4">
+                  <option value="morning">Morning</option>
+                  <option value="afternoon">Afternoon</option>
+                  <option value="evening">Evening</option>
+                </select>
+              </label>
+              <label className="grid gap-2 text-sm font-semibold text-[#304942]">
                 Message
                 <textarea name="message" rows={4} className="rounded-2xl border border-[#dce5df] px-4 py-3" defaultValue={`I'm interested in ${listing.title}.`} />
               </label>
             </div>
             {mutation.isError && <p className="mt-3 text-sm font-semibold text-red-700">Unable to submit right now.</p>}
             <button disabled={mutation.isPending} className="mt-5 w-full rounded-2xl bg-[#0f3d35] px-4 py-3 text-sm font-bold text-white disabled:opacity-60">
-              {mutation.isPending ? 'Submitting...' : 'Submit inquiry'}
+              {mutation.isPending ? 'Submitting...' : 'Request Tour'}
             </button>
           </form>
         )}
