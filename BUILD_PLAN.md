@@ -84,7 +84,7 @@ hafa-homes/
 - [ ] Add Mapbox integration
 - [x] Add placeholder listing pins/map concept
 - [x] Add map/list toggle
-- [ ] Add loading/empty/error states
+- [x] Add loading/empty/error states
 
 ## Phase 6: Deploy demo
 
