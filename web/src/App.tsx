@@ -18,6 +18,8 @@ import {
   Maximize2,
   Menu,
   Mail,
+  ChevronLeft,
+  ChevronRight as ChevronRightIcon,
   MessageSquare,
   Phone,
   Ruler,
@@ -228,6 +230,7 @@ function SearchPage() {
   const [viewMode, setViewMode] = useState<'list' | 'map'>('list')
   const [saveSearchOpen, setSaveSearchOpen] = useState(false)
   const [fullMapOpen, setFullMapOpen] = useState(false)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const kind = (searchParams.get('kind') as 'sale' | 'rent') || 'sale'
   const village = searchParams.get('village') || ''
   const propertyType = searchParams.get('property_type') || ''
@@ -273,6 +276,7 @@ function SearchPage() {
         onKindChange={(value) => setParam('kind', value)}
         onViewModeChange={setViewMode}
         onFilterClick={() => setShowFilters((value) => !value)}
+        onMenuClick={() => setMobileMenuOpen(true)}
       />
       <div className="hidden md:block">
         <HeroHeader kind={kind} onKindChange={(value) => setParam('kind', value)} />
@@ -398,6 +402,7 @@ function SearchPage() {
         filters={{ kind, village, property_type: propertyType, features, beds, max_price: maxPrice }}
       />
       <FullMapModal open={fullMapOpen} onClose={() => setFullMapOpen(false)} listings={listings} />
+      <MobileMenuDrawer open={mobileMenuOpen} onClose={() => setMobileMenuOpen(false)} />
     </Shell>
   )
 }
@@ -409,6 +414,7 @@ function MobileAppSearchHeader({
   onKindChange,
   onViewModeChange,
   onFilterClick,
+  onMenuClick,
 }: {
   kind: 'sale' | 'rent'
   viewMode: 'list' | 'map'
@@ -416,13 +422,14 @@ function MobileAppSearchHeader({
   onKindChange: (value: 'sale' | 'rent') => void
   onViewModeChange: (value: 'list' | 'map') => void
   onFilterClick: () => void
+  onMenuClick: () => void
 }) {
   return (
     <header className="safe-top sticky top-0 z-40 border-b border-white/10 bg-[#0f3d35] text-white shadow-xl shadow-[#0f3d35]/20 md:hidden">
       <div className="px-4 pb-3 pt-3">
         <div className="flex items-center justify-between gap-3">
           <Brand light />
-          <button className="grid h-11 w-11 place-items-center rounded-full border border-white/20 text-white/86">
+          <button onClick={onMenuClick} className="grid h-11 w-11 place-items-center rounded-full border border-white/20 text-white/86">
             <Menu size={22} />
           </button>
         </div>
@@ -525,6 +532,9 @@ function ListingDetailPage() {
   const { id = '' } = useParams()
   const [leadOpen, setLeadOpen] = useState(false)
   const [priceTrackerOpen, setPriceTrackerOpen] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [photoIndex, setPhotoIndex] = useState(0)
   const { data, isLoading, isError } = useQuery({ queryKey: ['listing', id], queryFn: () => fetchListing(id), enabled: Boolean(id) })
   const listing = data?.listing
   const photos = listing?.photos?.length ? listing.photos : listing ? [{ id: 0, url: listing.primary_photo_url, position: 1, alt_text: listing.title }] : []
@@ -542,10 +552,13 @@ function ListingDetailPage() {
       {isError && <div className="p-5"><StateCard tone="error">Unable to load listing.</StateCard></div>}
       {listing && (
         <>
-          <div className="safe-top sticky top-0 z-40 border-b border-white/10 bg-[#0f3d35] px-4 pb-3 pt-3 text-white shadow-xl shadow-[#0f3d35]/15 md:hidden">
+          <div className="safe-top sticky top-0 z-40 border-b border-white/10 bg-[#0f3d35] px-4 pb-4 pt-5 text-white shadow-xl shadow-[#0f3d35]/15 md:hidden">
             <div className="flex items-center justify-between gap-3">
-              <Link to="/" className="inline-flex min-h-11 items-center gap-2 rounded-full bg-white/10 px-3 text-sm font-bold"><ArrowLeft size={18} /> Search</Link>
-              <button onClick={() => setLeadOpen(true)} className="min-h-11 rounded-2xl bg-[#e99f3e] px-5 text-sm font-bold text-[#25170b]">Schedule tour</button>
+              <Link to="/" className="inline-flex min-h-12 items-center gap-2 rounded-full bg-white/10 px-4 text-sm font-bold"><ArrowLeft size={18} /> Search</Link>
+              <div className="flex items-center gap-2">
+                <button onClick={() => setLeadOpen(true)} className="min-h-12 rounded-2xl bg-[#e99f3e] px-5 text-sm font-bold text-[#25170b]">Schedule tour</button>
+                <button onClick={() => setMenuOpen(true)} className="grid h-12 w-12 place-items-center rounded-full bg-white/10"><Menu size={20} /></button>
+              </div>
             </div>
           </div>
 
@@ -555,23 +568,24 @@ function ListingDetailPage() {
             <Link to="/" className="mb-6 hidden items-center gap-2 text-sm font-bold text-[#0f705e] md:inline-flex"><ArrowLeft size={16} /> Back to search</Link>
             <div className="grid gap-6 lg:grid-cols-[1fr_390px]">
               <div>
-                <div className="relative mx-4 mt-4 overflow-hidden rounded-[2rem] bg-[#0f3d35] shadow-xl shadow-[#0f3d35]/10 md:mx-0 md:mt-0">
-                  <div className="flex snap-x snap-mandatory overflow-x-auto md:grid md:grid-cols-2 md:gap-3 md:overflow-visible">
-                    {photos.slice(0, 6).map((photo) => (
-                      <img
-                        key={photo.id}
-                        src={photo.url}
-                        alt=""
-                        className="h-[40svh] min-h-[300px] w-full shrink-0 snap-center object-cover first:md:col-span-2 md:h-72"
-                      />
-                    ))}
-                  </div>
+                <div className="relative mx-4 mt-5 overflow-hidden rounded-[2rem] bg-[#0f3d35] shadow-xl shadow-[#0f3d35]/10 md:mx-0 md:mt-0">
+                  <img
+                    src={photos[photoIndex]?.url || listing.primary_photo_url}
+                    alt=""
+                    className="h-[40svh] min-h-[300px] w-full object-cover md:h-[560px]"
+                  />
+                  {photos.length > 1 && (
+                    <>
+                      <button onClick={() => setPhotoIndex((photoIndex - 1 + photos.length) % photos.length)} className="absolute left-3 top-1/2 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-white/90 text-[#0f3d35] shadow-lg"><ChevronLeft size={22} /></button>
+                      <button onClick={() => setPhotoIndex((photoIndex + 1) % photos.length)} className="absolute right-3 top-1/2 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-white/90 text-[#0f3d35] shadow-lg"><ChevronRightIcon size={22} /></button>
+                    </>
+                  )}
                   <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-[#0f3d35]/70 to-transparent p-4 text-center text-sm font-bold text-white">
-                    {photos.length > 1 ? `1 of ${photos.length}` : '1 photo'}
+                    {photos.length > 1 ? `${photoIndex + 1} of ${photos.length}` : '1 photo'}
                   </div>
                 </div>
 
-                <div className="relative z-10 mx-4 -mt-6 rounded-[2rem] bg-white p-5 shadow-xl shadow-[#0f3d35]/10 md:mx-0 md:mt-6 md:p-6">
+                <div className="relative z-10 mx-4 mt-5 rounded-[2rem] bg-white p-5 shadow-xl shadow-[#0f3d35]/10 md:mx-0 md:mt-6 md:p-6">
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <p className="text-4xl font-semibold tracking-[-0.06em] md:text-5xl">{currency(listing.price, listing.listing_kind)}</p>
@@ -613,9 +627,10 @@ function ListingDetailPage() {
           <nav className="safe-bottom fixed inset-x-0 bottom-0 z-50 mx-4 mb-3 grid grid-cols-3 rounded-[1.5rem] border border-black/5 bg-white/95 px-3 pt-3 text-center text-xs font-bold text-[#0f3d35] shadow-2xl shadow-[#0f3d35]/15 backdrop-blur md:hidden">
             <button onClick={shareListing} className="flex min-h-16 flex-col items-center justify-center gap-1"><Share2 size={23} /> Share</button>
             <button onClick={() => setPriceTrackerOpen(true)} className="flex min-h-16 flex-col items-center justify-center gap-1"><TrendingUp size={23} /> Price alert</button>
-            <button className="flex min-h-16 flex-col items-center justify-center gap-1"><Heart size={25} /> Save</button>
+            <button onClick={() => setSaved((value) => !value)} className="flex min-h-16 flex-col items-center justify-center gap-1"><Heart size={25} fill={saved ? '#0f3d35' : 'none'} /> {saved ? 'Saved' : 'Save'}</button>
           </nav>
 
+          <MobileMenuDrawer open={menuOpen} onClose={() => setMenuOpen(false)} />
           <LeadModal listing={listing} open={leadOpen} onClose={() => setLeadOpen(false)} />
           <PriceTrackerModal listing={listing} open={priceTrackerOpen} onClose={() => setPriceTrackerOpen(false)} />
         </>
@@ -1026,6 +1041,40 @@ function LeadsPage() {
         </div>
       </section>
     </Shell>
+  )
+}
+
+function MobileMenuDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
+  if (!open) return null
+
+  const links = [
+    ['Search', '/'],
+    ['Villages', '/villages'],
+    ['Military relocation', '/military'],
+    ['Saved homes', '/saved'],
+    ['MLS sync', '/admin/sync'],
+    ['Lead inbox', '/admin/leads'],
+  ]
+
+  return (
+    <div className="fixed inset-0 z-[90] bg-black/45 backdrop-blur-sm md:hidden">
+      <div className="safe-top absolute bottom-0 right-0 top-0 w-[84vw] max-w-sm bg-[#0f3d35] p-5 text-white shadow-2xl">
+        <div className="flex items-center justify-between gap-4">
+          <Brand light />
+          <button onClick={onClose} className="grid h-11 w-11 place-items-center rounded-full bg-white/10"><X size={20} /></button>
+        </div>
+        <div className="mt-8 grid gap-3">
+          {links.map(([label, href]) => (
+            <Link key={href} to={href} onClick={onClose} className="rounded-2xl bg-white/10 px-4 py-4 text-lg font-bold text-white/90">
+              {label}
+            </Link>
+          ))}
+        </div>
+        <div className="absolute bottom-6 left-5 right-5 rounded-3xl bg-white/10 p-4 text-sm leading-6 text-white/72">
+          Hafa Homes is a Guam-first housing search demo built around map search, local filters, and agent workflows.
+        </div>
+      </div>
+    </div>
   )
 }
 
