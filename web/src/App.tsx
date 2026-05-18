@@ -625,16 +625,19 @@ function MapPanel({ listings, onExpand, immersive = false }: { listings: Listing
     <div className={`overflow-hidden border border-black/5 bg-[#dbe8df] shadow-sm ${immersive ? 'h-[100svh] rounded-none' : 'rounded-[2rem]'}`}>
       <div className={`relative ${mapHeight} bg-[radial-gradient(circle_at_30%_20%,rgba(15,112,94,0.18),transparent_24%),radial-gradient(circle_at_70%_70%,rgba(233,159,62,0.22),transparent_26%),linear-gradient(135deg,#e8f0ea,#c9ddd1)] p-3 md:p-5`}>
         <div className="absolute inset-0 opacity-35 [background-image:linear-gradient(rgba(15,61,53,.16)_1px,transparent_1px),linear-gradient(90deg,rgba(15,61,53,.16)_1px,transparent_1px)] [background-size:42px_42px]" />
-        <div className="relative z-10 flex items-center justify-between rounded-3xl bg-white/88 p-3 shadow-lg shadow-[#0f3d35]/10 backdrop-blur md:p-4">
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#0f705e] md:text-xs">Map concept</p>
-            <h3 className="text-lg font-semibold tracking-[-0.04em] md:text-xl">Guam listing map</h3>
+        <div className="relative z-10 rounded-3xl bg-white/88 p-3 shadow-lg shadow-[#0f3d35]/10 backdrop-blur md:flex md:items-center md:justify-between md:p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#0f705e] md:text-xs">Map concept</p>
+              <h3 className="text-lg font-semibold tracking-[-0.04em] md:text-xl">Guam listing map</h3>
+            </div>
+            <span className="shrink-0 rounded-full bg-[#edf4ef] px-3 py-1 text-[11px] font-bold text-[#0f3d35] md:hidden">{points.length} listings</span>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="rounded-full bg-[#0f3d35] px-3 py-1 text-xs font-bold text-white">{points.length} pins</span>
+          <div className="mt-3 flex items-center gap-2 md:mt-0">
+            <span className="hidden rounded-full bg-[#0f3d35] px-3 py-1 text-xs font-bold text-white md:inline-flex">{points.length} pins</span>
             {onExpand && (
-              <button onClick={onExpand} className="inline-flex items-center gap-2 rounded-full border border-[#d7ded9] bg-white px-3 py-2 text-xs font-bold text-[#0f3d35]">
-                <Maximize2 size={14} /> Full map
+              <button onClick={onExpand} className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-2xl border border-[#d7ded9] bg-white px-4 text-sm font-bold text-[#0f3d35] md:min-h-0 md:flex-none md:rounded-full md:px-3 md:py-2 md:text-xs">
+                <Maximize2 size={14} /> Open full map
               </button>
             )}
           </div>
