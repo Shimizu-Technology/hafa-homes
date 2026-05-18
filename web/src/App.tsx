@@ -689,7 +689,7 @@ function SyncPage() {
 
 function MapPanel({ listings, onExpand, immersive = false }: { listings: Listing[]; onExpand?: () => void; immersive?: boolean }) {
   const points = listings.filter((listing) => listing.latitude && listing.longitude)
-  const mapHeight = immersive ? 'h-[100svh]' : 'min-h-[72svh] md:min-h-[760px]'
+  const mapHeight = immersive ? 'h-[100svh]' : 'h-[calc(100svh-330px)] min-h-[420px] max-h-[560px] md:h-auto md:max-h-none md:min-h-[760px]'
 
   if (!MAPBOX_TOKEN) {
     return <FallbackMapPanel listings={listings} onExpand={onExpand} immersive={immersive} />
@@ -700,8 +700,8 @@ function MapPanel({ listings, onExpand, immersive = false }: { listings: Listing
       <RealMap listings={points} immersive={immersive} className={mapHeight} />
       <MapOverlayHeader listingsCount={points.length} onExpand={onExpand} realMap />
       {!immersive && (
-        <div className="absolute bottom-3 left-3 right-3 z-10 rounded-3xl bg-white/92 p-4 text-sm leading-6 text-[#53645f] shadow-xl shadow-[#0f3d35]/10 backdrop-blur md:bottom-5 md:left-5 md:right-auto md:max-w-md">
-          Interactive Mapbox map using seeded listing coordinates. Click a price marker to open the listing detail.
+        <div className="absolute bottom-5 left-5 z-10 hidden max-w-md rounded-3xl bg-white/92 p-4 text-sm leading-6 text-[#53645f] shadow-xl shadow-[#0f3d35]/10 backdrop-blur md:block">
+          Tap a price marker to open the listing details. Use full map for the best search experience.
         </div>
       )}
     </div>
@@ -805,19 +805,17 @@ function RealMap({ listings, className, immersive }: { listings: Listing[]; clas
 
 function MapOverlayHeader({ listingsCount, onExpand, realMap = false }: { listingsCount: number; onExpand?: () => void; realMap?: boolean }) {
   return (
-    <div className="absolute left-3 right-3 top-3 z-20 rounded-3xl bg-white/88 p-3 shadow-lg shadow-[#0f3d35]/10 backdrop-blur md:left-5 md:right-5 md:top-5 md:flex md:items-center md:justify-between md:p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#0f705e] md:text-xs">{realMap ? 'Interactive map' : 'Map concept'}</p>
-          <h3 className="text-lg font-semibold tracking-[-0.04em] md:text-xl">Guam listing map</h3>
-        </div>
-        <span className="shrink-0 rounded-full bg-[#edf4ef] px-3 py-1 text-[11px] font-bold text-[#0f3d35] md:hidden">{listingsCount} listings</span>
+    <div className="absolute left-3 right-3 top-3 z-20 flex items-center justify-between gap-2 rounded-2xl bg-white/90 p-2 shadow-lg shadow-[#0f3d35]/10 backdrop-blur md:left-5 md:right-5 md:top-5 md:rounded-3xl md:p-4">
+      <div className="min-w-0">
+        <p className="hidden text-xs font-bold uppercase tracking-[0.2em] text-[#0f705e] md:block">{realMap ? 'Interactive map' : 'Map concept'}</p>
+        <h3 className="truncate text-sm font-extrabold tracking-[-0.03em] text-[#17211f] md:mt-1 md:text-xl">Map</h3>
       </div>
-      <div className="mt-3 flex items-center gap-2 md:mt-0">
+      <div className="flex shrink-0 items-center gap-2">
+        <span className="rounded-full bg-[#edf4ef] px-3 py-2 text-xs font-bold text-[#0f3d35] md:hidden">{listingsCount} listings</span>
         <span className="hidden rounded-full bg-[#0f3d35] px-3 py-1 text-xs font-bold text-white md:inline-flex">{listingsCount} pins</span>
         {onExpand && (
-          <button onClick={onExpand} className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-2xl border border-[#d7ded9] bg-white px-4 text-sm font-bold text-[#0f3d35] md:min-h-0 md:flex-none md:rounded-full md:px-3 md:py-2 md:text-xs">
-            <Maximize2 size={14} /> Open full map
+          <button onClick={onExpand} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-[#d7ded9] bg-white px-3 text-xs font-bold text-[#0f3d35] md:min-h-0 md:rounded-full md:py-2">
+            <Maximize2 size={14} /> <span className="hidden sm:inline">Open full map</span><span className="sm:hidden">Full</span>
           </button>
         )}
       </div>
@@ -827,7 +825,7 @@ function MapOverlayHeader({ listingsCount, onExpand, realMap = false }: { listin
 
 function FallbackMapPanel({ listings, onExpand, immersive = false }: { listings: Listing[]; onExpand?: () => void; immersive?: boolean }) {
   const points = listings.filter((listing) => listing.latitude && listing.longitude)
-  const mapHeight = immersive ? 'h-[100svh]' : 'min-h-[72svh] md:min-h-[760px]'
+  const mapHeight = immersive ? 'h-[100svh]' : 'h-[calc(100svh-330px)] min-h-[420px] max-h-[560px] md:h-auto md:max-h-none md:min-h-[760px]'
 
   return (
     <div className={`overflow-hidden border border-black/5 bg-[#dbe8df] shadow-sm ${immersive ? 'h-[100svh] rounded-none' : 'rounded-none md:rounded-[2rem]'}`}>
@@ -849,7 +847,7 @@ function FallbackMapPanel({ listings, onExpand, immersive = false }: { listings:
           )
         })}
         {!immersive && (
-          <div className="absolute bottom-3 left-3 right-3 z-10 rounded-3xl bg-white/92 p-4 text-sm leading-6 text-[#53645f] backdrop-blur md:bottom-5 md:left-5 md:right-5">
+          <div className="absolute bottom-5 left-5 z-10 hidden max-w-md rounded-3xl bg-white/92 p-4 text-sm leading-6 text-[#53645f] backdrop-blur md:block">
             Add <code className="rounded bg-[#edf4ef] px-1 font-bold text-[#0f3d35]">VITE_MAPBOX_TOKEN</code> to enable the real interactive Mapbox map.
           </div>
         )}
