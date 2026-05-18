@@ -22,8 +22,10 @@ import {
   Phone,
   Ruler,
   Search,
+  Share2,
   ShieldCheck,
   SlidersHorizontal,
+  TrendingUp,
   Waves,
   X,
 } from 'lucide-react'
@@ -522,51 +524,113 @@ function ListingCard({ listing }: { listing: Listing }) {
 function ListingDetailPage() {
   const { id = '' } = useParams()
   const [leadOpen, setLeadOpen] = useState(false)
+  const [priceTrackerOpen, setPriceTrackerOpen] = useState(false)
   const { data, isLoading, isError } = useQuery({ queryKey: ['listing', id], queryFn: () => fetchListing(id), enabled: Boolean(id) })
   const listing = data?.listing
+  const photos = listing?.photos?.length ? listing.photos : listing ? [{ id: 0, url: listing.primary_photo_url, position: 1, alt_text: listing.title }] : []
+
+  async function shareListing() {
+    if (!listing) return
+    const shareData = { title: listing.title, text: `${listing.title} — ${currency(listing.price, listing.listing_kind)}`, url: window.location.href }
+    if (navigator.share) await navigator.share(shareData)
+    else await navigator.clipboard?.writeText(window.location.href)
+  }
 
   return (
-    <Shell compact>
-      <section className="mx-auto max-w-7xl px-5 py-6">
-        <Link to="/" className="inline-flex items-center gap-2 text-sm font-bold text-[#0f705e]"><ArrowLeft size={16} /> Back to search</Link>
-        {isLoading && <StateCard>Loading listing...</StateCard>}
-        {isError && <StateCard tone="error">Unable to load listing.</StateCard>}
-        {listing && (
-          <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_390px]">
-            <div>
-              <div className="grid gap-3 overflow-hidden rounded-[2rem] md:grid-cols-2">
-                {(listing.photos?.length ? listing.photos : [{ id: 0, url: listing.primary_photo_url, position: 1, alt_text: listing.title }]).slice(0, 4).map((photo) => (
-                  <img key={photo.id} src={photo.url} alt="" className="h-72 w-full object-cover first:md:col-span-2" />
-                ))}
-              </div>
-              <div className="mt-6 rounded-[2rem] bg-white p-6 shadow-sm">
-                <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#7b8a84]">{listing.village.name} · {listing.property_type}</p>
-                <h1 className="mt-2 text-4xl font-semibold tracking-[-0.05em] md:text-5xl">{listing.title}</h1>
-                <p className="mt-4 text-3xl font-bold tracking-[-0.04em]">{currency(listing.price, listing.listing_kind)}</p>
-                <PropertyStats listing={listing} large />
-                <p className="mt-6 max-w-3xl text-base leading-8 text-[#5f6d68]">{listing.description}</p>
-                <FeaturePills features={listing.features} />
-              </div>
+    <main className="min-h-screen bg-[#f6f1e8] pb-28 text-[#17211f] md:pb-0">
+      {isLoading && <div className="p-5"><StateCard>Loading listing...</StateCard></div>}
+      {isError && <div className="p-5"><StateCard tone="error">Unable to load listing.</StateCard></div>}
+      {listing && (
+        <>
+          <div className="safe-top sticky top-0 z-40 bg-[#07110f] px-4 pb-3 pt-3 text-white shadow-xl md:hidden">
+            <div className="flex items-center justify-between gap-3">
+              <Link to="/" className="inline-flex min-h-11 items-center gap-2 text-base font-bold"><ArrowLeft size={20} /> Back</Link>
+              <button onClick={() => setLeadOpen(true)} className="min-h-11 rounded-xl bg-[#17a9df] px-5 text-sm font-bold text-white">Schedule Tour</button>
             </div>
-            <aside className="lg:sticky lg:top-6 lg:self-start">
-              <div className="rounded-[2rem] border border-black/5 bg-white p-6 shadow-xl shadow-[#0f3d35]/10">
-                <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#7b8a84]">Request info</p>
-                <h2 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">Ask about this property</h2>
-                <p className="mt-3 text-sm leading-6 text-[#66746f]">Capture a lead for Mike/investor demo. Later this routes to assigned agents or property managers.</p>
-                <button onClick={() => setLeadOpen(true)} className="mt-5 w-full rounded-2xl bg-[#0f3d35] px-4 py-3 text-sm font-bold text-white">Request showing</button>
-                <button className="mt-3 w-full rounded-2xl border border-[#d7ded9] px-4 py-3 text-sm font-bold text-[#0f3d35]">Save listing</button>
-                <dl className="mt-6 space-y-3 text-sm">
-                  <InfoRow label="MLS/demo ID" value={listing.external_id || `HH-${listing.id}`} />
-                  <InfoRow label="Agent" value={listing.agent_name || 'Hafa Homes Demo Team'} />
-                  <InfoRow label="Brokerage" value={listing.brokerage_name || 'Demo Brokerage'} />
-                </dl>
-              </div>
-            </aside>
           </div>
-        )}
-      </section>
-      {listing && <LeadModal listing={listing} open={leadOpen} onClose={() => setLeadOpen(false)} />}
-    </Shell>
+
+          <div className="hidden bg-[#0f3d35] px-5 py-5 text-white md:block"><div className="mx-auto max-w-7xl"><TopNav /></div></div>
+
+          <section className="mx-auto max-w-7xl md:px-5 md:py-6">
+            <Link to="/" className="mb-6 hidden items-center gap-2 text-sm font-bold text-[#0f705e] md:inline-flex"><ArrowLeft size={16} /> Back to search</Link>
+            <div className="grid gap-6 lg:grid-cols-[1fr_390px]">
+              <div>
+                <div className="relative overflow-hidden bg-black md:rounded-[2rem]">
+                  <div className="flex snap-x snap-mandatory overflow-x-auto md:grid md:grid-cols-2 md:gap-3 md:overflow-visible">
+                    {photos.slice(0, 6).map((photo) => (
+                      <img
+                        key={photo.id}
+                        src={photo.url}
+                        alt=""
+                        className="h-[42svh] min-h-[320px] w-full shrink-0 snap-center object-cover first:md:col-span-2 md:h-72"
+                      />
+                    ))}
+                  </div>
+                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-4 text-center text-sm font-bold text-white">
+                    {photos.length > 1 ? `1 of ${photos.length}` : '1 photo'}
+                  </div>
+                </div>
+
+                <div className="bg-white p-5 shadow-sm md:mt-6 md:rounded-[2rem] md:p-6">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-4xl font-semibold tracking-[-0.06em] md:text-5xl">{currency(listing.price, listing.listing_kind)}</p>
+                      <h1 className="mt-2 text-xl font-semibold leading-snug tracking-[-0.03em] md:text-4xl">{listing.address}</h1>
+                      <p className="mt-1 text-sm font-semibold text-[#66746f]">{listing.village.name} · {listing.property_type}</p>
+                    </div>
+                    <span className="inline-flex shrink-0 items-center gap-2 rounded-full bg-[#e9f5ef] px-3 py-2 text-sm font-bold text-[#0f705e]"><span className="h-3 w-3 rounded-full bg-[#32aa42]" /> {listing.status}</span>
+                  </div>
+
+                  <div className="mt-6 grid grid-cols-4 gap-3 text-center">
+                    <DetailStat icon={<BedDouble />} value={`${listing.beds}`} label="Beds" />
+                    <DetailStat icon={<Bath />} value={`${listing.baths}`} label="Baths" />
+                    <DetailStat icon={<Ruler />} value={listing.square_feet?.toLocaleString() || '—'} label="Sqft" />
+                    <DetailStat icon={<TrendingUp />} value={listing.listing_kind === 'rent' ? 'Rent' : 'Est.'} label={listing.listing_kind === 'rent' ? 'Monthly' : 'Payment'} />
+                  </div>
+
+                  <p className="mt-7 max-w-3xl text-base leading-8 text-[#3d4d48]">{listing.description}</p>
+                  <FeaturePills features={listing.features} />
+                </div>
+              </div>
+
+              <aside className="hidden lg:sticky lg:top-6 lg:block lg:self-start">
+                <div className="rounded-[2rem] border border-black/5 bg-white p-6 shadow-xl shadow-[#0f3d35]/10">
+                  <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#7b8a84]">Request info</p>
+                  <h2 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">Ask about this property</h2>
+                  <p className="mt-3 text-sm leading-6 text-[#66746f]">Schedule a tour, track price changes, or save this listing for later.</p>
+                  <button onClick={() => setLeadOpen(true)} className="mt-5 w-full rounded-2xl bg-[#0f3d35] px-4 py-3 text-sm font-bold text-white">Schedule Tour</button>
+                  <button onClick={() => setPriceTrackerOpen(true)} className="mt-3 w-full rounded-2xl border border-[#d7ded9] px-4 py-3 text-sm font-bold text-[#0f3d35]">Add price tracker</button>
+                  <dl className="mt-6 space-y-3 text-sm">
+                    <InfoRow label="MLS/demo ID" value={listing.external_id || `HH-${listing.id}`} />
+                    <InfoRow label="Agent" value={listing.agent_name || 'Hafa Homes Demo Team'} />
+                    <InfoRow label="Brokerage" value={listing.brokerage_name || 'Demo Brokerage'} />
+                  </dl>
+                </div>
+              </aside>
+            </div>
+          </section>
+
+          <nav className="safe-bottom fixed inset-x-0 bottom-0 z-50 grid grid-cols-3 border-t border-white/10 bg-[#07110f] px-3 pt-3 text-center text-xs font-semibold text-white md:hidden">
+            <button onClick={shareListing} className="flex min-h-16 flex-col items-center justify-center gap-1"><Share2 size={25} /> Share</button>
+            <button onClick={() => setPriceTrackerOpen(true)} className="flex min-h-16 flex-col items-center justify-center gap-1"><TrendingUp size={25} /> Price Tracker</button>
+            <button className="flex min-h-16 flex-col items-center justify-center gap-1"><Heart size={27} /> Save</button>
+          </nav>
+
+          <LeadModal listing={listing} open={leadOpen} onClose={() => setLeadOpen(false)} />
+          <PriceTrackerModal listing={listing} open={priceTrackerOpen} onClose={() => setPriceTrackerOpen(false)} />
+        </>
+      )}
+    </main>
+  )
+}
+
+function DetailStat({ icon, value, label }: { icon: React.ReactNode; value: string; label: string }) {
+  return (
+    <div className="rounded-2xl bg-[#f6f1e8] p-3 md:bg-white md:p-2">
+      <div className="mx-auto grid h-9 w-9 place-items-center text-[#17211f] [&_svg]:h-7 [&_svg]:w-7">{icon}</div>
+      <p className="mt-2 text-lg font-bold leading-none">{value}</p>
+      <p className="mt-1 text-xs font-bold text-[#53645f]">{label}</p>
+    </div>
   )
 }
 
@@ -965,6 +1029,62 @@ function LeadsPage() {
   )
 }
 
+function PriceTrackerModal({ listing, open, onClose }: { listing: Listing; open: boolean; onClose: () => void }) {
+  const mutation = useMutation({ mutationFn: createLead })
+  if (!open) return null
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const form = new FormData(event.currentTarget)
+    mutation.mutate({
+      listing_id: listing.id,
+      lead_type: 'price_tracker',
+      name: String(form.get('name') || 'Price tracker user'),
+      email: String(form.get('email') || ''),
+      phone: String(form.get('phone') || ''),
+      preferred_contact_method: 'email',
+      message: `Target price: ${String(form.get('target_price') || '')}`,
+    })
+  }
+
+  return (
+    <div className="fixed inset-0 z-[75] grid place-items-center bg-black/50 p-5 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-[2rem] bg-white/95 p-6 shadow-2xl">
+        {mutation.isSuccess ? (
+          <div className="py-8 text-center">
+            <CheckCircle2 className="mx-auto text-[#0f705e]" size={44} />
+            <h2 className="mt-4 text-3xl font-semibold tracking-[-0.05em]">Price tracker saved</h2>
+            <p className="mt-3 text-sm leading-6 text-[#66746f]">We captured the target price. Later this can become a dedicated alerts workflow.</p>
+            <button onClick={onClose} className="mt-6 w-full rounded-2xl bg-[#0f3d35] px-4 py-3 text-sm font-bold text-white">Close</button>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit}>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#0f705e]">Price Watch</p>
+                <h2 className="mt-2 text-3xl font-semibold tracking-[-0.05em]">Set your target price</h2>
+              </div>
+              <button type="button" onClick={onClose} className="grid h-11 w-11 place-items-center rounded-full border border-[#d7ded9]"><X size={20} /></button>
+            </div>
+            <p className="mt-3 text-sm leading-6 text-[#66746f]">Current price: <strong>{currency(listing.price, listing.listing_kind)}</strong></p>
+            <div className="mt-5 grid gap-3">
+              <Input name="target_price" label="Target price" inputMode="numeric" placeholder="450000" required />
+              <Input name="email" label="Email for alerts" type="email" required />
+              <Input name="name" label="Name" defaultValue="Hafa Homes user" />
+              <Input name="phone" label="Phone optional" />
+            </div>
+            {mutation.isError && <p className="mt-3 text-sm font-semibold text-red-700">Unable to save tracker right now.</p>}
+            <div className="mt-5 grid grid-cols-2 gap-3">
+              <button disabled={mutation.isPending} className="rounded-2xl bg-[#0f3d35] px-4 py-3 text-sm font-bold text-white disabled:opacity-60">{mutation.isPending ? 'Saving...' : 'Add'}</button>
+              <button type="button" onClick={onClose} className="rounded-2xl bg-[#edf0ec] px-4 py-3 text-sm font-bold text-[#17211f]">Cancel</button>
+            </div>
+          </form>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean; onClose: () => void }) {
   const mutation = useMutation({ mutationFn: createLead })
   if (!open) return null
@@ -997,21 +1117,41 @@ function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean
           <form onSubmit={handleSubmit}>
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#7b8a84]">Request showing</p>
-                <h2 className="mt-2 text-3xl font-semibold tracking-[-0.05em]">{listing.title}</h2>
+                <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#0f705e]">Schedule Tour</p>
+                <h2 className="mt-2 text-3xl font-semibold tracking-[-0.05em]">Request a showing</h2>
               </div>
               <button type="button" onClick={onClose} className="rounded-full border border-[#d7ded9] px-3 py-2 text-sm font-bold">Close</button>
+            </div>
+            <div className="mt-5 rounded-3xl bg-[#f6f1e8] p-4">
+              <div className="flex items-center gap-4">
+                <img src="/hafa-homes-mark.svg" alt="" className="h-16 w-16 rounded-2xl" />
+                <div>
+                  <p className="text-lg font-bold text-[#17211f]">Hafa Homes Demo Team</p>
+                  <p className="text-sm font-semibold text-[#66746f]">hello@hafahomes.com</p>
+                  <p className="text-sm font-semibold text-[#66746f]">(671) 555-0199</p>
+                </div>
+              </div>
+              <p className="mt-4 text-sm font-semibold text-[#304942]">{listing.address}</p>
+            </div>
+            <div className="mt-5 grid grid-cols-2 gap-3">
+              <button type="button" className="rounded-2xl border-2 border-[#17a9df] px-4 py-3 text-sm font-bold text-[#17a9df]">In Person</button>
+              <button type="button" className="rounded-2xl border border-[#d7ded9] px-4 py-3 text-sm font-bold text-[#304942]">Virtual</button>
+            </div>
+            <div className="mt-5 grid grid-cols-4 gap-2 text-center text-xs font-bold text-[#53645f]">
+              {['Wed 13', 'Thu 14', 'Fri 15', 'Sat 16'].map((day, index) => (
+                <button key={day} type="button" className={`rounded-2xl border px-2 py-3 ${index === 0 ? 'border-[#17a9df] text-[#17a9df]' : 'border-[#d7ded9]'}`}>{day}</button>
+              ))}
             </div>
             <div className="mt-5 grid gap-3">
               <Input name="name" label="Name" required />
               <Input name="email" label="Email" type="email" required />
               <Input name="phone" label="Phone" />
               <label className="grid gap-2 text-sm font-semibold text-[#304942]">
-                Preferred contact
+                Select time
                 <select name="preferred_contact_method" className="min-h-12 rounded-2xl border border-[#dce5df] px-4">
-                  <option value="phone">Phone</option>
-                  <option value="email">Email</option>
-                  <option value="text">Text</option>
+                  <option value="morning">Morning</option>
+                  <option value="afternoon">Afternoon</option>
+                  <option value="evening">Evening</option>
                 </select>
               </label>
               <label className="grid gap-2 text-sm font-semibold text-[#304942]">
@@ -1021,7 +1161,7 @@ function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean
             </div>
             {mutation.isError && <p className="mt-3 text-sm font-semibold text-red-700">Unable to submit right now.</p>}
             <button disabled={mutation.isPending} className="mt-5 w-full rounded-2xl bg-[#0f3d35] px-4 py-3 text-sm font-bold text-white disabled:opacity-60">
-              {mutation.isPending ? 'Submitting...' : 'Submit inquiry'}
+              {mutation.isPending ? 'Submitting...' : 'Request Tour'}
             </button>
           </form>
         )}
