@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link, Route, Routes, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Brand } from './components/Brand'
+import { PostHogPageView, captureAnalyticsEvent } from './providers/PostHogProvider'
 import {
   ArrowLeft,
   Bath,
@@ -226,16 +227,19 @@ function tourDateOptions(count = 4) {
 
 function App() {
   return (
-    <Routes>
-      <Route path="/" element={<SearchPage />} />
-      <Route path="/listings/:id" element={<ListingDetailPage />} />
-      <Route path="/villages" element={<VillagesPage />} />
-      <Route path="/villages/:slug" element={<VillageDetailPage />} />
-      <Route path="/military" element={<MilitaryPage />} />
-      <Route path="/saved" element={<SavedPage />} />
-      <Route path="/admin/sync" element={<SyncPage />} />
-      <Route path="/admin/leads" element={<LeadsPage />} />
-    </Routes>
+    <>
+      <PostHogPageView />
+      <Routes>
+        <Route path="/" element={<SearchPage />} />
+        <Route path="/listings/:id" element={<ListingDetailPage />} />
+        <Route path="/villages" element={<VillagesPage />} />
+        <Route path="/villages/:slug" element={<VillageDetailPage />} />
+        <Route path="/military" element={<MilitaryPage />} />
+        <Route path="/saved" element={<SavedPage />} />
+        <Route path="/admin/sync" element={<SyncPage />} />
+        <Route path="/admin/leads" element={<LeadsPage />} />
+      </Routes>
+    </>
   )
 }
 
@@ -273,6 +277,7 @@ function SearchPage() {
     if (value) next.set(key, value)
     else next.delete(key)
     setSearchParams(next)
+    captureAnalyticsEvent('search_filter_changed', { filter: key, value: value || null, listing_kind: kind })
   }
 
   function toggleFeature(slug: string) {
@@ -289,7 +294,10 @@ function SearchPage() {
         viewMode={viewMode}
         listingsCount={listings.length}
         onKindChange={(value) => setParam('kind', value)}
-        onViewModeChange={setViewMode}
+        onViewModeChange={(value) => {
+          setViewMode(value)
+          captureAnalyticsEvent('search_view_changed', { view_mode: value, surface: 'mobile_header' })
+        }}
         onFilterClick={() => setShowFilters((value) => !value)}
         onMenuClick={() => setMobileMenuOpen(true)}
       />
@@ -385,7 +393,11 @@ function SearchPage() {
               action={
                 <div className="hidden items-center gap-2 md:flex">
                   <button onClick={() => setSaveSearchOpen(true)} className="inline-flex items-center gap-2 rounded-full border border-[#d7ded9] bg-white px-4 py-2 text-sm font-semibold"><Bell size={16} /> Save search</button>
-                  <button onClick={() => setViewMode(viewMode === 'list' ? 'map' : 'list')} className="inline-flex items-center gap-2 rounded-full border border-[#d7ded9] bg-white px-4 py-2 text-sm font-semibold"><Map size={16} /> {viewMode === 'list' ? 'Map view' : 'List view'}</button>
+                  <button onClick={() => {
+                    const nextViewMode = viewMode === 'list' ? 'map' : 'list'
+                    setViewMode(nextViewMode)
+                    captureAnalyticsEvent('search_view_changed', { view_mode: nextViewMode, surface: 'desktop_toolbar' })
+                  }} className="inline-flex items-center gap-2 rounded-full border border-[#d7ded9] bg-white px-4 py-2 text-sm font-semibold"><Map size={16} /> {viewMode === 'list' ? 'Map view' : 'List view'}</button>
                   <Link to="/admin/sync" className="inline-flex items-center gap-2 rounded-full border border-[#d7ded9] bg-white px-4 py-2 text-sm font-semibold"><DatabaseZap size={16} /> MLS sync</Link>
                 </div>
               }
@@ -524,14 +536,14 @@ function HeroHeader({ kind, onKindChange }: { kind: 'sale' | 'rent'; onKindChang
 function ListingCard({ listing }: { listing: Listing }) {
   return (
     <article className="group overflow-hidden rounded-[1.7rem] border border-black/5 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[#0f3d35]/10 md:grid md:grid-cols-[240px_1fr]">
-      <Link to={`/listings/${listing.id}`} className="block overflow-hidden">
+      <Link to={`/listings/${listing.id}`} onClick={() => captureAnalyticsEvent('listing_opened', { listing_id: listing.id, source: 'listing_image' })} className="block overflow-hidden">
         <img src={listing.primary_photo_url} alt="" className="h-56 w-full object-cover transition duration-500 group-hover:scale-105 md:h-full" />
       </Link>
       <div className="p-5">
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-2xl font-bold tracking-[-0.04em]">{currency(listing.price, listing.listing_kind)}</p>
-            <Link to={`/listings/${listing.id}`} className="mt-1 block text-lg font-semibold transition hover:text-[#0f705e]">{listing.title}</Link>
+            <Link to={`/listings/${listing.id}`} onClick={() => captureAnalyticsEvent('listing_opened', { listing_id: listing.id, source: 'listing_title' })} className="mt-1 block text-lg font-semibold transition hover:text-[#0f705e]">{listing.title}</Link>
             <p className="mt-1 flex items-center gap-1 text-sm text-[#66746f]"><MapPin size={14} /> {listing.village.name} · {listing.address}</p>
           </div>
           <span className="rounded-full bg-[#e9f5ef] px-3 py-1 text-xs font-bold uppercase tracking-wide text-[#0f705e]">{listing.listing_kind}</span>
@@ -539,7 +551,7 @@ function ListingCard({ listing }: { listing: Listing }) {
         <PropertyStats listing={listing} />
         <FeaturePills features={listing.features.slice(0, 4)} />
         <div className="mt-5 flex items-center justify-between">
-          <Link to={`/listings/${listing.id}`} className="inline-flex items-center gap-2 text-sm font-bold text-[#0f3d35]">View details <ChevronRight size={16} /></Link>
+          <Link to={`/listings/${listing.id}`} onClick={() => captureAnalyticsEvent('listing_opened', { listing_id: listing.id, source: 'listing_card' })} className="inline-flex items-center gap-2 text-sm font-bold text-[#0f3d35]">View details <ChevronRight size={16} /></Link>
           <button className="rounded-full border border-[#d7ded9] p-2 text-[#53645f]"><Heart size={17} /></button>
         </div>
       </div>
@@ -561,6 +573,7 @@ function ListingDetailPage() {
   async function shareListing() {
     if (!listing) return
     const shareData = { title: listing.title, text: `${listing.title} — ${currency(listing.price, listing.listing_kind)}`, url: window.location.href }
+    captureAnalyticsEvent('listing_shared', { listing_id: listing.id, listing_kind: listing.listing_kind })
 
     try {
       if (navigator.share) await navigator.share(shareData)
@@ -581,7 +594,10 @@ function ListingDetailPage() {
             <div className="flex items-center justify-between gap-3">
               <Link to="/" className="inline-flex min-h-12 items-center gap-2 rounded-full bg-white/10 px-4 text-sm font-bold hover:bg-white/15 active:scale-[0.98]"><ArrowLeft size={18} /> Search</Link>
               <div className="flex items-center gap-2">
-                <button onClick={() => setLeadOpen(true)} className="min-h-12 rounded-2xl bg-[#e99f3e] px-5 text-sm font-bold text-[#25170b] hover:bg-[#f2ad4e] active:scale-[0.98]">Schedule tour</button>
+                <button onClick={() => {
+                  setLeadOpen(true)
+                  captureAnalyticsEvent('lead_modal_opened', { listing_id: listing.id, source: 'mobile_header' })
+                }} className="min-h-12 rounded-2xl bg-[#e99f3e] px-5 text-sm font-bold text-[#25170b] hover:bg-[#f2ad4e] active:scale-[0.98]">Schedule tour</button>
                 <button onClick={() => setMenuOpen(true)} className="grid h-12 w-12 place-items-center rounded-full bg-white/10 hover:bg-white/15 active:scale-[0.98]"><Menu size={20} /></button>
               </div>
             </div>
@@ -637,8 +653,14 @@ function ListingDetailPage() {
                   <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#7b8a84]">Request info</p>
                   <h2 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">Ask about this property</h2>
                   <p className="mt-3 text-sm leading-6 text-[#66746f]">Schedule a tour, track price changes, or save this listing for later.</p>
-                  <button onClick={() => setLeadOpen(true)} className="mt-5 w-full rounded-2xl bg-[#0f3d35] px-4 py-3 text-sm font-bold text-white">Schedule Tour</button>
-                  <button onClick={() => setPriceTrackerOpen(true)} className="mt-3 w-full rounded-2xl border border-[#d7ded9] px-4 py-3 text-sm font-bold text-[#0f3d35]">Add price tracker</button>
+                  <button onClick={() => {
+                    setLeadOpen(true)
+                    captureAnalyticsEvent('lead_modal_opened', { listing_id: listing.id, source: 'desktop_aside' })
+                  }} className="mt-5 w-full rounded-2xl bg-[#0f3d35] px-4 py-3 text-sm font-bold text-white">Schedule Tour</button>
+                  <button onClick={() => {
+                    setPriceTrackerOpen(true)
+                    captureAnalyticsEvent('price_tracker_opened', { listing_id: listing.id, source: 'desktop_aside' })
+                  }} className="mt-3 w-full rounded-2xl border border-[#d7ded9] px-4 py-3 text-sm font-bold text-[#0f3d35]">Add price tracker</button>
                   <dl className="mt-6 space-y-3 text-sm">
                     <InfoRow label="MLS/demo ID" value={listing.external_id || `HH-${listing.id}`} />
                     <InfoRow label="Agent" value={listing.agent_name || 'Hafa Homes Demo Team'} />
@@ -651,8 +673,14 @@ function ListingDetailPage() {
 
           <nav className="safe-bottom fixed inset-x-0 bottom-0 z-50 mx-4 mb-3 grid grid-cols-3 rounded-[1.5rem] border border-black/5 bg-white/95 px-3 pt-3 text-center text-xs font-bold text-[#0f3d35] shadow-2xl shadow-[#0f3d35]/15 backdrop-blur md:hidden">
             <button onClick={shareListing} className="flex min-h-16 flex-col items-center justify-center gap-1"><Share2 size={23} /> Share</button>
-            <button onClick={() => setPriceTrackerOpen(true)} className="flex min-h-16 flex-col items-center justify-center gap-1"><TrendingUp size={23} /> Price alert</button>
-            <button onClick={() => setSaved((value) => !value)} className="flex min-h-16 flex-col items-center justify-center gap-1"><Heart size={25} fill={saved ? '#0f3d35' : 'none'} /> {saved ? 'Saved' : 'Save'}</button>
+            <button onClick={() => {
+              setPriceTrackerOpen(true)
+              captureAnalyticsEvent('price_tracker_opened', { listing_id: listing.id, source: 'mobile_action_bar' })
+            }} className="flex min-h-16 flex-col items-center justify-center gap-1"><TrendingUp size={23} /> Price alert</button>
+            <button onClick={() => {
+              setSaved((value) => !value)
+              captureAnalyticsEvent('listing_saved_toggled', { listing_id: listing.id, saved: !saved })
+            }} className="flex min-h-16 flex-col items-center justify-center gap-1"><Heart size={25} fill={saved ? '#0f3d35' : 'none'} /> {saved ? 'Saved' : 'Save'}</button>
           </nav>
 
           <MobileMenuDrawer open={menuOpen} onClose={() => setMenuOpen(false)} />
@@ -887,7 +915,10 @@ function RealMap({ listings, className, immersive }: { listings: Listing[]; clas
       markerElement.className = 'hafa-map-marker'
       markerElement.textContent = currency(listing.price, listing.listing_kind).replace('/mo', '')
       markerElement.setAttribute('aria-label', `Open ${listing.title}`)
-      markerElement.addEventListener('click', () => navigate(`/listings/${listing.id}`))
+      markerElement.addEventListener('click', () => {
+        captureAnalyticsEvent('map_marker_clicked', { listing_id: listing.id, listing_kind: listing.listing_kind })
+        navigate(`/listings/${listing.id}`)
+      })
 
       const marker = new mapbox.Marker({ element: markerElement, anchor: 'center' })
         .setLngLat([listing.longitude, listing.latitude])
@@ -1139,6 +1170,7 @@ function PriceTrackerModal({ listing, open, onClose }: { listing: Listing; open:
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const form = new FormData(event.currentTarget)
+    captureAnalyticsEvent('lead_form_submitted', { listing_id: listing.id, lead_type: 'price_tracker' })
     mutation.mutate({
       listing_id: listing.id,
       lead_type: 'price_tracker',
@@ -1196,6 +1228,7 @@ function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const form = new FormData(event.currentTarget)
+    captureAnalyticsEvent('lead_form_submitted', { listing_id: listing.id, lead_type: 'showing_request' })
     mutation.mutate({
       listing_id: listing.id,
       lead_type: 'showing_request',
