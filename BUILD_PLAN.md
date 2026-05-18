@@ -64,14 +64,14 @@ hafa-homes/
 - [x] Add routing
 - [x] Add API client
 - [x] Add home/search page
-- [ ] Add search results page
-- [ ] Add listing detail page
-- [ ] Add filter drawer
-- [ ] Add village pages
-- [ ] Add military relocation page
-- [ ] Add saved listings/searches concept page
-- [ ] Add lead capture modal/form
-- [ ] Add admin MLS sync concept screen
+- [x] Add search results page
+- [x] Add listing detail page
+- [x] Add filter drawer
+- [x] Add village pages
+- [x] Add military relocation page
+- [x] Add saved listings/searches concept page
+- [x] Add lead capture modal/form
+- [x] Add admin MLS sync concept screen
 
 ## Phase 5: Maps and PWA polish
 
