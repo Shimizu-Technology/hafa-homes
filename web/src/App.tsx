@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
-import { Link, Route, Routes, useParams, useSearchParams } from 'react-router-dom'
+import { Link, Route, Routes, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Brand } from './components/Brand'
 import {
   ArrowLeft,
@@ -28,8 +28,10 @@ import {
   X,
 } from 'lucide-react'
 import { useMutation, useQuery } from '@tanstack/react-query'
+import 'mapbox-gl/dist/mapbox-gl.css'
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
+const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
 
 type Village = {
   id: number
@@ -621,27 +623,149 @@ function MapPanel({ listings, onExpand, immersive = false }: { listings: Listing
   const points = listings.filter((listing) => listing.latitude && listing.longitude)
   const mapHeight = immersive ? 'h-[100svh]' : 'min-h-[72svh] md:min-h-[760px]'
 
+  if (!MAPBOX_TOKEN) {
+    return <FallbackMapPanel listings={listings} onExpand={onExpand} immersive={immersive} />
+  }
+
+  return (
+    <div className={`relative overflow-hidden border border-black/5 bg-[#dbe8df] shadow-sm ${immersive ? 'h-[100svh] rounded-none' : 'rounded-[2rem]'}`}>
+      <RealMap listings={points} immersive={immersive} className={mapHeight} />
+      <MapOverlayHeader listingsCount={points.length} onExpand={onExpand} realMap />
+      {!immersive && (
+        <div className="absolute bottom-3 left-3 right-3 z-10 rounded-3xl bg-white/92 p-4 text-sm leading-6 text-[#53645f] shadow-xl shadow-[#0f3d35]/10 backdrop-blur md:bottom-5 md:left-5 md:right-auto md:max-w-md">
+          Interactive Mapbox map using seeded listing coordinates. Click a price marker to open the listing detail.
+        </div>
+      )}
+    </div>
+  )
+}
+
+function RealMap({ listings, className, immersive }: { listings: Listing[]; className: string; immersive: boolean }) {
+  const containerRef = useRef<HTMLDivElement | null>(null)
+  const mapRef = useRef<any>(null)
+  const mapboxRef = useRef<any>(null)
+  const markersRef = useRef<any[]>([])
+  const [mapReady, setMapReady] = useState(false)
+  const navigate = useNavigate()
+
+  useEffect(() => {
+    if (!containerRef.current || mapRef.current) return
+
+    let cancelled = false
+
+    async function initializeMap() {
+      const mapboxModule = await import('mapbox-gl')
+      if (cancelled || !containerRef.current) return
+
+      const mapbox = mapboxModule.default
+      mapbox.accessToken = MAPBOX_TOKEN
+      mapboxRef.current = mapbox
+
+      const map = new mapbox.Map({
+        container: containerRef.current,
+        style: 'mapbox://styles/mapbox/outdoors-v12',
+        center: [144.7937, 13.4443],
+        zoom: immersive ? 10.8 : 10.2,
+        attributionControl: false,
+      })
+
+      map.addControl(new mapbox.NavigationControl({ showCompass: false }), 'bottom-right')
+      map.addControl(new mapbox.AttributionControl({ compact: true }), 'bottom-left')
+      map.on('load', () => setMapReady(true))
+      mapRef.current = map
+    }
+
+    initializeMap()
+
+    return () => {
+      cancelled = true
+      markersRef.current.forEach((marker) => marker.remove())
+      markersRef.current = []
+      mapRef.current?.remove()
+      mapRef.current = null
+      mapboxRef.current = null
+      setMapReady(false)
+    }
+  }, [immersive])
+
+  useEffect(() => {
+    const map = mapRef.current
+    const mapbox = mapboxRef.current
+    if (!map || !mapbox || !mapReady) return
+
+    markersRef.current.forEach((marker) => marker.remove())
+    markersRef.current = []
+
+    const bounds = new mapbox.LngLatBounds()
+
+    listings.forEach((listing) => {
+      if (!listing.latitude || !listing.longitude) return
+
+      const markerElement = document.createElement('button')
+      markerElement.type = 'button'
+      markerElement.className = 'hafa-map-marker'
+      markerElement.textContent = currency(listing.price, listing.listing_kind).replace('/mo', '')
+      markerElement.setAttribute('aria-label', `Open ${listing.title}`)
+      markerElement.addEventListener('click', () => navigate(`/listings/${listing.id}`))
+
+      const marker = new mapbox.Marker({ element: markerElement, anchor: 'center' })
+        .setLngLat([listing.longitude, listing.latitude])
+        .addTo(map)
+
+      markersRef.current.push(marker)
+      bounds.extend([listing.longitude, listing.latitude])
+    })
+
+    if (!bounds.isEmpty()) {
+      map.fitBounds(bounds, {
+        padding: immersive ? 96 : { top: 130, right: 70, bottom: 120, left: 70 },
+        maxZoom: 12.2,
+        duration: 650,
+      })
+    }
+  }, [listings, immersive, navigate, mapReady])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+    const timeout = window.setTimeout(() => map.resize(), 120)
+    return () => window.clearTimeout(timeout)
+  }, [immersive])
+
+  return <div ref={containerRef} className={`w-full ${className}`} />
+}
+
+function MapOverlayHeader({ listingsCount, onExpand, realMap = false }: { listingsCount: number; onExpand?: () => void; realMap?: boolean }) {
+  return (
+    <div className="absolute left-3 right-3 top-3 z-20 rounded-3xl bg-white/88 p-3 shadow-lg shadow-[#0f3d35]/10 backdrop-blur md:left-5 md:right-5 md:top-5 md:flex md:items-center md:justify-between md:p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#0f705e] md:text-xs">{realMap ? 'Interactive map' : 'Map concept'}</p>
+          <h3 className="text-lg font-semibold tracking-[-0.04em] md:text-xl">Guam listing map</h3>
+        </div>
+        <span className="shrink-0 rounded-full bg-[#edf4ef] px-3 py-1 text-[11px] font-bold text-[#0f3d35] md:hidden">{listingsCount} listings</span>
+      </div>
+      <div className="mt-3 flex items-center gap-2 md:mt-0">
+        <span className="hidden rounded-full bg-[#0f3d35] px-3 py-1 text-xs font-bold text-white md:inline-flex">{listingsCount} pins</span>
+        {onExpand && (
+          <button onClick={onExpand} className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-2xl border border-[#d7ded9] bg-white px-4 text-sm font-bold text-[#0f3d35] md:min-h-0 md:flex-none md:rounded-full md:px-3 md:py-2 md:text-xs">
+            <Maximize2 size={14} /> Open full map
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function FallbackMapPanel({ listings, onExpand, immersive = false }: { listings: Listing[]; onExpand?: () => void; immersive?: boolean }) {
+  const points = listings.filter((listing) => listing.latitude && listing.longitude)
+  const mapHeight = immersive ? 'h-[100svh]' : 'min-h-[72svh] md:min-h-[760px]'
+
   return (
     <div className={`overflow-hidden border border-black/5 bg-[#dbe8df] shadow-sm ${immersive ? 'h-[100svh] rounded-none' : 'rounded-[2rem]'}`}>
       <div className={`relative ${mapHeight} bg-[radial-gradient(circle_at_30%_20%,rgba(15,112,94,0.18),transparent_24%),radial-gradient(circle_at_70%_70%,rgba(233,159,62,0.22),transparent_26%),linear-gradient(135deg,#e8f0ea,#c9ddd1)] p-3 md:p-5`}>
         <div className="absolute inset-0 opacity-35 [background-image:linear-gradient(rgba(15,61,53,.16)_1px,transparent_1px),linear-gradient(90deg,rgba(15,61,53,.16)_1px,transparent_1px)] [background-size:42px_42px]" />
-        <div className="relative z-10 rounded-3xl bg-white/88 p-3 shadow-lg shadow-[#0f3d35]/10 backdrop-blur md:flex md:items-center md:justify-between md:p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#0f705e] md:text-xs">Map concept</p>
-              <h3 className="text-lg font-semibold tracking-[-0.04em] md:text-xl">Guam listing map</h3>
-            </div>
-            <span className="shrink-0 rounded-full bg-[#edf4ef] px-3 py-1 text-[11px] font-bold text-[#0f3d35] md:hidden">{points.length} listings</span>
-          </div>
-          <div className="mt-3 flex items-center gap-2 md:mt-0">
-            <span className="hidden rounded-full bg-[#0f3d35] px-3 py-1 text-xs font-bold text-white md:inline-flex">{points.length} pins</span>
-            {onExpand && (
-              <button onClick={onExpand} className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-2xl border border-[#d7ded9] bg-white px-4 text-sm font-bold text-[#0f3d35] md:min-h-0 md:flex-none md:rounded-full md:px-3 md:py-2 md:text-xs">
-                <Maximize2 size={14} /> Open full map
-              </button>
-            )}
-          </div>
-        </div>
+        <MapOverlayHeader listingsCount={points.length} onExpand={onExpand} />
         {points.map((listing, index) => {
           const left = 18 + ((index * 23) % 62)
           const top = 24 + ((index * 29) % 52)
@@ -658,7 +782,7 @@ function MapPanel({ listings, onExpand, immersive = false }: { listings: Listing
         })}
         {!immersive && (
           <div className="absolute bottom-3 left-3 right-3 z-10 rounded-3xl bg-white/92 p-4 text-sm leading-6 text-[#53645f] backdrop-blur md:bottom-5 md:left-5 md:right-5">
-            Use full map for an app-like search surface. The backend already stores latitude/longitude for real map pins; Mapbox can replace this placeholder when we deploy with a token.
+            Add <code className="rounded bg-[#edf4ef] px-1 font-bold text-[#0f3d35]">VITE_MAPBOX_TOKEN</code> to enable the real interactive Mapbox map.
           </div>
         )}
       </div>

@@ -81,7 +81,7 @@ hafa-homes/
 
 - [ ] Add PWA manifest and icons
 - [x] Add mobile safe-area support
-- [ ] Add Mapbox integration
+- [x] Add Mapbox integration
 - [x] Add placeholder listing pins/map concept
 - [x] Add map/list toggle
 - [x] Add loading/empty/error states
