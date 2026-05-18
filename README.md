@@ -10,7 +10,13 @@ The goal is to build a polished, mobile-first experience for finding homes, rent
 
 ## Project status
 
-This repository currently contains planning and product documentation for the MVP/demo. The first implementation target is a mobile-first PWA that can later be packaged as iOS/Android if needed.
+This repository contains the MVP/demo foundation:
+
+- `/api` — Rails API with Postgres-backed seed data and initial listing/search endpoints
+- `/web` — React/Vite/TypeScript PWA shell with Tailwind and app-like mobile UI
+- `/docs` — product, research, MLS, and architecture documentation
+
+The first implementation target is a mobile-first PWA that can later be packaged as iOS/Android if needed.
 
 ## Why this exists
 
@@ -35,8 +41,32 @@ We will start with a **mobile-first PWA/web app** rather than native iOS/Android
 
 Reason: the demo needs to be easy to share, fast to iterate, and accessible by link. Native apps can be added later once MLS access, investor interest, and product-market fit are clearer.
 
+## Local development
+
+### API
+
+```bash
+cd api
+bundle install
+bin/rails db:prepare db:seed
+bin/rails server
+```
+
+### Web
+
+```bash
+cd web
+npm install
+npm run dev
+```
+
+The web app expects the API at `http://localhost:3000` by default.
+
 ## Documentation
 
+- [PRD](PRD.md)
+- [Build Plan](BUILD_PLAN.md)
+- [Architecture](docs/architecture.md)
 - [Product Brief](docs/product/product-brief.md)
 - [MVP Scope](docs/product/mvp-scope.md)
 - [Decisions](docs/decisions.md)
