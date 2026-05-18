@@ -542,10 +542,10 @@ function ListingDetailPage() {
       {isError && <div className="p-5"><StateCard tone="error">Unable to load listing.</StateCard></div>}
       {listing && (
         <>
-          <div className="safe-top sticky top-0 z-40 bg-[#07110f] px-4 pb-3 pt-3 text-white shadow-xl md:hidden">
+          <div className="safe-top sticky top-0 z-40 border-b border-white/10 bg-[#0f3d35] px-4 pb-3 pt-3 text-white shadow-xl shadow-[#0f3d35]/15 md:hidden">
             <div className="flex items-center justify-between gap-3">
-              <Link to="/" className="inline-flex min-h-11 items-center gap-2 text-base font-bold"><ArrowLeft size={20} /> Back</Link>
-              <button onClick={() => setLeadOpen(true)} className="min-h-11 rounded-xl bg-[#17a9df] px-5 text-sm font-bold text-white">Schedule Tour</button>
+              <Link to="/" className="inline-flex min-h-11 items-center gap-2 rounded-full bg-white/10 px-3 text-sm font-bold"><ArrowLeft size={18} /> Search</Link>
+              <button onClick={() => setLeadOpen(true)} className="min-h-11 rounded-2xl bg-[#e99f3e] px-5 text-sm font-bold text-[#25170b]">Schedule tour</button>
             </div>
           </div>
 
@@ -555,23 +555,23 @@ function ListingDetailPage() {
             <Link to="/" className="mb-6 hidden items-center gap-2 text-sm font-bold text-[#0f705e] md:inline-flex"><ArrowLeft size={16} /> Back to search</Link>
             <div className="grid gap-6 lg:grid-cols-[1fr_390px]">
               <div>
-                <div className="relative overflow-hidden bg-black md:rounded-[2rem]">
+                <div className="relative mx-4 mt-4 overflow-hidden rounded-[2rem] bg-[#0f3d35] shadow-xl shadow-[#0f3d35]/10 md:mx-0 md:mt-0">
                   <div className="flex snap-x snap-mandatory overflow-x-auto md:grid md:grid-cols-2 md:gap-3 md:overflow-visible">
                     {photos.slice(0, 6).map((photo) => (
                       <img
                         key={photo.id}
                         src={photo.url}
                         alt=""
-                        className="h-[42svh] min-h-[320px] w-full shrink-0 snap-center object-cover first:md:col-span-2 md:h-72"
+                        className="h-[40svh] min-h-[300px] w-full shrink-0 snap-center object-cover first:md:col-span-2 md:h-72"
                       />
                     ))}
                   </div>
-                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-4 text-center text-sm font-bold text-white">
+                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-[#0f3d35]/70 to-transparent p-4 text-center text-sm font-bold text-white">
                     {photos.length > 1 ? `1 of ${photos.length}` : '1 photo'}
                   </div>
                 </div>
 
-                <div className="bg-white p-5 shadow-sm md:mt-6 md:rounded-[2rem] md:p-6">
+                <div className="relative z-10 mx-4 -mt-6 rounded-[2rem] bg-white p-5 shadow-xl shadow-[#0f3d35]/10 md:mx-0 md:mt-6 md:p-6">
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <p className="text-4xl font-semibold tracking-[-0.06em] md:text-5xl">{currency(listing.price, listing.listing_kind)}</p>
@@ -610,10 +610,10 @@ function ListingDetailPage() {
             </div>
           </section>
 
-          <nav className="safe-bottom fixed inset-x-0 bottom-0 z-50 grid grid-cols-3 border-t border-white/10 bg-[#07110f] px-3 pt-3 text-center text-xs font-semibold text-white md:hidden">
-            <button onClick={shareListing} className="flex min-h-16 flex-col items-center justify-center gap-1"><Share2 size={25} /> Share</button>
-            <button onClick={() => setPriceTrackerOpen(true)} className="flex min-h-16 flex-col items-center justify-center gap-1"><TrendingUp size={25} /> Price Tracker</button>
-            <button className="flex min-h-16 flex-col items-center justify-center gap-1"><Heart size={27} /> Save</button>
+          <nav className="safe-bottom fixed inset-x-0 bottom-0 z-50 mx-4 mb-3 grid grid-cols-3 rounded-[1.5rem] border border-black/5 bg-white/95 px-3 pt-3 text-center text-xs font-bold text-[#0f3d35] shadow-2xl shadow-[#0f3d35]/15 backdrop-blur md:hidden">
+            <button onClick={shareListing} className="flex min-h-16 flex-col items-center justify-center gap-1"><Share2 size={23} /> Share</button>
+            <button onClick={() => setPriceTrackerOpen(true)} className="flex min-h-16 flex-col items-center justify-center gap-1"><TrendingUp size={23} /> Price alert</button>
+            <button className="flex min-h-16 flex-col items-center justify-center gap-1"><Heart size={25} /> Save</button>
           </nav>
 
           <LeadModal listing={listing} open={leadOpen} onClose={() => setLeadOpen(false)} />
@@ -626,9 +626,9 @@ function ListingDetailPage() {
 
 function DetailStat({ icon, value, label }: { icon: React.ReactNode; value: string; label: string }) {
   return (
-    <div className="rounded-2xl bg-[#f6f1e8] p-3 md:bg-white md:p-2">
-      <div className="mx-auto grid h-9 w-9 place-items-center text-[#17211f] [&_svg]:h-7 [&_svg]:w-7">{icon}</div>
-      <p className="mt-2 text-lg font-bold leading-none">{value}</p>
+    <div className="rounded-2xl bg-[#f6f1e8] p-3 ring-1 ring-[#eadfce] md:p-3">
+      <div className="mx-auto grid h-9 w-9 place-items-center text-[#0f3d35] [&_svg]:h-7 [&_svg]:w-7">{icon}</div>
+      <p className="mt-2 text-lg font-extrabold leading-none tracking-[-0.03em]">{value}</p>
       <p className="mt-1 text-xs font-bold text-[#53645f]">{label}</p>
     </div>
   )
