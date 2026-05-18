@@ -22,7 +22,6 @@ if (isPostHogEnabled && typeof window !== 'undefined') {
         email: true,
         password: true,
         tel: true,
-        text: false,
       },
     },
     loaded: (ph) => {
@@ -38,7 +37,7 @@ export function PostHogPageView() {
   const ph = usePostHog()
 
   useEffect(() => {
-    if (ph && isPostHogEnabled) {
+    if (ph && isPostHogEnabled && !import.meta.env.DEV) {
       ph.capture('$pageview', {
         $current_url: window.location.href,
         $pathname: location.pathname,
