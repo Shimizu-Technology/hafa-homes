@@ -397,7 +397,11 @@ function SearchPage() {
           {!isLoading && listings.length === 0 && <StateCard>No demo listings match those filters yet.</StateCard>}
 
           {viewMode === 'map' ? (
-            <MapPanel listings={listings} onExpand={() => setFullMapOpen(true)} />
+            fullMapOpen ? (
+              <div className="h-[calc(100svh-330px)] min-h-[420px] max-h-[560px] rounded-none border border-black/5 bg-[#dbe8df] md:min-h-[760px] md:rounded-[2rem]" />
+            ) : (
+              <MapPanel listings={listings} onExpand={() => setFullMapOpen(true)} />
+            )
           ) : (
             <div className="grid gap-4">
               {listings.map((listing) => <ListingCard key={listing.id} listing={listing} />)}
