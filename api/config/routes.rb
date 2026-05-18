@@ -5,7 +5,8 @@ Rails.application.routes.draw do
     namespace :v1 do
       resources :listings, only: [:index, :show]
       resources :villages, only: [:index]
-      resources :leads, only: [:create]
+      resources :leads, only: [:index, :create]
+      resources :saved_searches, only: [:create]
       resources :data_sync_runs, only: [:index]
     end
   end

@@ -15,7 +15,9 @@ import {
   Map,
   MapPin,
   Menu,
+  Mail,
   MessageSquare,
+  Phone,
   Ruler,
   Search,
   ShieldCheck,
@@ -87,6 +89,22 @@ type SyncRun = {
 }
 type SyncRunsResponse = { data_sync_runs: SyncRun[] }
 
+type Lead = {
+  id: number
+  lead_type: string
+  name: string
+  email: string
+  phone: string
+  preferred_contact_method: string
+  message: string
+  status: string
+  listing_id?: number
+  created_at: string
+  listing?: { id: number; title: string; price: number; listing_kind: 'sale' | 'rent'; village: string } | null
+}
+
+type LeadsResponse = { leads: Lead[] }
+
 type LeadPayload = {
   lead_type: string
   name: string
@@ -146,6 +164,22 @@ async function fetchSyncRuns(): Promise<SyncRunsResponse> {
   return response.json()
 }
 
+async function fetchLeads(): Promise<LeadsResponse> {
+  const response = await fetch(`${API_URL}/api/v1/leads`)
+  if (!response.ok) throw new Error('Unable to load leads')
+  return response.json()
+}
+
+async function saveSearch(payload: { name: string; email: string; alert_frequency: string; filters: Record<string, string> }) {
+  const response = await fetch(`${API_URL}/api/v1/saved_searches`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ saved_search: payload }),
+  })
+  if (!response.ok) throw new Error('Unable to save search')
+  return response.json()
+}
+
 async function createLead(payload: LeadPayload) {
   const response = await fetch(`${API_URL}/api/v1/leads`, {
     method: 'POST',
@@ -176,6 +210,7 @@ function App() {
       <Route path="/military" element={<MilitaryPage />} />
       <Route path="/saved" element={<SavedPage />} />
       <Route path="/admin/sync" element={<SyncPage />} />
+      <Route path="/admin/leads" element={<LeadsPage />} />
     </Routes>
   )
 }
@@ -183,6 +218,8 @@ function App() {
 function SearchPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [showFilters, setShowFilters] = useState(false)
+  const [viewMode, setViewMode] = useState<'list' | 'map'>('list')
+  const [saveSearchOpen, setSaveSearchOpen] = useState(false)
   const kind = (searchParams.get('kind') as 'sale' | 'rent') || 'sale'
   const village = searchParams.get('village') || ''
   const propertyType = searchParams.get('property_type') || ''
@@ -301,20 +338,37 @@ function SearchPage() {
           <SectionHeading
             kicker="Demo listings"
             title={`Latest Guam ${kind === 'sale' ? 'homes for sale' : 'rentals'}`}
-            action={<Link to="/admin/sync" className="hidden items-center gap-2 rounded-full border border-[#d7ded9] bg-white px-4 py-2 text-sm font-semibold md:inline-flex"><DatabaseZap size={16} /> MLS sync</Link>}
+            action={
+              <div className="hidden items-center gap-2 md:flex">
+                <button onClick={() => setSaveSearchOpen(true)} className="inline-flex items-center gap-2 rounded-full border border-[#d7ded9] bg-white px-4 py-2 text-sm font-semibold"><Bell size={16} /> Save search</button>
+                <button onClick={() => setViewMode(viewMode === 'list' ? 'map' : 'list')} className="inline-flex items-center gap-2 rounded-full border border-[#d7ded9] bg-white px-4 py-2 text-sm font-semibold"><Map size={16} /> {viewMode === 'list' ? 'Map view' : 'List view'}</button>
+                <Link to="/admin/sync" className="inline-flex items-center gap-2 rounded-full border border-[#d7ded9] bg-white px-4 py-2 text-sm font-semibold"><DatabaseZap size={16} /> MLS sync</Link>
+              </div>
+            }
           />
 
           {isLoading && <StateCard>Loading demo listings...</StateCard>}
           {isError && <StateCard tone="error">Start the Rails API on port 3000 or set VITE_API_URL to load seed listings.</StateCard>}
           {!isLoading && listings.length === 0 && <StateCard>No demo listings match those filters yet.</StateCard>}
 
-          <div className="grid gap-4">
-            {listings.map((listing) => <ListingCard key={listing.id} listing={listing} />)}
-          </div>
+          {viewMode === 'map' ? (
+            <MapPanel listings={listings} />
+          ) : (
+            <div className="grid gap-4">
+              {listings.map((listing) => <ListingCard key={listing.id} listing={listing} />)}
+            </div>
+          )}
+
+          <button onClick={() => setSaveSearchOpen(true)} className="mt-5 w-full rounded-2xl bg-[#0f3d35] px-4 py-3 text-sm font-bold text-white md:hidden">Save this search</button>
         </div>
 
         <SearchAside listings={listings} />
       </section>
+      <SaveSearchModal
+        open={saveSearchOpen}
+        onClose={() => setSaveSearchOpen(false)}
+        filters={{ kind, village, property_type: propertyType, features, beds, max_price: maxPrice }}
+      />
     </Shell>
   )
 }
@@ -552,6 +606,132 @@ function SyncPage() {
   )
 }
 
+
+function MapPanel({ listings }: { listings: Listing[] }) {
+  const points = listings.filter((listing) => listing.latitude && listing.longitude)
+  return (
+    <div className="overflow-hidden rounded-[2rem] border border-black/5 bg-[#dbe8df] shadow-sm">
+      <div className="relative min-h-[620px] bg-[radial-gradient(circle_at_30%_20%,rgba(15,112,94,0.18),transparent_24%),radial-gradient(circle_at_70%_70%,rgba(233,159,62,0.22),transparent_26%),linear-gradient(135deg,#e8f0ea,#c9ddd1)] p-5">
+        <div className="absolute inset-0 opacity-35 [background-image:linear-gradient(rgba(15,61,53,.16)_1px,transparent_1px),linear-gradient(90deg,rgba(15,61,53,.16)_1px,transparent_1px)] [background-size:42px_42px]" />
+        <div className="relative z-10 flex items-center justify-between rounded-3xl bg-white/85 p-4 shadow-lg shadow-[#0f3d35]/10 backdrop-blur">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#0f705e]">Map concept</p>
+            <h3 className="text-xl font-semibold tracking-[-0.04em]">Guam listing map</h3>
+          </div>
+          <span className="rounded-full bg-[#0f3d35] px-3 py-1 text-xs font-bold text-white">{points.length} pins</span>
+        </div>
+        {points.map((listing, index) => {
+          const left = 18 + ((index * 23) % 62)
+          const top = 22 + ((index * 31) % 55)
+          return (
+            <Link
+              key={listing.id}
+              to={`/listings/${listing.id}`}
+              style={{ left: `${left}%`, top: `${top}%` }}
+              className="absolute z-20 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#0f3d35] px-3 py-2 text-xs font-bold text-white shadow-xl shadow-[#0f3d35]/30 transition hover:scale-105"
+            >
+              {currency(listing.price, listing.listing_kind).replace('/mo', '')}
+            </Link>
+          )
+        })}
+        <div className="absolute bottom-5 left-5 right-5 z-10 rounded-3xl bg-white/90 p-4 text-sm leading-6 text-[#53645f] backdrop-blur">
+          This is a lightweight map placeholder until Mapbox is connected. The backend already stores latitude/longitude for real map pins.
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function SaveSearchModal({ open, onClose, filters }: { open: boolean; onClose: () => void; filters: Record<string, string> }) {
+  const mutation = useMutation({ mutationFn: saveSearch })
+  if (!open) return null
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const form = new FormData(event.currentTarget)
+    mutation.mutate({
+      name: String(form.get('name') || 'Guam housing search'),
+      email: String(form.get('email') || ''),
+      alert_frequency: String(form.get('alert_frequency') || 'daily'),
+      filters,
+    })
+  }
+
+  return (
+    <div className="fixed inset-0 z-[70] grid place-items-end bg-black/45 p-3 backdrop-blur-sm md:place-items-center">
+      <div className="w-full max-w-md rounded-[2rem] bg-white p-6 shadow-2xl">
+        {mutation.isSuccess ? (
+          <div className="py-8 text-center">
+            <CheckCircle2 className="mx-auto text-[#0f705e]" size={44} />
+            <h2 className="mt-4 text-3xl font-semibold tracking-[-0.05em]">Search saved</h2>
+            <p className="mt-3 text-sm leading-6 text-[#66746f]">The API stored this saved search. Alerts can be wired to email/SMS later.</p>
+            <button onClick={onClose} className="mt-6 w-full rounded-2xl bg-[#0f3d35] px-4 py-3 text-sm font-bold text-white">Close</button>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit}>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#7b8a84]">Listing alerts</p>
+                <h2 className="mt-2 text-3xl font-semibold tracking-[-0.05em]">Save this search</h2>
+              </div>
+              <button type="button" onClick={onClose} className="rounded-full border border-[#d7ded9] px-3 py-2 text-sm font-bold">Close</button>
+            </div>
+            <div className="mt-5 grid gap-3">
+              <Input name="name" label="Search name" defaultValue="My Guam home search" required />
+              <Input name="email" label="Email" type="email" required />
+              <label className="grid gap-2 text-sm font-semibold text-[#304942]">
+                Alert frequency
+                <select name="alert_frequency" className="min-h-12 rounded-2xl border border-[#dce5df] px-4">
+                  <option value="immediately">Immediately</option>
+                  <option value="daily">Daily</option>
+                  <option value="weekly">Weekly</option>
+                </select>
+              </label>
+            </div>
+            {mutation.isError && <p className="mt-3 text-sm font-semibold text-red-700">Unable to save search right now.</p>}
+            <button disabled={mutation.isPending} className="mt-5 w-full rounded-2xl bg-[#0f3d35] px-4 py-3 text-sm font-bold text-white disabled:opacity-60">
+              {mutation.isPending ? 'Saving...' : 'Save search'}
+            </button>
+          </form>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function LeadsPage() {
+  const { data, isLoading, isError } = useQuery({ queryKey: ['leads'], queryFn: fetchLeads })
+  return (
+    <Shell compact>
+      <ContentHeader kicker="Admin lead inbox" title="A lightweight inbox for showing requests and buyer/renter interest." description="This proves the lead-capture loop: search, listing detail, inquiry, admin follow-up. Full auth and assignment can come later." />
+      <section className="mx-auto max-w-6xl px-5 pb-10">
+        {isLoading && <StateCard>Loading leads...</StateCard>}
+        {isError && <StateCard tone="error">Unable to load leads.</StateCard>}
+        <div className="grid gap-4">
+          {data?.leads.map((lead) => (
+            <article key={lead.id} className="rounded-[2rem] bg-white p-5 shadow-sm">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#0f705e]">{lead.lead_type.replaceAll('_', ' ')}</p>
+                  <h2 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">{lead.name}</h2>
+                  <div className="mt-2 flex flex-wrap gap-3 text-sm font-semibold text-[#53645f]">
+                    <span className="inline-flex items-center gap-1"><Mail size={15} /> {lead.email}</span>
+                    {lead.phone && <span className="inline-flex items-center gap-1"><Phone size={15} /> {lead.phone}</span>}
+                  </div>
+                </div>
+                <span className="rounded-full bg-[#e9f5ef] px-3 py-1 text-xs font-bold uppercase tracking-wide text-[#0f705e]">{lead.status}</span>
+              </div>
+              {lead.listing && <p className="mt-4 rounded-2xl bg-[#f6f1e8] p-3 text-sm font-semibold text-[#304942]">Interested in {lead.listing.title} · {lead.listing.village} · {currency(lead.listing.price, lead.listing.listing_kind)}</p>}
+              {lead.message && <p className="mt-4 text-sm leading-6 text-[#66746f]">{lead.message}</p>}
+            </article>
+          ))}
+          {data?.leads.length === 0 && <StateCard>No leads yet. Submit a request from a listing detail page to test the flow.</StateCard>}
+        </div>
+      </section>
+    </Shell>
+  )
+}
+
 function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean; onClose: () => void }) {
   const mutation = useMutation({ mutationFn: createLead })
   if (!open) return null
@@ -635,6 +815,7 @@ function TopNav() {
         <Link to="/villages">Villages</Link>
         <Link to="/military">Military</Link>
         <Link to="/admin/sync">MLS sync</Link>
+        <Link to="/admin/leads">Leads</Link>
       </div>
       <button className="rounded-full border border-white/25 p-2 md:hidden"><Menu size={18} /></button>
     </nav>

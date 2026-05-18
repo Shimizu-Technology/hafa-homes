@@ -57,6 +57,8 @@ hafa-homes/
   - [x] `/api/v1/data_sync_runs`
 - [x] Add listing filters
 - [ ] Add basic request specs or smoke tests
+- [x] Add admin lead inbox endpoint
+- [x] Add saved search endpoint
 
 ## Phase 4: Frontend MVP
 
@@ -72,14 +74,16 @@ hafa-homes/
 - [x] Add saved listings/searches concept page
 - [x] Add lead capture modal/form
 - [x] Add admin MLS sync concept screen
+- [x] Add admin lead inbox screen
+- [x] Add save-search modal
 
 ## Phase 5: Maps and PWA polish
 
 - [ ] Add PWA manifest and icons
 - [ ] Add mobile safe-area support
 - [ ] Add Mapbox integration
-- [ ] Show listing pins
-- [ ] Add map/list toggle
+- [x] Add placeholder listing pins/map concept
+- [x] Add map/list toggle
 - [ ] Add loading/empty/error states
 
 ## Phase 6: Deploy demo
