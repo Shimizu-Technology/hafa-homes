@@ -15,6 +15,7 @@ import {
   Home,
   Map,
   MapPin,
+  Maximize2,
   Menu,
   Mail,
   MessageSquare,
@@ -24,6 +25,7 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   Waves,
+  X,
 } from 'lucide-react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 
@@ -221,6 +223,7 @@ function SearchPage() {
   const [showFilters, setShowFilters] = useState(false)
   const [viewMode, setViewMode] = useState<'list' | 'map'>('list')
   const [saveSearchOpen, setSaveSearchOpen] = useState(false)
+  const [fullMapOpen, setFullMapOpen] = useState(false)
   const kind = (searchParams.get('kind') as 'sale' | 'rent') || 'sale'
   const village = searchParams.get('village') || ''
   const propertyType = searchParams.get('property_type') || ''
@@ -334,7 +337,7 @@ function SearchPage() {
         </div>
       </section>
 
-      <section className="mx-auto grid max-w-7xl gap-6 px-5 py-8 lg:grid-cols-[1fr_420px]">
+      <section className={`mx-auto max-w-7xl gap-6 px-5 py-6 md:py-8 ${viewMode === 'map' ? 'grid' : 'grid lg:grid-cols-[1fr_420px]'}`}>
         <div>
           <SectionHeading
             kicker="Demo listings"
@@ -352,8 +355,13 @@ function SearchPage() {
           {isError && <StateCard tone="error">Start the Rails API on port 3000 or set VITE_API_URL to load seed listings.</StateCard>}
           {!isLoading && listings.length === 0 && <StateCard>No demo listings match those filters yet.</StateCard>}
 
+          <div className="mb-4 grid grid-cols-2 gap-3 md:hidden">
+            <button onClick={() => setViewMode('list')} className={`rounded-2xl px-4 py-3 text-sm font-bold ${viewMode === 'list' ? 'bg-[#0f3d35] text-white' : 'bg-white text-[#0f3d35]'}`}>List</button>
+            <button onClick={() => setViewMode('map')} className={`rounded-2xl px-4 py-3 text-sm font-bold ${viewMode === 'map' ? 'bg-[#0f3d35] text-white' : 'bg-white text-[#0f3d35]'}`}>Map</button>
+          </div>
+
           {viewMode === 'map' ? (
-            <MapPanel listings={listings} />
+            <MapPanel listings={listings} onExpand={() => setFullMapOpen(true)} />
           ) : (
             <div className="grid gap-4">
               {listings.map((listing) => <ListingCard key={listing.id} listing={listing} />)}
@@ -363,30 +371,31 @@ function SearchPage() {
           <button onClick={() => setSaveSearchOpen(true)} className="mt-5 w-full rounded-2xl bg-[#0f3d35] px-4 py-3 text-sm font-bold text-white md:hidden">Save this search</button>
         </div>
 
-        <SearchAside listings={listings} />
+        {viewMode === 'list' && <SearchAside listings={listings} />}
       </section>
       <SaveSearchModal
         open={saveSearchOpen}
         onClose={() => setSaveSearchOpen(false)}
         filters={{ kind, village, property_type: propertyType, features, beds, max_price: maxPrice }}
       />
+      <FullMapModal open={fullMapOpen} onClose={() => setFullMapOpen(false)} listings={listings} />
     </Shell>
   )
 }
 
 function HeroHeader({ kind, onKindChange }: { kind: 'sale' | 'rent'; onKindChange: (value: 'sale' | 'rent') => void }) {
   return (
-    <section className="relative overflow-hidden bg-[#0f3d35] px-5 pb-14 pt-6 text-white">
+    <section className="relative overflow-hidden bg-[#0f3d35] px-5 pb-12 pt-5 text-white md:pb-14 md:pt-6">
       <div className="absolute inset-0 opacity-30 [background:radial-gradient(circle_at_20%_20%,#79d0b2,transparent_28%),radial-gradient(circle_at_85%_10%,#f5c16c,transparent_24%),linear-gradient(135deg,#0f3d35,#071b18)]" />
       <div className="relative mx-auto max-w-7xl">
         <TopNav />
-        <div className="mt-14 grid gap-8 lg:grid-cols-[1fr_400px] lg:items-end">
-          <div className="max-w-3xl pb-6">
-            <p className="text-sm font-medium uppercase tracking-[0.24em] text-[#bdebdc]">Find your home on Guam</p>
-            <h1 className="mt-3 text-5xl font-semibold leading-[0.95] tracking-[-0.06em] sm:text-7xl">
+        <div className="mt-10 grid gap-7 md:mt-14 lg:grid-cols-[1fr_400px] lg:items-end">
+          <div className="max-w-3xl pb-4 md:pb-6">
+            <p className="text-xs font-medium uppercase tracking-[0.22em] text-[#bdebdc] md:text-sm md:tracking-[0.24em]">Find your home on Guam</p>
+            <h1 className="mt-3 text-[3rem] font-semibold leading-[0.94] tracking-[-0.065em] sm:text-6xl lg:text-7xl">
               Homes, rentals, and neighborhoods built for island life.
             </h1>
-            <p className="mt-5 max-w-xl text-base leading-7 text-white/78">
+            <p className="mt-4 max-w-xl text-sm leading-6 text-white/78 md:mt-5 md:text-base md:leading-7">
               Search by village, base commute, pets, furnished rentals, ocean views, typhoon-ready features, and the details that matter on Guam.
             </p>
           </div>
@@ -608,37 +617,67 @@ function SyncPage() {
 }
 
 
-function MapPanel({ listings }: { listings: Listing[] }) {
+function MapPanel({ listings, onExpand, immersive = false }: { listings: Listing[]; onExpand?: () => void; immersive?: boolean }) {
   const points = listings.filter((listing) => listing.latitude && listing.longitude)
+  const mapHeight = immersive ? 'h-[100svh]' : 'min-h-[72svh] md:min-h-[760px]'
+
   return (
-    <div className="overflow-hidden rounded-[2rem] border border-black/5 bg-[#dbe8df] shadow-sm">
-      <div className="relative min-h-[620px] bg-[radial-gradient(circle_at_30%_20%,rgba(15,112,94,0.18),transparent_24%),radial-gradient(circle_at_70%_70%,rgba(233,159,62,0.22),transparent_26%),linear-gradient(135deg,#e8f0ea,#c9ddd1)] p-5">
+    <div className={`overflow-hidden border border-black/5 bg-[#dbe8df] shadow-sm ${immersive ? 'h-[100svh] rounded-none' : 'rounded-[2rem]'}`}>
+      <div className={`relative ${mapHeight} bg-[radial-gradient(circle_at_30%_20%,rgba(15,112,94,0.18),transparent_24%),radial-gradient(circle_at_70%_70%,rgba(233,159,62,0.22),transparent_26%),linear-gradient(135deg,#e8f0ea,#c9ddd1)] p-3 md:p-5`}>
         <div className="absolute inset-0 opacity-35 [background-image:linear-gradient(rgba(15,61,53,.16)_1px,transparent_1px),linear-gradient(90deg,rgba(15,61,53,.16)_1px,transparent_1px)] [background-size:42px_42px]" />
-        <div className="relative z-10 flex items-center justify-between rounded-3xl bg-white/85 p-4 shadow-lg shadow-[#0f3d35]/10 backdrop-blur">
+        <div className="relative z-10 flex items-center justify-between rounded-3xl bg-white/88 p-3 shadow-lg shadow-[#0f3d35]/10 backdrop-blur md:p-4">
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#0f705e]">Map concept</p>
-            <h3 className="text-xl font-semibold tracking-[-0.04em]">Guam listing map</h3>
+            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#0f705e] md:text-xs">Map concept</p>
+            <h3 className="text-lg font-semibold tracking-[-0.04em] md:text-xl">Guam listing map</h3>
           </div>
-          <span className="rounded-full bg-[#0f3d35] px-3 py-1 text-xs font-bold text-white">{points.length} pins</span>
+          <div className="flex items-center gap-2">
+            <span className="rounded-full bg-[#0f3d35] px-3 py-1 text-xs font-bold text-white">{points.length} pins</span>
+            {onExpand && (
+              <button onClick={onExpand} className="inline-flex items-center gap-2 rounded-full border border-[#d7ded9] bg-white px-3 py-2 text-xs font-bold text-[#0f3d35]">
+                <Maximize2 size={14} /> Full map
+              </button>
+            )}
+          </div>
         </div>
         {points.map((listing, index) => {
           const left = 18 + ((index * 23) % 62)
-          const top = 22 + ((index * 31) % 55)
+          const top = 24 + ((index * 29) % 52)
           return (
             <Link
               key={listing.id}
               to={`/listings/${listing.id}`}
               style={{ left: `${left}%`, top: `${top}%` }}
-              className="absolute z-20 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#0f3d35] px-3 py-2 text-xs font-bold text-white shadow-xl shadow-[#0f3d35]/30 transition hover:scale-105"
+              className="absolute z-20 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#0f3d35] px-3 py-2 text-xs font-bold text-white shadow-xl shadow-[#0f3d35]/30 transition hover:scale-105 md:px-4 md:text-sm"
             >
               {currency(listing.price, listing.listing_kind).replace('/mo', '')}
             </Link>
           )
         })}
-        <div className="absolute bottom-5 left-5 right-5 z-10 rounded-3xl bg-white/90 p-4 text-sm leading-6 text-[#53645f] backdrop-blur">
-          This is a lightweight map placeholder until Mapbox is connected. The backend already stores latitude/longitude for real map pins.
-        </div>
+        {!immersive && (
+          <div className="absolute bottom-3 left-3 right-3 z-10 rounded-3xl bg-white/92 p-4 text-sm leading-6 text-[#53645f] backdrop-blur md:bottom-5 md:left-5 md:right-5">
+            Use full map for an app-like search surface. The backend already stores latitude/longitude for real map pins; Mapbox can replace this placeholder when we deploy with a token.
+          </div>
+        )}
       </div>
+    </div>
+  )
+}
+
+function FullMapModal({ open, onClose, listings }: { open: boolean; onClose: () => void; listings: Listing[] }) {
+  if (!open) return null
+
+  return (
+    <div className="fixed inset-0 z-[80] bg-[#f6f1e8]">
+      <div className="absolute left-3 right-3 top-3 z-30 flex items-center justify-between rounded-3xl bg-white/90 p-3 shadow-xl shadow-[#0f3d35]/10 backdrop-blur md:left-6 md:right-6 md:top-6">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#0f705e] md:text-xs">Full map search</p>
+          <h2 className="text-lg font-semibold tracking-[-0.04em] md:text-2xl">Explore Guam listings</h2>
+        </div>
+        <button onClick={onClose} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-[#0f3d35] px-4 text-sm font-bold text-white">
+          <X size={16} /> Close
+        </button>
+      </div>
+      <MapPanel listings={listings} immersive />
     </div>
   )
 }
