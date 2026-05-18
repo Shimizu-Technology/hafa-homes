@@ -24,9 +24,6 @@ module Api
                 :created_at
               ]
             ).merge(
-              preferred_time: lead.preferred_time,
-              preferred_tour_date: lead.preferred_tour_date,
-              tour_type: lead.tour_type,
               target_price: lead.target_price&.to_f,
               listing: lead.listing ? {
                 id: lead.listing.id,

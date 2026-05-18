@@ -808,6 +808,7 @@ function RealMap({ listings, className, immersive }: { listings: Listing[]; clas
   const mapboxRef = useRef<any>(null)
   const markersRef = useRef<any[]>([])
   const [mapReady, setMapReady] = useState(false)
+  const [mapError, setMapError] = useState(false)
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -840,7 +841,11 @@ function RealMap({ listings, className, immersive }: { listings: Listing[]; clas
       mapRef.current = map
     }
 
-    initializeMap()
+    setMapError(false)
+    initializeMap().catch((error) => {
+      console.warn('Unable to initialize Mapbox map', error)
+      if (!cancelled) setMapError(true)
+    })
 
     return () => {
       cancelled = true
@@ -850,6 +855,7 @@ function RealMap({ listings, className, immersive }: { listings: Listing[]; clas
       mapRef.current = null
       mapboxRef.current = null
       setMapReady(false)
+      setMapError(false)
     }
   }, [immersive])
 
@@ -896,6 +902,17 @@ function RealMap({ listings, className, immersive }: { listings: Listing[]; clas
     const timeout = window.setTimeout(() => map.resize(), 120)
     return () => window.clearTimeout(timeout)
   }, [immersive])
+
+  if (mapError) {
+    return (
+      <div className={`grid w-full place-items-center bg-[#dbe8df] px-6 text-center ${className}`}>
+        <div className="rounded-3xl bg-white/90 p-5 shadow-xl shadow-[#0f3d35]/10">
+          <p className="text-sm font-bold text-[#0f3d35]">Map temporarily unavailable</p>
+          <p className="mt-2 max-w-xs text-sm leading-6 text-[#53645f]">Listings are still available in list view while the map finishes loading.</p>
+        </div>
+      </div>
+    )
+  }
 
   return <div ref={containerRef} className={`w-full ${className}`} />
 }
