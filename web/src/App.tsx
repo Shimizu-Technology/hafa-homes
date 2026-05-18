@@ -32,7 +32,6 @@ import {
   X,
 } from 'lucide-react'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import 'mapbox-gl/dist/mapbox-gl.css'
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
@@ -120,6 +119,10 @@ type LeadPayload = {
   email: string
   phone: string
   preferred_contact_method: string
+  preferred_time?: string
+  preferred_tour_date?: string
+  tour_type?: string
+  target_price?: string
   message: string
   listing_id?: number
 }
@@ -207,6 +210,18 @@ function currency(value: number, kind: string) {
   }).format(value)
 
   return kind === 'rent' ? `${formatted}/mo` : formatted
+}
+
+
+function tourDateOptions(count = 4) {
+  return Array.from({ length: count }, (_, index) => {
+    const date = new Date()
+    date.setDate(date.getDate() + index + 1)
+    return {
+      value: date.toISOString().slice(0, 10),
+      label: date.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric' }),
+    }
+  })
 }
 
 function App() {
@@ -801,7 +816,10 @@ function RealMap({ listings, className, immersive }: { listings: Listing[]; clas
     let cancelled = false
 
     async function initializeMap() {
-      const mapboxModule = await import('mapbox-gl')
+      const [mapboxModule] = await Promise.all([
+        import('mapbox-gl'),
+        import('mapbox-gl/dist/mapbox-gl.css'),
+      ])
       if (cancelled || !containerRef.current) return
 
       const mapbox = mapboxModule.default
@@ -1101,7 +1119,8 @@ function PriceTrackerModal({ listing, open, onClose }: { listing: Listing; open:
       email: String(form.get('email') || ''),
       phone: String(form.get('phone') || ''),
       preferred_contact_method: 'email',
-      message: `Target price: ${String(form.get('target_price') || '')}`,
+      target_price: String(form.get('target_price') || ''),
+      message: `Target price: ${String(form.get('target_price') || '')}`, 
     })
   }
 
@@ -1157,6 +1176,9 @@ function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean
       email: String(form.get('email') || ''),
       phone: String(form.get('phone') || ''),
       preferred_contact_method: String(form.get('preferred_contact_method') || 'phone'),
+      preferred_time: String(form.get('preferred_time') || 'morning'),
+      preferred_tour_date: String(form.get('preferred_tour_date') || ''),
+      tour_type: String(form.get('tour_type') || 'in_person'),
       message: String(form.get('message') || ''),
     })
   }
@@ -1192,12 +1214,21 @@ function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean
               <p className="mt-4 text-sm font-semibold text-[#304942]">{listing.address}</p>
             </div>
             <div className="mt-5 grid grid-cols-2 gap-3">
-              <button type="button" className="rounded-2xl border-2 border-[#17a9df] px-4 py-3 text-sm font-bold text-[#17a9df]">In Person</button>
-              <button type="button" className="rounded-2xl border border-[#d7ded9] px-4 py-3 text-sm font-bold text-[#304942]">Virtual</button>
+              <label className="cursor-pointer">
+                <input type="radio" name="tour_type" value="in_person" defaultChecked className="peer sr-only" />
+                <span className="block rounded-2xl border border-[#d7ded9] px-4 py-3 text-center text-sm font-bold text-[#304942] peer-checked:border-[#17a9df] peer-checked:text-[#17a9df]">In Person</span>
+              </label>
+              <label className="cursor-pointer">
+                <input type="radio" name="tour_type" value="virtual" className="peer sr-only" />
+                <span className="block rounded-2xl border border-[#d7ded9] px-4 py-3 text-center text-sm font-bold text-[#304942] peer-checked:border-[#17a9df] peer-checked:text-[#17a9df]">Virtual</span>
+              </label>
             </div>
             <div className="mt-5 grid grid-cols-4 gap-2 text-center text-xs font-bold text-[#53645f]">
-              {['Wed 13', 'Thu 14', 'Fri 15', 'Sat 16'].map((day, index) => (
-                <button key={day} type="button" className={`rounded-2xl border px-2 py-3 ${index === 0 ? 'border-[#17a9df] text-[#17a9df]' : 'border-[#d7ded9]'}`}>{day}</button>
+              {tourDateOptions().map((day, index) => (
+                <label key={day.value} className="cursor-pointer">
+                  <input type="radio" name="preferred_tour_date" value={day.value} defaultChecked={index === 0} className="peer sr-only" />
+                  <span className="block rounded-2xl border border-[#d7ded9] px-2 py-3 peer-checked:border-[#17a9df] peer-checked:text-[#17a9df]">{day.label}</span>
+                </label>
               ))}
             </div>
             <div className="mt-5 grid gap-3">
@@ -1205,8 +1236,16 @@ function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean
               <Input name="email" label="Email" type="email" required />
               <Input name="phone" label="Phone" />
               <label className="grid gap-2 text-sm font-semibold text-[#304942]">
-                Select time
+                Preferred contact
                 <select name="preferred_contact_method" className="min-h-12 rounded-2xl border border-[#dce5df] px-4">
+                  <option value="phone">Phone</option>
+                  <option value="email">Email</option>
+                  <option value="text">Text</option>
+                </select>
+              </label>
+              <label className="grid gap-2 text-sm font-semibold text-[#304942]">
+                Select time
+                <select name="preferred_time" className="min-h-12 rounded-2xl border border-[#dce5df] px-4">
                   <option value="morning">Morning</option>
                   <option value="afternoon">Afternoon</option>
                   <option value="evening">Evening</option>
