@@ -242,6 +242,12 @@ function SearchPage() {
   const listings = data?.listings ?? []
   const featureList = features ? features.split(',').filter(Boolean) : []
 
+  useEffect(() => {
+    if (window.matchMedia('(max-width: 767px)').matches) {
+      setViewMode('map')
+    }
+  }, [])
+
   function setParam(key: string, value: string) {
     const next = new URLSearchParams(searchParams)
     if (value) next.set(key, value)
@@ -258,9 +264,19 @@ function SearchPage() {
 
   return (
     <Shell>
-      <HeroHeader kind={kind} onKindChange={(value) => setParam('kind', value)} />
+      <MobileAppSearchHeader
+        kind={kind}
+        viewMode={viewMode}
+        listingsCount={listings.length}
+        onKindChange={(value) => setParam('kind', value)}
+        onViewModeChange={setViewMode}
+        onFilterClick={() => setShowFilters((value) => !value)}
+      />
+      <div className="hidden md:block">
+        <HeroHeader kind={kind} onKindChange={(value) => setParam('kind', value)} />
+      </div>
 
-      <section className="relative z-10 mx-auto -mt-10 max-w-7xl px-5">
+      <section className="relative z-10 mx-auto hidden max-w-7xl px-5 md:-mt-10 md:block">
         <div className="rounded-[2rem] border border-black/5 bg-white p-4 shadow-2xl shadow-[#0f3d35]/10">
           <div className="grid gap-3 lg:grid-cols-[1fr_auto_auto] lg:items-center">
             <div className="flex items-center gap-3 rounded-2xl border border-[#dce5df] px-4 py-3 text-[#50625e]">
@@ -339,28 +355,25 @@ function SearchPage() {
         </div>
       </section>
 
-      <section className={`mx-auto max-w-7xl gap-6 px-5 py-6 md:py-8 ${viewMode === 'map' ? 'grid' : 'grid lg:grid-cols-[1fr_420px]'}`}>
+      <section className={`mx-auto max-w-7xl gap-6 py-0 md:px-5 md:py-8 ${viewMode === 'map' ? 'grid' : 'grid px-5 pt-6 lg:grid-cols-[1fr_420px]'}`}>
         <div>
-          <SectionHeading
-            kicker="Demo listings"
-            title={`Latest Guam ${kind === 'sale' ? 'homes for sale' : 'rentals'}`}
-            action={
-              <div className="hidden items-center gap-2 md:flex">
-                <button onClick={() => setSaveSearchOpen(true)} className="inline-flex items-center gap-2 rounded-full border border-[#d7ded9] bg-white px-4 py-2 text-sm font-semibold"><Bell size={16} /> Save search</button>
-                <button onClick={() => setViewMode(viewMode === 'list' ? 'map' : 'list')} className="inline-flex items-center gap-2 rounded-full border border-[#d7ded9] bg-white px-4 py-2 text-sm font-semibold"><Map size={16} /> {viewMode === 'list' ? 'Map view' : 'List view'}</button>
-                <Link to="/admin/sync" className="inline-flex items-center gap-2 rounded-full border border-[#d7ded9] bg-white px-4 py-2 text-sm font-semibold"><DatabaseZap size={16} /> MLS sync</Link>
-              </div>
-            }
-          />
+          <div className="hidden md:block">
+            <SectionHeading
+              kicker="Demo listings"
+              title={`Latest Guam ${kind === 'sale' ? 'homes for sale' : 'rentals'}`}
+              action={
+                <div className="hidden items-center gap-2 md:flex">
+                  <button onClick={() => setSaveSearchOpen(true)} className="inline-flex items-center gap-2 rounded-full border border-[#d7ded9] bg-white px-4 py-2 text-sm font-semibold"><Bell size={16} /> Save search</button>
+                  <button onClick={() => setViewMode(viewMode === 'list' ? 'map' : 'list')} className="inline-flex items-center gap-2 rounded-full border border-[#d7ded9] bg-white px-4 py-2 text-sm font-semibold"><Map size={16} /> {viewMode === 'list' ? 'Map view' : 'List view'}</button>
+                  <Link to="/admin/sync" className="inline-flex items-center gap-2 rounded-full border border-[#d7ded9] bg-white px-4 py-2 text-sm font-semibold"><DatabaseZap size={16} /> MLS sync</Link>
+                </div>
+              }
+            />
+          </div>
 
           {isLoading && <StateCard>Loading demo listings...</StateCard>}
           {isError && <StateCard tone="error">Start the Rails API on port 3000 or set VITE_API_URL to load seed listings.</StateCard>}
           {!isLoading && listings.length === 0 && <StateCard>No demo listings match those filters yet.</StateCard>}
-
-          <div className="mb-4 grid grid-cols-2 gap-3 md:hidden">
-            <button onClick={() => setViewMode('list')} className={`rounded-2xl px-4 py-3 text-sm font-bold ${viewMode === 'list' ? 'bg-[#0f3d35] text-white' : 'bg-white text-[#0f3d35]'}`}>List</button>
-            <button onClick={() => setViewMode('map')} className={`rounded-2xl px-4 py-3 text-sm font-bold ${viewMode === 'map' ? 'bg-[#0f3d35] text-white' : 'bg-white text-[#0f3d35]'}`}>Map</button>
-          </div>
 
           {viewMode === 'map' ? (
             <MapPanel listings={listings} onExpand={() => setFullMapOpen(true)} />
@@ -370,7 +383,9 @@ function SearchPage() {
             </div>
           )}
 
-          <button onClick={() => setSaveSearchOpen(true)} className="mt-5 w-full rounded-2xl bg-[#0f3d35] px-4 py-3 text-sm font-bold text-white md:hidden">Save this search</button>
+          {viewMode === 'list' && (
+            <button onClick={() => setSaveSearchOpen(true)} className="mt-5 w-full rounded-2xl bg-[#0f3d35] px-4 py-3 text-sm font-bold text-white md:hidden">Save this search</button>
+          )}
         </div>
 
         {viewMode === 'list' && <SearchAside listings={listings} />}
@@ -382,6 +397,59 @@ function SearchPage() {
       />
       <FullMapModal open={fullMapOpen} onClose={() => setFullMapOpen(false)} listings={listings} />
     </Shell>
+  )
+}
+
+function MobileAppSearchHeader({
+  kind,
+  viewMode,
+  listingsCount,
+  onKindChange,
+  onViewModeChange,
+  onFilterClick,
+}: {
+  kind: 'sale' | 'rent'
+  viewMode: 'list' | 'map'
+  listingsCount: number
+  onKindChange: (value: 'sale' | 'rent') => void
+  onViewModeChange: (value: 'list' | 'map') => void
+  onFilterClick: () => void
+}) {
+  return (
+    <header className="safe-top sticky top-0 z-40 border-b border-white/10 bg-[#0f3d35] text-white shadow-xl shadow-[#0f3d35]/20 md:hidden">
+      <div className="px-4 pb-3 pt-3">
+        <div className="flex items-center justify-between gap-3">
+          <Brand light />
+          <button className="grid h-11 w-11 place-items-center rounded-full border border-white/20 text-white/86">
+            <Menu size={22} />
+          </button>
+        </div>
+        <div className="mt-4 grid grid-cols-[1fr_auto] gap-2">
+          <div className="flex min-h-12 items-center gap-2 rounded-2xl bg-white px-3 text-[#53645f]">
+            <Search size={17} />
+            <span className="text-sm font-semibold">Address, village, or MLS</span>
+          </div>
+          <button className="rounded-2xl bg-[#e99f3e] px-4 text-sm font-bold text-[#25170b]">Save</button>
+        </div>
+        <div className="mt-3 grid grid-cols-3 gap-2 text-sm font-bold">
+          <button onClick={onFilterClick} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl bg-white/10 text-white/86"><SlidersHorizontal size={17} /> Filter</button>
+          <button onClick={() => onViewModeChange('map')} className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl ${viewMode === 'map' ? 'bg-white text-[#0f3d35]' : 'bg-white/10 text-white/86'}`}><Map size={17} /> Map</button>
+          <button onClick={() => onViewModeChange('list')} className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl ${viewMode === 'list' ? 'bg-white text-[#0f3d35]' : 'bg-white/10 text-white/86'}`}><Menu size={17} /> List</button>
+        </div>
+        <div className="mt-3 flex items-center justify-between gap-3 rounded-2xl bg-white/10 p-1 text-sm font-bold">
+          {(['sale', 'rent'] as const).map((option) => (
+            <button
+              key={option}
+              onClick={() => onKindChange(option)}
+              className={`min-h-10 flex-1 rounded-xl capitalize ${kind === option ? 'bg-white text-[#0f3d35]' : 'text-white/75'}`}
+            >
+              {option === 'sale' ? 'Buy' : 'Rent'}
+            </button>
+          ))}
+          <span className="px-3 text-xs uppercase tracking-[0.14em] text-white/68">{listingsCount} found</span>
+        </div>
+      </div>
+    </header>
   )
 }
 
@@ -628,7 +696,7 @@ function MapPanel({ listings, onExpand, immersive = false }: { listings: Listing
   }
 
   return (
-    <div className={`relative overflow-hidden border border-black/5 bg-[#dbe8df] shadow-sm ${immersive ? 'h-[100svh] rounded-none' : 'rounded-[2rem]'}`}>
+    <div className={`relative overflow-hidden border border-black/5 bg-[#dbe8df] shadow-sm ${immersive ? 'h-[100svh] rounded-none' : 'rounded-none md:rounded-[2rem]'}`}>
       <RealMap listings={points} immersive={immersive} className={mapHeight} />
       <MapOverlayHeader listingsCount={points.length} onExpand={onExpand} realMap />
       {!immersive && (
@@ -762,7 +830,7 @@ function FallbackMapPanel({ listings, onExpand, immersive = false }: { listings:
   const mapHeight = immersive ? 'h-[100svh]' : 'min-h-[72svh] md:min-h-[760px]'
 
   return (
-    <div className={`overflow-hidden border border-black/5 bg-[#dbe8df] shadow-sm ${immersive ? 'h-[100svh] rounded-none' : 'rounded-[2rem]'}`}>
+    <div className={`overflow-hidden border border-black/5 bg-[#dbe8df] shadow-sm ${immersive ? 'h-[100svh] rounded-none' : 'rounded-none md:rounded-[2rem]'}`}>
       <div className={`relative ${mapHeight} bg-[radial-gradient(circle_at_30%_20%,rgba(15,112,94,0.18),transparent_24%),radial-gradient(circle_at_70%_70%,rgba(233,159,62,0.22),transparent_26%),linear-gradient(135deg,#e8f0ea,#c9ddd1)] p-3 md:p-5`}>
         <div className="absolute inset-0 opacity-35 [background-image:linear-gradient(rgba(15,61,53,.16)_1px,transparent_1px),linear-gradient(90deg,rgba(15,61,53,.16)_1px,transparent_1px)] [background-size:42px_42px]" />
         <MapOverlayHeader listingsCount={points.length} onExpand={onExpand} />
