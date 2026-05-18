@@ -824,7 +824,7 @@ function TopNav() {
 
 function MobileNav() {
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-black/10 bg-white/90 px-4 py-3 backdrop-blur md:hidden">
+    <nav className="safe-bottom fixed inset-x-0 bottom-0 z-50 border-t border-black/10 bg-white/90 px-4 pt-3 backdrop-blur md:hidden">
       <div className="mx-auto grid max-w-md grid-cols-4 text-center text-xs font-semibold text-[#53645f]">
         <Link to="/" className="flex flex-col items-center gap-1"><Home size={19} /> Search</Link>
         <Link to="/villages" className="flex flex-col items-center gap-1"><Map size={19} /> Villages</Link>

@@ -56,7 +56,7 @@ hafa-homes/
   - [x] `/api/v1/leads`
   - [x] `/api/v1/data_sync_runs`
 - [x] Add listing filters
-- [ ] Add basic request specs or smoke tests
+- [x] Add basic API smoke test
 - [x] Add admin lead inbox endpoint
 - [x] Add saved search endpoint
 
@@ -80,7 +80,7 @@ hafa-homes/
 ## Phase 5: Maps and PWA polish
 
 - [ ] Add PWA manifest and icons
-- [ ] Add mobile safe-area support
+- [x] Add mobile safe-area support
 - [ ] Add Mapbox integration
 - [x] Add placeholder listing pins/map concept
 - [x] Add map/list toggle

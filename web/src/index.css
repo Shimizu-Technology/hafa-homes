@@ -30,3 +30,11 @@ textarea {
 #root {
   min-height: 100vh;
 }
+
+.safe-bottom {
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+}
+
+.safe-top {
+  padding-top: env(safe-area-inset-top);
+}

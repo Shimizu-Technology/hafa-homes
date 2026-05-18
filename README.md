@@ -49,6 +49,7 @@ Reason: the demo needs to be easy to share, fast to iterate, and accessible by l
 cd api
 bundle install
 bin/rails db:prepare db:seed
+bin/rails runner script/smoke.rb
 bin/rails server
 ```
 
