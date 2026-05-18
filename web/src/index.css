@@ -80,3 +80,9 @@ textarea {
 .mapboxgl-ctrl-bottom-right {
   z-index: 15;
 }
+
+@media (max-width: 767px) {
+  .hafa-map-panel--standard .mapboxgl-ctrl-bottom-right {
+    bottom: calc(0.75rem + env(safe-area-inset-bottom));
+  }
+}
