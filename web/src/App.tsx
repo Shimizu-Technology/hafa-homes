@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link, Route, Routes, useParams, useSearchParams } from 'react-router-dom'
+import { Brand } from './components/Brand'
 import {
   ArrowLeft,
   Bath,
@@ -810,7 +811,7 @@ function Shell({ children, compact = false }: { children: React.ReactNode; compa
 function TopNav() {
   return (
     <nav className="flex items-center justify-between">
-      <Link to="/" className="text-lg font-semibold tracking-tight">Hafa Homes</Link>
+      <Brand light />
       <div className="hidden items-center gap-5 text-sm font-semibold text-white/82 md:flex">
         <Link to="/villages">Villages</Link>
         <Link to="/military">Military</Link>
