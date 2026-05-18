@@ -557,8 +557,14 @@ function ListingDetailPage() {
   async function shareListing() {
     if (!listing) return
     const shareData = { title: listing.title, text: `${listing.title} — ${currency(listing.price, listing.listing_kind)}`, url: window.location.href }
-    if (navigator.share) await navigator.share(shareData)
-    else await navigator.clipboard?.writeText(window.location.href)
+
+    try {
+      if (navigator.share) await navigator.share(shareData)
+      else await navigator.clipboard?.writeText(window.location.href)
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return
+      console.warn('Unable to share listing', error)
+    }
   }
 
   return (
