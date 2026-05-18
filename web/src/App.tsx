@@ -552,12 +552,12 @@ function ListingDetailPage() {
       {isError && <div className="p-5"><StateCard tone="error">Unable to load listing.</StateCard></div>}
       {listing && (
         <>
-          <div className="safe-top sticky top-0 z-40 border-b border-white/10 bg-[#0f3d35] px-4 pb-4 pt-5 text-white shadow-xl shadow-[#0f3d35]/15 md:hidden">
+          <div className="mobile-detail-header sticky top-0 z-40 border-b border-white/10 bg-[#0f3d35] px-4 pb-4 text-white shadow-xl shadow-[#0f3d35]/15 md:hidden">
             <div className="flex items-center justify-between gap-3">
-              <Link to="/" className="inline-flex min-h-12 items-center gap-2 rounded-full bg-white/10 px-4 text-sm font-bold"><ArrowLeft size={18} /> Search</Link>
+              <Link to="/" className="inline-flex min-h-12 items-center gap-2 rounded-full bg-white/10 px-4 text-sm font-bold hover:bg-white/15 active:scale-[0.98]"><ArrowLeft size={18} /> Search</Link>
               <div className="flex items-center gap-2">
-                <button onClick={() => setLeadOpen(true)} className="min-h-12 rounded-2xl bg-[#e99f3e] px-5 text-sm font-bold text-[#25170b]">Schedule tour</button>
-                <button onClick={() => setMenuOpen(true)} className="grid h-12 w-12 place-items-center rounded-full bg-white/10"><Menu size={20} /></button>
+                <button onClick={() => setLeadOpen(true)} className="min-h-12 rounded-2xl bg-[#e99f3e] px-5 text-sm font-bold text-[#25170b] hover:bg-[#f2ad4e] active:scale-[0.98]">Schedule tour</button>
+                <button onClick={() => setMenuOpen(true)} className="grid h-12 w-12 place-items-center rounded-full bg-white/10 hover:bg-white/15 active:scale-[0.98]"><Menu size={20} /></button>
               </div>
             </div>
           </div>
@@ -576,8 +576,8 @@ function ListingDetailPage() {
                   />
                   {photos.length > 1 && (
                     <>
-                      <button onClick={() => setPhotoIndex((photoIndex - 1 + photos.length) % photos.length)} className="absolute left-3 top-1/2 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-white/90 text-[#0f3d35] shadow-lg"><ChevronLeft size={22} /></button>
-                      <button onClick={() => setPhotoIndex((photoIndex + 1) % photos.length)} className="absolute right-3 top-1/2 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-white/90 text-[#0f3d35] shadow-lg"><ChevronRightIcon size={22} /></button>
+                      <button onClick={() => setPhotoIndex((photoIndex - 1 + photos.length) % photos.length)} className="absolute left-3 top-1/2 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-white/90 text-[#0f3d35] shadow-lg hover:bg-white active:scale-95"><ChevronLeft size={22} /></button>
+                      <button onClick={() => setPhotoIndex((photoIndex + 1) % photos.length)} className="absolute right-3 top-1/2 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-white/90 text-[#0f3d35] shadow-lg hover:bg-white active:scale-95"><ChevronRightIcon size={22} /></button>
                     </>
                   )}
                   <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-[#0f3d35]/70 to-transparent p-4 text-center text-sm font-bold text-white">
@@ -1045,8 +1045,6 @@ function LeadsPage() {
 }
 
 function MobileMenuDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
-  if (!open) return null
-
   const links = [
     ['Search', '/'],
     ['Villages', '/villages'],
@@ -1057,20 +1055,31 @@ function MobileMenuDrawer({ open, onClose }: { open: boolean; onClose: () => voi
   ]
 
   return (
-    <div className="fixed inset-0 z-[90] bg-black/45 backdrop-blur-sm md:hidden">
-      <div className="safe-top absolute bottom-0 right-0 top-0 w-[84vw] max-w-sm bg-[#0f3d35] p-5 text-white shadow-2xl">
+    <div className={`fixed inset-0 z-[90] md:hidden ${open ? 'pointer-events-auto' : 'pointer-events-none'}`}>
+      <button
+        aria-label="Close menu"
+        onClick={onClose}
+        className={`absolute inset-0 bg-black/45 backdrop-blur-sm transition-opacity duration-300 ease-out ${open ? 'opacity-100' : 'opacity-0'}`}
+      />
+      <div className={`safe-top absolute bottom-0 right-0 top-0 w-[84vw] max-w-sm bg-[#0f3d35] p-5 text-white shadow-2xl transition-transform duration-300 ease-out ${open ? 'translate-x-0' : 'translate-x-full'}`}>
         <div className="flex items-center justify-between gap-4">
           <Brand light />
-          <button onClick={onClose} className="grid h-11 w-11 place-items-center rounded-full bg-white/10"><X size={20} /></button>
+          <button onClick={onClose} className="grid h-11 w-11 place-items-center rounded-full bg-white/10 hover:bg-white/15 active:scale-95"><X size={20} /></button>
         </div>
         <div className="mt-8 grid gap-3">
-          {links.map(([label, href]) => (
-            <Link key={href} to={href} onClick={onClose} className="rounded-2xl bg-white/10 px-4 py-4 text-lg font-bold text-white/90">
+          {links.map(([label, href], index) => (
+            <Link
+              key={href}
+              to={href}
+              onClick={onClose}
+              style={{ transitionDelay: open ? `${80 + index * 25}ms` : '0ms' }}
+              className={`rounded-2xl bg-white/10 px-4 py-4 text-lg font-bold text-white/90 hover:translate-x-1 hover:bg-white/15 ${open ? 'translate-x-0 opacity-100' : 'translate-x-4 opacity-0'}`}
+            >
               {label}
             </Link>
           ))}
         </div>
-        <div className="absolute bottom-6 left-5 right-5 rounded-3xl bg-white/10 p-4 text-sm leading-6 text-white/72">
+        <div className={`absolute bottom-6 left-5 right-5 rounded-3xl bg-white/10 p-4 text-sm leading-6 text-white/72 transition-all delay-200 duration-300 ${open ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0'}`}>
           Hafa Homes is a Guam-first housing search demo built around map search, local filters, and agent workflows.
         </div>
       </div>
