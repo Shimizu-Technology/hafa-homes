@@ -36,6 +36,7 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
+const FALLBACK_LISTING_IMAGE = 'https://images.unsplash.com/photo-1600047509807-ba8f99d2cdde?auto=format&fit=crop&w=1400&q=80'
 
 type Village = {
   id: number
@@ -250,6 +251,8 @@ function SearchPage() {
   const [saveSearchOpen, setSaveSearchOpen] = useState(false)
   const [fullMapOpen, setFullMapOpen] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [mobileMapHeight, setMobileMapHeight] = useState<number | undefined>()
+  const mobileHeaderRef = useRef<HTMLDivElement | null>(null)
   const kind = (searchParams.get('kind') as 'sale' | 'rent') || 'sale'
   const village = searchParams.get('village') || ''
   const propertyType = searchParams.get('property_type') || ''
@@ -272,6 +275,33 @@ function SearchPage() {
     }
   }, [])
 
+  useEffect(() => {
+    const updateMobileMapHeight = () => {
+      if (!window.matchMedia('(max-width: 767px)').matches) {
+        setMobileMapHeight(undefined)
+        return
+      }
+
+      const viewportHeight = window.visualViewport?.height ?? window.innerHeight
+      const headerHeight = mobileHeaderRef.current?.getBoundingClientRect().height ?? 0
+      const navHeight = document.querySelector('[data-mobile-nav]')?.getBoundingClientRect().height ?? 0
+      const nextHeight = Math.max(0, Math.floor(viewportHeight - headerHeight - navHeight))
+      setMobileMapHeight(nextHeight)
+    }
+
+    updateMobileMapHeight()
+    const resizeObserver = new ResizeObserver(updateMobileMapHeight)
+    if (mobileHeaderRef.current) resizeObserver.observe(mobileHeaderRef.current)
+    window.addEventListener('resize', updateMobileMapHeight)
+    window.visualViewport?.addEventListener('resize', updateMobileMapHeight)
+
+    return () => {
+      resizeObserver.disconnect()
+      window.removeEventListener('resize', updateMobileMapHeight)
+      window.visualViewport?.removeEventListener('resize', updateMobileMapHeight)
+    }
+  }, [])
+
   function setParam(key: string, value: string) {
     const next = new URLSearchParams(searchParams)
     if (value) next.set(key, value)
@@ -287,19 +317,42 @@ function SearchPage() {
     setParam('features', nextFeatures.join(','))
   }
 
+  function clearMobileFilters() {
+    const next = new URLSearchParams(searchParams)
+    ;['village', 'property_type', 'beds', 'max_price', 'features'].forEach((key) => next.delete(key))
+    setSearchParams(next)
+    captureAnalyticsEvent('search_filter_cleared', { listing_kind: kind, surface: 'mobile_filter_sheet' })
+  }
+
   return (
-    <Shell>
-      <MobileAppSearchHeader
+    <Shell mobileBottomPadding={viewMode !== 'map'}>
+      <div ref={mobileHeaderRef}>
+        <MobileAppSearchHeader
+          kind={kind}
+          viewMode={viewMode}
+          listingsCount={listings.length}
+          onKindChange={(value) => setParam('kind', value)}
+          onViewModeChange={(value) => {
+            setViewMode(value)
+            captureAnalyticsEvent('search_view_changed', { view_mode: value, surface: 'mobile_header' })
+          }}
+          onFilterClick={() => setShowFilters(true)}
+          onMenuClick={() => setMobileMenuOpen(true)}
+        />
+      </div>
+      <MobileFilterSheet
+        open={showFilters}
+        onClose={() => setShowFilters(false)}
         kind={kind}
-        viewMode={viewMode}
-        listingsCount={listings.length}
-        onKindChange={(value) => setParam('kind', value)}
-        onViewModeChange={(value) => {
-          setViewMode(value)
-          captureAnalyticsEvent('search_view_changed', { view_mode: value, surface: 'mobile_header' })
-        }}
-        onFilterClick={() => setShowFilters((value) => !value)}
-        onMenuClick={() => setMobileMenuOpen(true)}
+        village={village}
+        villages={villagesData?.villages ?? []}
+        propertyType={propertyType}
+        beds={beds}
+        maxPrice={maxPrice}
+        featureList={featureList}
+        onParamChange={setParam}
+        onFeatureToggle={toggleFeature}
+        onClear={clearMobileFilters}
       />
       <div className="hidden md:block">
         <HeroHeader kind={kind} onKindChange={(value) => setParam('kind', value)} />
@@ -348,7 +401,7 @@ function SearchPage() {
           </div>
 
           {showFilters && (
-            <div className="mt-5 grid gap-4 border-t border-[#edf0ec] pt-5 md:grid-cols-3">
+            <div className="mt-5 hidden gap-4 border-t border-[#edf0ec] pt-5 md:grid md:grid-cols-3">
               <label className="grid gap-2 text-sm font-semibold text-[#304942]">
                 Property type
                 <select
@@ -388,7 +441,7 @@ function SearchPage() {
         <div>
           <div className="hidden md:block">
             <SectionHeading
-              kicker="Demo listings"
+              kicker="Listings"
               title={`Latest Guam ${kind === 'sale' ? 'homes for sale' : 'rentals'}`}
               action={
                 <div className="hidden items-center gap-2 md:flex">
@@ -404,15 +457,15 @@ function SearchPage() {
             />
           </div>
 
-          {isLoading && <StateCard>Loading demo listings...</StateCard>}
-          {isError && <StateCard tone="error">Start the Rails API on port 3000 or set VITE_API_URL to load seed listings.</StateCard>}
-          {!isLoading && listings.length === 0 && <StateCard>No demo listings match those filters yet.</StateCard>}
+          {isLoading && <StateCard>Loading listings...</StateCard>}
+          {isError && <StateCard tone="error">We could not load listings right now. Please try again shortly.</StateCard>}
+          {!isLoading && listings.length === 0 && <StateCard>No listings match those filters yet.</StateCard>}
 
           {viewMode === 'map' ? (
             fullMapOpen ? (
-              <div className="h-[calc(100svh-330px)] min-h-[420px] max-h-[560px] rounded-none border border-black/5 bg-[#dbe8df] md:min-h-[760px] md:rounded-[2rem]" />
+              <div style={mobileMapHeight ? { height: mobileMapHeight } : undefined} className="h-[calc(100svh-330px)] rounded-none border border-black/5 bg-[#dbe8df] md:h-auto md:min-h-[760px] md:rounded-[2rem]" />
             ) : (
-              <MapPanel listings={listings} onExpand={() => setFullMapOpen(true)} />
+              <MapPanel listings={listings} onExpand={() => setFullMapOpen(true)} mobileMapHeight={mobileMapHeight} />
             )
           ) : (
             <div className="grid gap-4">
@@ -457,31 +510,31 @@ function MobileAppSearchHeader({
 }) {
   return (
     <header className="safe-top sticky top-0 z-40 border-b border-white/10 bg-[#0f3d35] text-white shadow-xl shadow-[#0f3d35]/20 md:hidden">
-      <div className="px-4 pb-3 pt-3">
+      <div className="px-4 pb-2 pt-2">
         <div className="flex items-center justify-between gap-3">
           <Brand light />
           <button onClick={onMenuClick} className="grid h-11 w-11 place-items-center rounded-full border border-white/20 text-white/86">
             <Menu size={22} />
           </button>
         </div>
-        <div className="mt-4 grid grid-cols-[1fr_auto] gap-2">
-          <div className="flex min-h-12 items-center gap-2 rounded-2xl bg-white px-3 text-[#53645f]">
+        <div className="mt-3 grid grid-cols-[1fr_auto] gap-2">
+          <div className="flex min-h-11 items-center gap-2 rounded-2xl bg-white px-3 text-[#53645f]">
             <Search size={17} />
             <span className="text-sm font-semibold">Address, village, or MLS</span>
           </div>
           <button className="rounded-2xl bg-[#e99f3e] px-4 text-sm font-bold text-[#25170b]">Save</button>
         </div>
-        <div className="mt-3 grid grid-cols-3 gap-2 text-sm font-bold">
-          <button onClick={onFilterClick} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl bg-white/10 text-white/86"><SlidersHorizontal size={17} /> Filter</button>
-          <button onClick={() => onViewModeChange('map')} className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl ${viewMode === 'map' ? 'bg-white text-[#0f3d35]' : 'bg-white/10 text-white/86'}`}><Map size={17} /> Map</button>
-          <button onClick={() => onViewModeChange('list')} className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl ${viewMode === 'list' ? 'bg-white text-[#0f3d35]' : 'bg-white/10 text-white/86'}`}><Menu size={17} /> List</button>
+        <div className="mt-2 grid grid-cols-3 gap-2 text-sm font-bold">
+          <button onClick={onFilterClick} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-2xl bg-white/10 text-white/86"><SlidersHorizontal size={17} /> Filter</button>
+          <button onClick={() => onViewModeChange('map')} className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-2xl ${viewMode === 'map' ? 'bg-white text-[#0f3d35]' : 'bg-white/10 text-white/86'}`}><Map size={17} /> Map</button>
+          <button onClick={() => onViewModeChange('list')} className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-2xl ${viewMode === 'list' ? 'bg-white text-[#0f3d35]' : 'bg-white/10 text-white/86'}`}><Menu size={17} /> List</button>
         </div>
-        <div className="mt-3 flex items-center justify-between gap-3 rounded-2xl bg-white/10 p-1 text-sm font-bold">
+        <div className="mt-2 flex items-center justify-between gap-3 rounded-2xl bg-white/10 p-1 text-sm font-bold">
           {(['sale', 'rent'] as const).map((option) => (
             <button
               key={option}
               onClick={() => onKindChange(option)}
-              className={`min-h-10 flex-1 rounded-xl capitalize ${kind === option ? 'bg-white text-[#0f3d35]' : 'text-white/75'}`}
+              className={`min-h-9 flex-1 rounded-xl capitalize ${kind === option ? 'bg-white text-[#0f3d35]' : 'text-white/75'}`}
             >
               {option === 'sale' ? 'Buy' : 'Rent'}
             </button>
@@ -490,6 +543,120 @@ function MobileAppSearchHeader({
         </div>
       </div>
     </header>
+  )
+}
+
+function MobileFilterSheet({
+  open,
+  onClose,
+  kind,
+  village,
+  villages,
+  propertyType,
+  beds,
+  maxPrice,
+  featureList,
+  onParamChange,
+  onFeatureToggle,
+  onClear,
+}: {
+  open: boolean
+  onClose: () => void
+  kind: 'sale' | 'rent'
+  village: string
+  villages: Village[]
+  propertyType: string
+  beds: string
+  maxPrice: string
+  featureList: string[]
+  onParamChange: (key: string, value: string) => void
+  onFeatureToggle: (slug: string) => void
+  onClear: () => void
+}) {
+  if (!open) return null
+
+  return (
+    <div className="fixed inset-0 z-[65] grid place-items-end bg-black/45 p-2 backdrop-blur-sm md:hidden">
+      <div className="safe-bottom max-h-[calc(100svh-1rem)] w-full overflow-y-auto rounded-[1.5rem] bg-white p-4 shadow-2xl">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#0f705e]">Filters</p>
+            <h2 className="mt-1 text-2xl font-semibold tracking-[-0.05em]">Refine your search</h2>
+          </div>
+          <button type="button" onClick={onClose} className="rounded-full border border-[#d7ded9] px-3 py-2 text-sm font-bold">Close</button>
+        </div>
+
+        <div className="mt-5 grid gap-4">
+          <label className="grid gap-2 text-sm font-semibold text-[#304942]">
+            Village
+            <select value={village} onChange={(event) => onParamChange('village', event.target.value)} className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
+              <option value="">All villages</option>
+              {villages.map((item) => (
+                <option key={item.id} value={item.slug}>{item.name}</option>
+              ))}
+            </select>
+          </label>
+          <label className="grid gap-2 text-sm font-semibold text-[#304942]">
+            Property type
+            <select value={propertyType} onChange={(event) => onParamChange('property_type', event.target.value)} className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
+              {propertyTypes.map((type) => (
+                <option key={type.value} value={type.value}>{type.label}</option>
+              ))}
+            </select>
+          </label>
+          <label className="grid gap-2 text-sm font-semibold text-[#304942]">
+            Minimum beds
+            <select value={beds} onChange={(event) => onParamChange('beds', event.target.value)} className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
+              <option value="">Any beds</option>
+              <option value="2">2+</option>
+              <option value="3">3+</option>
+              <option value="4">4+</option>
+            </select>
+          </label>
+          <label className="grid gap-2 text-sm font-semibold text-[#304942]">
+            Maximum price
+            <select value={maxPrice} onChange={(event) => onParamChange('max_price', event.target.value)} className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
+              <option value="">No max</option>
+              <option value={kind === 'rent' ? '2500' : '500000'}>{kind === 'rent' ? '$2,500/mo' : '$500,000'}</option>
+              <option value={kind === 'rent' ? '3500' : '700000'}>{kind === 'rent' ? '$3,500/mo' : '$700,000'}</option>
+              <option value={kind === 'rent' ? '5000' : '1000000'}>{kind === 'rent' ? '$5,000/mo' : '$1,000,000'}</option>
+            </select>
+          </label>
+        </div>
+
+        <div className="mt-5 border-t border-[#edf0ec] pt-4">
+          <p className="text-sm font-semibold text-[#304942]">Popular features</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {quickFilters.map((chip) => {
+              const active = featureList.includes(chip.slug)
+              return (
+                <button
+                  key={chip.slug}
+                  type="button"
+                  onClick={() => onFeatureToggle(chip.slug)}
+                  className={`rounded-full px-3 py-2 text-xs font-semibold ${active ? 'bg-[#0f3d35] text-white' : 'bg-[#f6f1e8] text-[#53645f]'}`}
+                >
+                  {chip.label}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        <div className="mt-5 grid grid-cols-[auto_1fr] gap-3">
+          <button
+            type="button"
+            onClick={onClear}
+            className="rounded-2xl border border-[#d7ded9] px-4 py-3 text-sm font-bold text-[#304942]"
+          >
+            Clear
+          </button>
+          <button type="button" onClick={onClose} className="rounded-2xl bg-[#0f3d35] px-4 py-3 text-sm font-bold text-white">
+            Show results
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -521,11 +688,7 @@ function HeroHeader({ kind, onKindChange }: { kind: 'sale' | 'rent'; onKindChang
                 </button>
               ))}
             </div>
-            <div className="mt-4 grid grid-cols-3 gap-2 text-center text-xs text-white/70">
-              <div className="rounded-2xl bg-white/10 p-3"><strong className="block text-lg text-white">MLS</strong> ready</div>
-              <div className="rounded-2xl bg-white/10 p-3"><strong className="block text-lg text-white">PWA</strong> first</div>
-              <div className="rounded-2xl bg-white/10 p-3"><strong className="block text-lg text-white">Guam</strong> local</div>
-            </div>
+            <p className="mt-4 text-sm leading-6 text-white/72">Switch between homes for sale and rentals, then narrow by village, commute, and island-ready features.</p>
           </div>
         </div>
       </div>
@@ -534,10 +697,12 @@ function HeroHeader({ kind, onKindChange }: { kind: 'sale' | 'rent'; onKindChang
 }
 
 function ListingCard({ listing }: { listing: Listing }) {
+  const [saved, setSaved] = useState(false)
+
   return (
     <article className="group overflow-hidden rounded-[1.7rem] border border-black/5 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[#0f3d35]/10 md:grid md:grid-cols-[240px_1fr]">
       <Link to={`/listings/${listing.id}`} onClick={() => captureAnalyticsEvent('listing_opened', { listing_id: listing.id, source: 'listing_image' })} className="block overflow-hidden">
-        <img src={listing.primary_photo_url} alt="" className="h-56 w-full object-cover transition duration-500 group-hover:scale-105 md:h-full" />
+        <img src={listing.primary_photo_url} onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = FALLBACK_LISTING_IMAGE }} alt="" className="h-56 w-full object-cover transition duration-500 group-hover:scale-105 md:h-full" />
       </Link>
       <div className="p-5">
         <div className="flex items-start justify-between gap-4">
@@ -552,7 +717,17 @@ function ListingCard({ listing }: { listing: Listing }) {
         <FeaturePills features={listing.features.slice(0, 4)} />
         <div className="mt-5 flex items-center justify-between">
           <Link to={`/listings/${listing.id}`} onClick={() => captureAnalyticsEvent('listing_opened', { listing_id: listing.id, source: 'listing_card' })} className="inline-flex items-center gap-2 text-sm font-bold text-[#0f3d35]">View details <ChevronRight size={16} /></Link>
-          <button className="rounded-full border border-[#d7ded9] p-2 text-[#53645f]"><Heart size={17} /></button>
+          <button
+            onClick={() => {
+              const nextSaved = !saved
+              setSaved(nextSaved)
+              captureAnalyticsEvent('listing_saved_toggled', { listing_id: listing.id, saved: nextSaved, source: 'listing_card' })
+            }}
+            className={`rounded-full border p-2 ${saved ? 'border-[#0f3d35] bg-[#e9f5ef] text-[#0f3d35]' : 'border-[#d7ded9] text-[#53645f]'}`}
+            aria-label={saved ? 'Saved listing' : 'Save listing'}
+          >
+            <Heart size={17} fill={saved ? '#0f3d35' : 'none'} />
+          </button>
         </div>
       </div>
     </article>
@@ -612,6 +787,7 @@ function ListingDetailPage() {
                 <div className="relative mx-4 mt-5 overflow-hidden rounded-[2rem] bg-[#0f3d35] shadow-xl shadow-[#0f3d35]/10 md:mx-0 md:mt-0">
                   <img
                     src={photos[photoIndex]?.url || listing.primary_photo_url}
+                    onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = FALLBACK_LISTING_IMAGE }}
                     alt=""
                     className="h-[40svh] min-h-[300px] w-full object-cover md:h-[560px]"
                   />
@@ -662,9 +838,9 @@ function ListingDetailPage() {
                     captureAnalyticsEvent('price_tracker_opened', { listing_id: listing.id, source: 'desktop_aside' })
                   }} className="mt-3 w-full rounded-2xl border border-[#d7ded9] px-4 py-3 text-sm font-bold text-[#0f3d35]">Add price tracker</button>
                   <dl className="mt-6 space-y-3 text-sm">
-                    <InfoRow label="MLS/demo ID" value={listing.external_id || `HH-${listing.id}`} />
-                    <InfoRow label="Agent" value={listing.agent_name || 'Hafa Homes Demo Team'} />
-                    <InfoRow label="Brokerage" value={listing.brokerage_name || 'Demo Brokerage'} />
+                    <InfoRow label="MLS ID" value={listing.external_id || `HH-${listing.id}`} />
+                    <InfoRow label="Agent" value={listing.agent_name || 'Hafa Homes Team'} />
+                    <InfoRow label="Brokerage" value={listing.brokerage_name || 'Hafa Homes'} />
                   </dl>
                 </div>
               </aside>
@@ -729,7 +905,7 @@ function VillageDetailPage() {
   const village = villagesData?.villages.find((item) => item.slug === slug)
   return (
     <Shell compact>
-      <ContentHeader kicker={village?.region || 'Village'} title={village?.name || 'Guam village'} description={village?.description || 'Village detail and matching demo listings.'} />
+      <ContentHeader kicker={village?.region || 'Village'} title={village?.name || 'Guam village'} description={village?.description || 'Village detail and matching listings.'} />
       <section className="mx-auto grid max-w-7xl gap-4 px-5 pb-10 lg:grid-cols-[1fr_360px]">
         <div className="grid gap-4">
           {listingsData?.listings.map((listing) => <ListingCard key={listing.id} listing={listing} />)}
@@ -737,7 +913,7 @@ function VillageDetailPage() {
         <div className="rounded-[2rem] bg-[#173f38] p-6 text-white lg:self-start">
           <Compass className="text-[#bdebdc]" />
           <h2 className="mt-4 text-2xl font-semibold tracking-[-0.04em]">Market snapshot placeholder</h2>
-          <p className="mt-3 text-sm leading-6 text-white/75">Later this area can show median price, average rent, days on market, and commute notes.</p>
+          <p className="mt-3 text-sm leading-6 text-white/75">Explore price trends, rental activity, commute notes, and nearby listings for this village.</p>
         </div>
       </section>
     </Shell>
@@ -770,11 +946,11 @@ function MilitaryPage() {
 function SavedPage() {
   return (
     <Shell compact>
-      <ContentHeader kicker="Retention loop" title="Saved listings and alerts will keep buyers and renters coming back." description="This demo screen explains the saved-search loop while auth is deferred. Clerk can be added when the investor wants accounts." />
+      <ContentHeader kicker="Saved homes" title="Keep track of the Guam homes and rentals you want to revisit." description="Save favorites, compare neighborhoods, and set alerts for price changes or new listings that match your search." />
       <section className="mx-auto grid max-w-5xl gap-5 px-5 pb-10 md:grid-cols-3">
-        <ConceptCard icon={<Heart />} title="Favorites" description="Save listings and compare homes/rentals across villages." />
-        <ConceptCard icon={<Bell />} title="Listing alerts" description="Notify users when matching rentals hit the market or prices change." />
-        <ConceptCard icon={<MessageSquare />} title="Agent follow-up" description="Turn saved intent into warmer buyer, renter, and seller conversations." />
+        <ConceptCard icon={<Heart />} title="Favorites" description="Save listings and compare homes or rentals across villages." />
+        <ConceptCard icon={<Bell />} title="Listing alerts" description="Get notified when matching homes hit the market or prices change." />
+        <ConceptCard icon={<MessageSquare />} title="Tour requests" description="Reach out when you are ready to ask questions or schedule a showing." />
       </section>
     </Shell>
   )
@@ -790,7 +966,7 @@ function SyncPage() {
           <div className="flex items-center justify-between gap-4 border-b border-white/10 pb-5">
             <div>
               <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#bdebdc]">Sync monitor</p>
-              <h2 className="mt-2 text-3xl font-semibold tracking-[-0.05em]">Demo MLS Adapter</h2>
+              <h2 className="mt-2 text-3xl font-semibold tracking-[-0.05em]">MLS import monitor</h2>
             </div>
             <DatabaseZap className="text-[#e99f3e]" />
           </div>
@@ -819,17 +995,18 @@ function SyncPage() {
 }
 
 
-function MapPanel({ listings, onExpand, immersive = false }: { listings: Listing[]; onExpand?: () => void; immersive?: boolean }) {
+function MapPanel({ listings, onExpand, immersive = false, mobileMapHeight }: { listings: Listing[]; onExpand?: () => void; immersive?: boolean; mobileMapHeight?: number }) {
   const points = listings.filter((listing) => listing.latitude && listing.longitude)
-  const mapHeight = immersive ? 'h-[100svh]' : 'h-[calc(100svh-330px)] min-h-[420px] max-h-[560px] md:h-auto md:max-h-none md:min-h-[760px]'
+  const mapHeight = immersive ? 'h-[100svh]' : 'h-[calc(100svh-330px)] md:h-auto md:min-h-[760px]'
+  const mapStyle = !immersive && mobileMapHeight ? { height: mobileMapHeight } : undefined
 
   if (!MAPBOX_TOKEN) {
-    return <FallbackMapPanel listings={listings} onExpand={onExpand} immersive={immersive} />
+    return <FallbackMapPanel listings={listings} onExpand={onExpand} immersive={immersive} mapStyle={mapStyle} />
   }
 
   return (
-    <div className={`relative overflow-hidden border border-black/5 bg-[#dbe8df] shadow-sm ${immersive ? 'h-[100svh] rounded-none' : 'rounded-none md:rounded-[2rem]'}`}>
-      <RealMap listings={points} immersive={immersive} className={mapHeight} />
+    <div className={`hafa-map-panel ${!immersive ? 'hafa-map-panel--standard' : ''} relative overflow-hidden border border-black/5 bg-[#dbe8df] shadow-sm ${immersive ? 'h-[100svh] rounded-none' : 'rounded-none md:rounded-[2rem]'}`}>
+      <RealMap listings={points} immersive={immersive} className={mapHeight} style={mapStyle} />
       <MapOverlayHeader listingsCount={points.length} onExpand={onExpand} realMap />
       {!immersive && (
         <div className="absolute bottom-5 left-5 z-10 hidden max-w-md rounded-3xl bg-white/92 p-4 text-sm leading-6 text-[#53645f] shadow-xl shadow-[#0f3d35]/10 backdrop-blur md:block">
@@ -840,7 +1017,7 @@ function MapPanel({ listings, onExpand, immersive = false }: { listings: Listing
   )
 }
 
-function RealMap({ listings, className, immersive }: { listings: Listing[]; className: string; immersive: boolean }) {
+function RealMap({ listings, className, immersive, style }: { listings: Listing[]; className: string; immersive: boolean; style?: React.CSSProperties }) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<any>(null)
   const mapboxRef = useRef<any>(null)
@@ -942,7 +1119,7 @@ function RealMap({ listings, className, immersive }: { listings: Listing[]; clas
     if (!map) return
     const timeout = window.setTimeout(() => map.resize(), 120)
     return () => window.clearTimeout(timeout)
-  }, [immersive])
+  }, [immersive, style?.height])
 
   if (mapError) {
     return (
@@ -955,7 +1132,7 @@ function RealMap({ listings, className, immersive }: { listings: Listing[]; clas
     )
   }
 
-  return <div ref={containerRef} className={`w-full ${className}`} />
+  return <div ref={containerRef} style={style} className={`w-full ${className}`} />
 }
 
 function MapOverlayHeader({ listingsCount, onExpand, realMap = false }: { listingsCount: number; onExpand?: () => void; realMap?: boolean }) {
@@ -978,13 +1155,13 @@ function MapOverlayHeader({ listingsCount, onExpand, realMap = false }: { listin
   )
 }
 
-function FallbackMapPanel({ listings, onExpand, immersive = false }: { listings: Listing[]; onExpand?: () => void; immersive?: boolean }) {
+function FallbackMapPanel({ listings, onExpand, immersive = false, mapStyle }: { listings: Listing[]; onExpand?: () => void; immersive?: boolean; mapStyle?: React.CSSProperties }) {
   const points = listings.filter((listing) => listing.latitude && listing.longitude)
-  const mapHeight = immersive ? 'h-[100svh]' : 'h-[calc(100svh-330px)] min-h-[420px] max-h-[560px] md:h-auto md:max-h-none md:min-h-[760px]'
+  const mapHeight = immersive ? 'h-[100svh]' : 'h-[calc(100svh-330px)] md:h-auto md:min-h-[760px]'
 
   return (
     <div className={`overflow-hidden border border-black/5 bg-[#dbe8df] shadow-sm ${immersive ? 'h-[100svh] rounded-none' : 'rounded-none md:rounded-[2rem]'}`}>
-      <div className={`relative ${mapHeight} bg-[radial-gradient(circle_at_30%_20%,rgba(15,112,94,0.18),transparent_24%),radial-gradient(circle_at_70%_70%,rgba(233,159,62,0.22),transparent_26%),linear-gradient(135deg,#e8f0ea,#c9ddd1)] p-3 md:p-5`}>
+      <div style={mapStyle} className={`relative ${mapHeight} bg-[radial-gradient(circle_at_30%_20%,rgba(15,112,94,0.18),transparent_24%),radial-gradient(circle_at_70%_70%,rgba(233,159,62,0.22),transparent_26%),linear-gradient(135deg,#e8f0ea,#c9ddd1)] p-3 md:p-5`}>
         <div className="absolute inset-0 opacity-35 [background-image:linear-gradient(rgba(15,61,53,.16)_1px,transparent_1px),linear-gradient(90deg,rgba(15,61,53,.16)_1px,transparent_1px)] [background-size:42px_42px]" />
         <MapOverlayHeader listingsCount={points.length} onExpand={onExpand} />
         {points.map((listing, index) => {
@@ -1052,7 +1229,7 @@ function SaveSearchModal({ open, onClose, filters }: { open: boolean; onClose: (
           <div className="py-8 text-center">
             <CheckCircle2 className="mx-auto text-[#0f705e]" size={44} />
             <h2 className="mt-4 text-3xl font-semibold tracking-[-0.05em]">Search saved</h2>
-            <p className="mt-3 text-sm leading-6 text-[#66746f]">The API stored this saved search. Alerts can be wired to email/SMS later.</p>
+            <p className="mt-3 text-sm leading-6 text-[#66746f]">Your search has been saved. Matching homes and price changes can be sent as alerts.</p>
             <button onClick={onClose} className="mt-6 w-full rounded-2xl bg-[#0f3d35] px-4 py-3 text-sm font-bold text-white">Close</button>
           </div>
         ) : (
@@ -1091,7 +1268,7 @@ function LeadsPage() {
   const { data, isLoading, isError } = useQuery({ queryKey: ['leads'], queryFn: fetchLeads })
   return (
     <Shell compact>
-      <ContentHeader kicker="Admin lead inbox" title="A lightweight inbox for showing requests and buyer/renter interest." description="This proves the lead-capture loop: search, listing detail, inquiry, admin follow-up. Full auth and assignment can come later." />
+      <ContentHeader kicker="Lead inbox" title="Showing requests and buyer/renter interest in one place." description="Review new inquiries, contact preferences, and the listing each person asked about." />
       <section className="mx-auto max-w-6xl px-5 pb-10">
         {isLoading && <StateCard>Loading leads...</StateCard>}
         {isError && <StateCard tone="error">Unable to load leads.</StateCard>}
@@ -1113,7 +1290,7 @@ function LeadsPage() {
               {lead.message && <p className="mt-4 text-sm leading-6 text-[#66746f]">{lead.message}</p>}
             </article>
           ))}
-          {data?.leads.length === 0 && <StateCard>No leads yet. Submit a request from a listing detail page to test the flow.</StateCard>}
+          {data?.leads.length === 0 && <StateCard>No leads yet. New tour requests and price alerts will appear here.</StateCard>}
         </div>
       </section>
     </Shell>
@@ -1156,7 +1333,7 @@ function MobileMenuDrawer({ open, onClose }: { open: boolean; onClose: () => voi
           ))}
         </div>
         <div className={`absolute bottom-6 left-5 right-5 rounded-3xl bg-white/10 p-4 text-sm leading-6 text-white/72 transition-all delay-200 duration-300 ${open ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0'}`}>
-          Hafa Homes is a Guam-first housing search demo built around map search, local filters, and agent workflows.
+          Hafa Homes helps buyers and renters search Guam by village, commute, budget, and island-ready features.
         </div>
       </div>
     </div>
@@ -1190,7 +1367,7 @@ function PriceTrackerModal({ listing, open, onClose }: { listing: Listing; open:
           <div className="py-8 text-center">
             <CheckCircle2 className="mx-auto text-[#0f705e]" size={44} />
             <h2 className="mt-4 text-3xl font-semibold tracking-[-0.05em]">Price tracker saved</h2>
-            <p className="mt-3 text-sm leading-6 text-[#66746f]">We captured the target price. Later this can become a dedicated alerts workflow.</p>
+            <p className="mt-3 text-sm leading-6 text-[#66746f]">Your price alert is saved. We will watch this listing for changes.</p>
             <button onClick={onClose} className="mt-6 w-full rounded-2xl bg-[#0f3d35] px-4 py-3 text-sm font-bold text-white">Close</button>
           </div>
         ) : (
@@ -1244,36 +1421,36 @@ function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean
   }
 
   return (
-    <div className="fixed inset-0 z-[70] grid place-items-end bg-black/45 p-3 backdrop-blur-sm md:place-items-center">
-      <div className="w-full max-w-lg rounded-[2rem] bg-white p-6 shadow-2xl">
+    <div className="fixed inset-0 z-[70] grid place-items-end bg-black/45 p-2 backdrop-blur-sm md:place-items-center md:p-3">
+      <div className="safe-bottom max-h-[calc(100svh-1rem)] w-full max-w-lg overflow-y-auto overscroll-contain rounded-[1.5rem] bg-white p-4 shadow-2xl md:max-h-[calc(100vh-2rem)] md:rounded-[2rem] md:p-6">
         {mutation.isSuccess ? (
           <div className="py-8 text-center">
             <CheckCircle2 className="mx-auto text-[#0f705e]" size={44} />
             <h2 className="mt-4 text-3xl font-semibold tracking-[-0.05em]">Inquiry captured</h2>
-            <p className="mt-3 text-sm leading-6 text-[#66746f]">This lead is stored in the Rails API. Later we can route it to agents or property managers.</p>
+            <p className="mt-3 text-sm leading-6 text-[#66746f]">Your request has been received. The Hafa Homes team can follow up with next steps.</p>
             <button onClick={onClose} className="mt-6 w-full rounded-2xl bg-[#0f3d35] px-4 py-3 text-sm font-bold text-white">Close</button>
           </div>
         ) : (
-          <form onSubmit={handleSubmit}>
+          <form onSubmit={handleSubmit} className="pb-4">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#0f705e]">Schedule Tour</p>
-                <h2 className="mt-2 text-3xl font-semibold tracking-[-0.05em]">Request a showing</h2>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#0f705e] md:text-sm">Schedule Tour</p>
+                <h2 className="mt-1 text-2xl font-semibold tracking-[-0.05em] md:mt-2 md:text-3xl">Request a showing</h2>
               </div>
               <button type="button" onClick={onClose} className="rounded-full border border-[#d7ded9] px-3 py-2 text-sm font-bold">Close</button>
             </div>
-            <div className="mt-5 rounded-3xl bg-[#f6f1e8] p-4">
+            <div className="mt-4 rounded-3xl bg-[#f6f1e8] p-4 md:mt-5">
               <div className="flex items-center gap-4">
-                <img src="/hafa-homes-mark.svg" alt="" className="h-16 w-16 rounded-2xl" />
+                <img src="/hafa-homes-mark.svg" alt="" className="h-12 w-12 rounded-2xl md:h-16 md:w-16" />
                 <div>
-                  <p className="text-lg font-bold text-[#17211f]">Hafa Homes Demo Team</p>
-                  <p className="text-sm font-semibold text-[#66746f]">hello@hafahomes.com</p>
-                  <p className="text-sm font-semibold text-[#66746f]">(671) 555-0199</p>
+                  <p className="text-base font-bold text-[#17211f] md:text-lg">Hafa Homes Team</p>
+                  <p className="text-xs font-semibold text-[#66746f] md:text-sm">hello@hafahomes.com</p>
+                  <p className="text-xs font-semibold text-[#66746f] md:text-sm">(671) 555-0199</p>
                 </div>
               </div>
-              <p className="mt-4 text-sm font-semibold text-[#304942]">{listing.address}</p>
+              <p className="mt-3 text-sm font-semibold text-[#304942] md:mt-4">{listing.address}</p>
             </div>
-            <div className="mt-5 grid grid-cols-2 gap-3">
+            <div className="mt-4 grid grid-cols-2 gap-3 md:mt-5">
               <label className="cursor-pointer">
                 <input type="radio" name="tour_type" value="in_person" defaultChecked className="peer sr-only" />
                 <span className="block rounded-2xl border border-[#d7ded9] px-4 py-3 text-center text-sm font-bold text-[#304942] peer-checked:border-[#17a9df] peer-checked:text-[#17a9df]">In Person</span>
@@ -1283,7 +1460,7 @@ function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean
                 <span className="block rounded-2xl border border-[#d7ded9] px-4 py-3 text-center text-sm font-bold text-[#304942] peer-checked:border-[#17a9df] peer-checked:text-[#17a9df]">Virtual</span>
               </label>
             </div>
-            <div className="mt-5 grid grid-cols-4 gap-2 text-center text-xs font-bold text-[#53645f]">
+            <div className="mt-4 grid grid-cols-4 gap-2 text-center text-xs font-bold text-[#53645f] md:mt-5">
               {tourDateOptions().map((day, index) => (
                 <label key={day.value} className="cursor-pointer">
                   <input type="radio" name="preferred_tour_date" value={day.value} defaultChecked={index === 0} className="peer sr-only" />
@@ -1291,7 +1468,7 @@ function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean
                 </label>
               ))}
             </div>
-            <div className="mt-5 grid gap-3">
+            <div className="mt-4 grid gap-3 md:mt-5">
               <Input name="name" label="Name" required />
               <Input name="email" label="Email" type="email" required />
               <Input name="phone" label="Phone" />
@@ -1327,9 +1504,9 @@ function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean
   )
 }
 
-function Shell({ children, compact = false }: { children: React.ReactNode; compact?: boolean }) {
+function Shell({ children, compact = false, mobileBottomPadding = true }: { children: React.ReactNode; compact?: boolean; mobileBottomPadding?: boolean }) {
   return (
-    <main className="min-h-screen bg-[#f6f1e8] pb-20 text-[#17211f] md:pb-0">
+    <main className={`min-h-screen bg-[#f6f1e8] text-[#17211f] md:pb-0 ${mobileBottomPadding ? 'pb-20' : 'pb-0'}`}>
       {compact && <div className="bg-[#0f3d35] px-5 py-5 text-white"><div className="mx-auto max-w-7xl"><TopNav /></div></div>}
       {children}
       <MobileNav />
@@ -1344,6 +1521,7 @@ function TopNav() {
       <div className="hidden items-center gap-5 text-sm font-semibold text-white/82 md:flex">
         <Link to="/villages">Villages</Link>
         <Link to="/military">Military</Link>
+        <Link to="/saved">Saved</Link>
         <Link to="/admin/sync">MLS sync</Link>
         <Link to="/admin/leads">Leads</Link>
       </div>
@@ -1354,7 +1532,7 @@ function TopNav() {
 
 function MobileNav() {
   return (
-    <nav className="safe-bottom fixed inset-x-0 bottom-0 z-50 border-t border-black/10 bg-white/90 px-4 pt-3 backdrop-blur md:hidden">
+    <nav data-mobile-nav className="safe-bottom fixed inset-x-0 bottom-0 z-50 border-t border-black/10 bg-white/90 px-4 pt-3 backdrop-blur md:hidden">
       <div className="mx-auto grid max-w-md grid-cols-4 text-center text-xs font-semibold text-[#53645f]">
         <Link to="/" className="flex flex-col items-center gap-1"><Home size={19} /> Search</Link>
         <Link to="/villages" className="flex flex-col items-center gap-1"><Map size={19} /> Villages</Link>
@@ -1392,16 +1570,16 @@ function SearchAside({ listings }: { listings: Listing[] }) {
     <aside className="space-y-4">
       <div className="rounded-[2rem] bg-[#173f38] p-6 text-white shadow-xl shadow-[#173f38]/15">
         <Waves className="text-[#bdebdc]" />
-        <h2 className="mt-5 text-3xl font-semibold tracking-[-0.05em]">Built around Guam search patterns.</h2>
-        <p className="mt-3 text-sm leading-6 text-white/75">A demo foundation for MLS sync, military relocation, rentals, village insights, and local lead capture.</p>
+        <h2 className="mt-5 text-3xl font-semibold tracking-[-0.05em]">Search Guam by how people actually live here.</h2>
+        <p className="mt-3 text-sm leading-6 text-white/75">Compare villages, base commute, furnished rentals, ocean views, and island-ready features in one focused search.</p>
       </div>
       <div className="rounded-[2rem] border border-black/5 bg-white p-5">
         <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#7b8a84]">Market pulse</p>
         <div className="mt-4 grid grid-cols-2 gap-3">
           <MiniStat label="Shown" value={listings.length.toString()} />
-          <MiniStat label="Source" value="Demo" />
-          <MiniStat label="Alerts" value="Ready" />
-          <MiniStat label="PWA" value="On" />
+          <MiniStat label="Villages" value="Guam" />
+          <MiniStat label="Saved" value="On" />
+          <MiniStat label="Tours" value="Ready" />
         </div>
       </div>
     </aside>
