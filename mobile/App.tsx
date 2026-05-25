@@ -1,7 +1,9 @@
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import { StatusBar } from 'expo-status-bar'
 import { useEffect, useMemo, useState } from 'react'
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Image,
   Linking,
@@ -60,6 +62,8 @@ type Listing = {
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000'
 const FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1600047509807-ba8f99d2cdde?auto=format&fit=crop&w=1200&q=80'
+const SAVED_LISTING_IDS_KEY = 'hafaHomes:savedListingIds'
+const SAVED_LISTINGS_KEY = 'hafaHomes:savedListings'
 
 const tabs: Array<{ key: TabKey; label: string; icon: string }> = [
   { key: 'search', label: 'Search', icon: '⌂' },
@@ -95,6 +99,45 @@ export default function App() {
   const [savedListingIds, setSavedListingIds] = useState<number[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadSavedListings() {
+      try {
+        const [savedIdsJson, savedListingsJson] = await Promise.all([
+          AsyncStorage.getItem(SAVED_LISTING_IDS_KEY),
+          AsyncStorage.getItem(SAVED_LISTINGS_KEY),
+        ])
+        if (cancelled) return
+
+        const persistedIds = savedIdsJson ? JSON.parse(savedIdsJson) : []
+        const persistedListings = savedListingsJson ? JSON.parse(savedListingsJson) : []
+
+        if (Array.isArray(persistedIds)) {
+          setSavedListingIds(persistedIds.filter((id): id is number => typeof id === 'number'))
+        }
+
+        if (Array.isArray(persistedListings)) {
+          setListingCache((current) => {
+            const next = { ...current }
+            persistedListings.forEach((listing) => {
+              if (listing && typeof listing.id === 'number') next[listing.id] = listing as Listing
+            })
+            return next
+          })
+        }
+      } catch (storageError) {
+        console.warn('Unable to load saved Hafa Homes listings', storageError)
+      }
+    }
+
+    loadSavedListings()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -137,9 +180,21 @@ export default function App() {
   )
 
   function toggleSaved(listingId: number) {
-    setSavedListingIds((current) => (
-      current.includes(listingId) ? current.filter((id) => id !== listingId) : [...current, listingId]
-    ))
+    setSavedListingIds((current) => {
+      const nextIds = current.includes(listingId) ? current.filter((id) => id !== listingId) : [...current, listingId]
+      const listingToCache = listingCache[listingId] ?? listings.find((listing) => listing.id === listingId) ?? selectedListing
+      const nextCache = listingToCache ? { ...listingCache, [listingId]: listingToCache } : listingCache
+      const persistedListings = nextIds.map((id) => nextCache[id]).filter((listing): listing is Listing => Boolean(listing))
+
+      if (listingToCache && !listingCache[listingId]) setListingCache(nextCache)
+
+      Promise.all([
+        AsyncStorage.setItem(SAVED_LISTING_IDS_KEY, JSON.stringify(nextIds)),
+        AsyncStorage.setItem(SAVED_LISTINGS_KEY, JSON.stringify(persistedListings)),
+      ]).catch((storageError) => console.warn('Unable to persist saved Hafa Homes listings', storageError))
+
+      return nextIds
+    })
   }
 
   if (selectedListing) {
@@ -372,7 +427,10 @@ function ListingDetailScreen({ listing, saved, onBack, onToggleSaved }: { listin
           <Pressable style={styles.primaryCta} onPress={() => Linking.openURL(`mailto:hello@hafahomes.com?subject=Showing request for ${encodeURIComponent(listing.title)}`)}>
             <Text style={styles.primaryCtaText}>Request a showing</Text>
           </Pressable>
-          <Pressable style={styles.secondaryCta}>
+          <Pressable
+            style={styles.secondaryCta}
+            onPress={() => Alert.alert('Mortgage estimate coming soon', 'The native app roadmap includes a guided mortgage calculator with down payment, rate, term, and monthly payment estimates.')}
+          >
             <Text style={styles.secondaryCtaText}>Estimate mortgage payment</Text>
           </Pressable>
         </View>
