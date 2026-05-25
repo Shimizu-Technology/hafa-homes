@@ -97,6 +97,7 @@ export default function App() {
   const [listingCache, setListingCache] = useState<Record<number, Listing>>({})
   const [selectedListing, setSelectedListing] = useState<Listing | null>(null)
   const [savedListingIds, setSavedListingIds] = useState<number[]>([])
+  const [savedStorageLoaded, setSavedStorageLoaded] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -129,6 +130,8 @@ export default function App() {
         }
       } catch (storageError) {
         console.warn('Unable to load saved Hafa Homes listings', storageError)
+      } finally {
+        if (!cancelled) setSavedStorageLoaded(true)
       }
     }
 
@@ -179,22 +182,25 @@ export default function App() {
     [listingCache, savedListingIds],
   )
 
+  useEffect(() => {
+    if (!savedStorageLoaded) return
+
+    Promise.all([
+      AsyncStorage.setItem(SAVED_LISTING_IDS_KEY, JSON.stringify(savedListingIds)),
+      AsyncStorage.setItem(SAVED_LISTINGS_KEY, JSON.stringify(savedListings)),
+    ]).catch((storageError) => console.warn('Unable to persist saved Hafa Homes listings', storageError))
+  }, [savedListingIds, savedListings, savedStorageLoaded])
+
   function toggleSaved(listingId: number) {
-    setSavedListingIds((current) => {
-      const nextIds = current.includes(listingId) ? current.filter((id) => id !== listingId) : [...current, listingId]
-      const listingToCache = listingCache[listingId] ?? listings.find((listing) => listing.id === listingId) ?? selectedListing
-      const nextCache = listingToCache ? { ...listingCache, [listingId]: listingToCache } : listingCache
-      const persistedListings = nextIds.map((id) => nextCache[id]).filter((listing): listing is Listing => Boolean(listing))
+    const listingToCache = listingCache[listingId] ?? listings.find((listing) => listing.id === listingId) ?? selectedListing
 
-      if (listingToCache && !listingCache[listingId]) setListingCache(nextCache)
+    if (listingToCache && !listingCache[listingId]) {
+      setListingCache((current) => ({ ...current, [listingId]: listingToCache }))
+    }
 
-      Promise.all([
-        AsyncStorage.setItem(SAVED_LISTING_IDS_KEY, JSON.stringify(nextIds)),
-        AsyncStorage.setItem(SAVED_LISTINGS_KEY, JSON.stringify(persistedListings)),
-      ]).catch((storageError) => console.warn('Unable to persist saved Hafa Homes listings', storageError))
-
-      return nextIds
-    })
+    setSavedListingIds((current) => (
+      current.includes(listingId) ? current.filter((id) => id !== listingId) : [...current, listingId]
+    ))
   }
 
   if (selectedListing) {
