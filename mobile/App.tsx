@@ -4,6 +4,7 @@ import { WebView } from 'react-native-webview'
 import { useEffect, useMemo, useState } from 'react'
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Image,
   Linking,
@@ -103,11 +104,13 @@ async function fetchListings(kind: ListingKind): Promise<Listing[]> {
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabKey>('map')
   const [kind, setKind] = useState<ListingKind>('sale')
+  const [searchQuery, setSearchQuery] = useState('')
   const [listings, setListings] = useState<Listing[]>([])
   const [listingCache, setListingCache] = useState<Record<number, Listing>>({})
   const [selectedListing, setSelectedListing] = useState<Listing | null>(null)
   const [savedListingIds, setSavedListingIds] = useState<number[]>([])
   const [savedStorageLoaded, setSavedStorageLoaded] = useState(false)
+  const [fullMapOpen, setFullMapOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -153,6 +156,10 @@ export default function App() {
   }, [])
 
   useEffect(() => {
+    if (activeTab !== 'map' && fullMapOpen) setFullMapOpen(false)
+  }, [activeTab, fullMapOpen])
+
+  useEffect(() => {
     let cancelled = false
 
     async function loadListings() {
@@ -186,6 +193,21 @@ export default function App() {
       cancelled = true
     }
   }, [kind])
+
+  const filteredListings = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase()
+    if (!query) return listings
+
+    return listings.filter((listing) => [
+      listing.title,
+      listing.address,
+      listing.village.name,
+      listing.property_type,
+      listing.agent_name,
+      listing.brokerage_name,
+      ...listing.features.map((feature) => feature.name),
+    ].filter(Boolean).some((value) => String(value).toLowerCase().includes(query)))
+  }, [listings, searchQuery])
 
   const savedListings = useMemo(
     () => savedListingIds.map((id) => listingCache[id]).filter((listing): listing is Listing => Boolean(listing)),
@@ -227,7 +249,7 @@ export default function App() {
   return (
     <SafeAreaView style={styles.shell}>
       <StatusBar style="light" />
-      <View style={styles.header}>
+      {!(activeTab === 'map' && fullMapOpen) && <View style={styles.header}>
         <View style={styles.brandRow}>
           <View style={styles.brandMark}><Image source={require('./assets/hafa-homes-icon.png')} style={styles.brandMarkImage} /></View>
           <View>
@@ -237,7 +259,14 @@ export default function App() {
         </View>
         <View style={styles.searchBar}>
           <Text style={styles.searchIcon}>⌕</Text>
-          <TextInput placeholder="Address, village, or MLS" placeholderTextColor="#53645f" style={styles.searchInput} />
+          <TextInput
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholder="Address, village, or MLS"
+            placeholderTextColor="#53645f"
+            returnKeyType="search"
+            style={styles.searchInput}
+          />
         </View>
         <View style={styles.segmentedControl}>
           {(['sale', 'rent'] as const).map((option) => (
@@ -245,24 +274,24 @@ export default function App() {
               <Text style={[styles.segmentText, kind === option && styles.segmentTextActive]}>{option === 'sale' ? 'Buy' : 'Rent'}</Text>
             </Pressable>
           ))}
-          <Text style={styles.resultCount}>{listings.length} found</Text>
+          <Text style={styles.resultCount}>{filteredListings.length} found</Text>
         </View>
-      </View>
+      </View>}
 
-      <View style={styles.content}>
+      <View style={[styles.content, activeTab === 'map' && fullMapOpen && styles.fullMapContent]}>
         {activeTab === 'search' && (
           loading
             ? <CenteredState label="Loading Guam listings..." loading />
             : error
               ? <CenteredState label={error} />
-              : <SearchScreen listings={listings} savedIds={savedListingIds} onOpen={setSelectedListing} onToggleSaved={toggleSaved} />
+              : <SearchScreen listings={filteredListings} savedIds={savedListingIds} onOpen={setSelectedListing} onToggleSaved={toggleSaved} />
         )}
         {activeTab === 'map' && (
           loading
             ? <CenteredState label="Loading Guam listings..." loading />
             : error
               ? <CenteredState label={error} />
-              : <MapScreen listings={listings} onOpen={setSelectedListing} />
+              : <MapScreen listings={filteredListings} onOpen={setSelectedListing} fullMap={fullMapOpen} onToggleFullMap={() => setFullMapOpen((current) => !current)} />
         )}
         {activeTab === 'saved' && (
           savedStorageLoaded
@@ -273,7 +302,7 @@ export default function App() {
         {activeTab === 'more' && <MoreScreen />}
       </View>
 
-      <View style={styles.tabBar}>
+      {!(activeTab === 'map' && fullMapOpen) && <View style={styles.tabBar}>
         {tabs.map((tab) => (
           <Pressable key={tab.key} onPress={() => setActiveTab(tab.key)} style={[styles.tabButton, activeTab === tab.key && styles.tabButtonActive]}>
             <View style={[styles.tabIndicator, activeTab === tab.key && styles.tabIndicatorActive]} />
@@ -281,7 +310,7 @@ export default function App() {
             <Text style={[styles.tabLabel, activeTab === tab.key && styles.tabActive]}>{tab.label}</Text>
           </Pressable>
         ))}
-      </View>
+      </View>}
     </SafeAreaView>
   )
 }
@@ -315,7 +344,7 @@ function SearchScreen({ listings, savedIds, onOpen, onToggleSaved }: { listings:
   )
 }
 
-function MapScreen({ listings, onOpen }: { listings: Listing[]; onOpen: (listing: Listing) => void }) {
+function MapScreen({ listings, onOpen, fullMap, onToggleFullMap }: { listings: Listing[]; onOpen: (listing: Listing) => void; fullMap: boolean; onToggleFullMap: () => void }) {
   const points = listings.filter((listing) => listing.latitude && listing.longitude)
   const mapHtml = useMemo(() => buildMapHtml(points), [points])
 
@@ -340,9 +369,17 @@ function MapScreen({ listings, onOpen }: { listings: Listing[]; onOpen: (listing
             <Text style={styles.mapCanvasCopy}>{MAPBOX_TOKEN ? 'Homes with map coordinates will appear here as soon as they are available.' : 'Add EXPO_PUBLIC_MAPBOX_TOKEN to mobile/.env and restart Expo with npm run start -- --clear.'}</Text>
           </View>
         )}
-        <View style={styles.mapOverlay} pointerEvents="none">
-          <Text style={styles.mapTitle}>Map search</Text>
-          <Text style={styles.mapCount}>{points.length} listings</Text>
+        <View style={[styles.mapOverlay, fullMap && styles.mapOverlayFull]}>
+          <View>
+            <Text style={styles.mapTitle}>{fullMap ? 'Full map search' : 'Map search'}</Text>
+            <Text style={styles.mapOverlayHint}>{fullMap ? 'Explore Guam without the app chrome' : 'Tap full map for more room'}</Text>
+          </View>
+          <View style={styles.mapOverlayActions}>
+            <Text style={styles.mapCount}>{points.length} listings</Text>
+            <Pressable onPress={onToggleFullMap} style={styles.mapFullButton}>
+              <Text style={styles.mapFullButtonText}>{fullMap ? 'Done' : 'Full map'}</Text>
+            </Pressable>
+          </View>
         </View>
       </View>
     </View>
@@ -575,6 +612,31 @@ function ListingDetailScreen({ listing, saved, onBack, onToggleSaved }: { listin
   const [imageUri, setImageUri] = useState(listing.photos?.[0]?.url || listing.primary_photo_url || FALLBACK_IMAGE)
   const [showMortgageCalculator, setShowMortgageCalculator] = useState(false)
 
+  async function requestShowing() {
+    const subject = `Showing request for ${listing.title}`
+    const body = `Hi Hafa Homes,\n\nI'm interested in scheduling a showing for ${listing.title} at ${listing.address}, ${listing.village.name}.\n\nThank you.`
+    const mailtoUrl = `mailto:hello@hafahomes.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
+
+    try {
+      const supported = await Linking.canOpenURL(mailtoUrl)
+      if (!supported) {
+        Alert.alert(
+          'Email app unavailable',
+          'Please email hello@hafahomes.com and include the listing name so we can help schedule a showing.',
+        )
+        return
+      }
+
+      await Linking.openURL(mailtoUrl)
+    } catch (error) {
+      console.warn('Unable to open showing request email', error)
+      Alert.alert(
+        'Unable to open email',
+        'Please email hello@hafahomes.com and include the listing name so we can help schedule a showing.',
+      )
+    }
+  }
+
   return (
     <SafeAreaView style={styles.shell}>
       <StatusBar style="light" />
@@ -599,16 +661,20 @@ function ListingDetailScreen({ listing, saved, onBack, onToggleSaved }: { listin
               <Text style={styles.agentMeta}>{listing.brokerage_name || 'Brokerage partner'}</Text>
             </View>
           </View>
-          <Pressable style={styles.primaryCta} onPress={() => Linking.openURL(`mailto:hello@hafahomes.com?subject=Showing request for ${encodeURIComponent(listing.title)}`)}>
+          <Pressable style={styles.primaryCta} onPress={requestShowing}>
             <Text style={styles.primaryCtaText}>Request a showing</Text>
           </Pressable>
-          <Pressable
-            style={styles.secondaryCta}
-            onPress={() => setShowMortgageCalculator((current) => !current)}
-          >
-            <Text style={styles.secondaryCtaText}>{showMortgageCalculator ? 'Hide mortgage calculator' : 'Estimate mortgage payment'}</Text>
-          </Pressable>
-          {showMortgageCalculator && <MortgageCalculator listing={listing} />}
+          {listing.listing_kind === 'sale' && (
+            <>
+              <Pressable
+                style={styles.secondaryCta}
+                onPress={() => setShowMortgageCalculator((current) => !current)}
+              >
+                <Text style={styles.secondaryCtaText}>{showMortgageCalculator ? 'Hide mortgage calculator' : 'Estimate mortgage payment'}</Text>
+              </Pressable>
+              {showMortgageCalculator && <MortgageCalculator listing={listing} />}
+            </>
+          )}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -636,7 +702,7 @@ const colors = {
 }
 
 const styles = StyleSheet.create({
-  shell: { flex: 1, backgroundColor: 'white' },
+  shell: { flex: 1, backgroundColor: colors.green },
   header: { backgroundColor: colors.green, paddingHorizontal: 18, paddingBottom: 16, paddingTop: 12 },
   brandRow: { alignItems: 'center', flexDirection: 'row', gap: 12, marginBottom: 16 },
   brandMark: { alignItems: 'center', backgroundColor: '#0b312b', borderRadius: 18, height: 52, justifyContent: 'center', overflow: 'hidden', width: 52 },
@@ -654,7 +720,8 @@ const styles = StyleSheet.create({
   segmentTextActive: { color: colors.green },
   resultCount: { color: 'rgba(255,255,255,0.72)', fontSize: 12, fontWeight: '900', letterSpacing: 2, paddingHorizontal: 8, textTransform: 'uppercase' },
   content: { backgroundColor: colors.sand, flex: 1 },
-  listContent: { gap: 14, padding: 16, paddingBottom: 110 },
+  fullMapContent: { backgroundColor: '#9fd2eb' },
+  listContent: { gap: 14, padding: 16, paddingBottom: 96 },
   screenIntro: { backgroundColor: 'white', borderRadius: 28, padding: 18 },
   kicker: { color: colors.green2, fontSize: 11, fontWeight: '900', letterSpacing: 2.2, textTransform: 'uppercase' },
   screenTitle: { color: colors.ink, fontSize: 30, fontWeight: '900', letterSpacing: -1.1, marginTop: 5 },
@@ -673,8 +740,8 @@ const styles = StyleSheet.create({
   cardStats: { color: '#324640', fontSize: 13, fontWeight: '800', marginTop: 10 },
   pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 12 },
   pill: { backgroundColor: colors.mint, borderRadius: 999, color: colors.green2, fontSize: 11, fontWeight: '900', overflow: 'hidden', paddingHorizontal: 10, paddingVertical: 6 },
-  tabBar: { backgroundColor: 'rgba(255,255,255,0.96)', borderTopColor: 'rgba(0,0,0,0.08)', borderTopWidth: 1, flexDirection: 'row', paddingBottom: 8, paddingTop: 8 },
-  tabButton: { alignItems: 'center', borderRadius: 18, flex: 1, gap: 2, height: 68, justifyContent: 'center', marginHorizontal: 3, paddingBottom: 4, paddingTop: 3 },
+  tabBar: { backgroundColor: 'rgba(255,255,255,0.96)', borderTopColor: 'rgba(0,0,0,0.08)', borderTopWidth: 1, flexDirection: 'row', paddingBottom: 4, paddingTop: 5 },
+  tabButton: { alignItems: 'center', borderRadius: 18, flex: 1, gap: 1, height: 60, justifyContent: 'center', marginHorizontal: 3, paddingBottom: 2, paddingTop: 2 },
   tabButtonActive: { backgroundColor: colors.mint },
   tabIndicator: { backgroundColor: 'transparent', borderRadius: 999, height: 3, marginBottom: 2, width: 24 },
   tabIndicatorActive: { backgroundColor: colors.green },
@@ -687,9 +754,14 @@ const styles = StyleSheet.create({
   nativeMapFrame: { backgroundColor: '#9fd2eb', flex: 1, overflow: 'hidden' },
   nativeMap: { flex: 1 },
   mapFallback: { alignItems: 'center', backgroundColor: '#9fd2eb', flex: 1, justifyContent: 'center', padding: 28 },
-  mapOverlay: { alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.94)', borderRadius: 24, flexDirection: 'row', justifyContent: 'space-between', left: 14, padding: 16, position: 'absolute', right: 14, top: 14 },
+  mapOverlay: { alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.94)', borderRadius: 24, flexDirection: 'row', justifyContent: 'space-between', left: 14, padding: 14, position: 'absolute', right: 14, top: 14 },
+  mapOverlayFull: { top: 12 },
   mapTitle: { color: colors.ink, fontSize: 20, fontWeight: '900' },
-  mapCount: { backgroundColor: colors.mint, borderRadius: 999, color: colors.green, fontSize: 14, fontWeight: '900', overflow: 'hidden', paddingHorizontal: 14, paddingVertical: 8 },
+  mapOverlayHint: { color: colors.muted, fontSize: 11, fontWeight: '800', marginTop: 2 },
+  mapOverlayActions: { alignItems: 'center', flexDirection: 'row', gap: 8 },
+  mapCount: { backgroundColor: colors.mint, borderRadius: 999, color: colors.green, fontSize: 13, fontWeight: '900', overflow: 'hidden', paddingHorizontal: 12, paddingVertical: 8 },
+  mapFullButton: { backgroundColor: colors.green, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 9 },
+  mapFullButtonText: { color: 'white', fontSize: 12, fontWeight: '900' },
   mapCanvasTitle: { color: colors.green, fontSize: 20, fontWeight: '900', textAlign: 'center' },
   mapCanvasCopy: { color: colors.muted, fontSize: 14, fontWeight: '700', lineHeight: 21, marginTop: 8, textAlign: 'center' },
   mapMarker: { backgroundColor: colors.green, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 9, shadowColor: colors.green, shadowOpacity: 0.25, shadowRadius: 16, shadowOffset: { width: 0, height: 8 } },
