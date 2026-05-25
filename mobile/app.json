@@ -24,7 +24,11 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "extra": {},
+    "extra": {
+      "eas": {
+        "projectId": "d1d219fa-fb79-47c5-9dc2-339645c6b00a"
+      }
+    },
     "plugins": [
       [
         "expo-splash-screen",
@@ -34,6 +38,7 @@
           "backgroundColor": "#0f3d35"
         }
       ]
-    ]
+    ],
+    "owner": "shimizutechnology"
   }
 }
