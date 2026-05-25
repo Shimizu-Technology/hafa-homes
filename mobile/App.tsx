@@ -110,6 +110,7 @@ export default function App() {
   const [selectedListing, setSelectedListing] = useState<Listing | null>(null)
   const [savedListingIds, setSavedListingIds] = useState<number[]>([])
   const [savedStorageLoaded, setSavedStorageLoaded] = useState(false)
+  const [savedStorageWritable, setSavedStorageWritable] = useState(false)
   const [fullMapOpen, setFullMapOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -141,9 +142,13 @@ export default function App() {
             return next
           })
         }
+
+        if (!cancelled) {
+          setSavedStorageWritable(true)
+          setSavedStorageLoaded(true)
+        }
       } catch (storageError) {
         console.warn('Unable to load saved Hafa Homes listings', storageError)
-      } finally {
         if (!cancelled) setSavedStorageLoaded(true)
       }
     }
@@ -215,13 +220,13 @@ export default function App() {
   )
 
   useEffect(() => {
-    if (!savedStorageLoaded) return
+    if (!savedStorageLoaded || !savedStorageWritable) return
 
     Promise.all([
       AsyncStorage.setItem(SAVED_LISTING_IDS_KEY, JSON.stringify(savedListingIds)),
       AsyncStorage.setItem(SAVED_LISTINGS_KEY, JSON.stringify(savedListings)),
     ]).catch((storageError) => console.warn('Unable to persist saved Hafa Homes listings', storageError))
-  }, [savedListingIds, savedListings, savedStorageLoaded])
+  }, [savedListingIds, savedListings, savedStorageLoaded, savedStorageWritable])
 
   function toggleSaved(listingId: number) {
     const listingToCache = listingCache[listingId] ?? listings.find((listing) => listing.id === listingId) ?? selectedListing
