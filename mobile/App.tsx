@@ -269,7 +269,8 @@ export default function App() {
 
       <View style={styles.tabBar}>
         {tabs.map((tab) => (
-          <Pressable key={tab.key} onPress={() => setActiveTab(tab.key)} style={styles.tabButton}>
+          <Pressable key={tab.key} onPress={() => setActiveTab(tab.key)} style={[styles.tabButton, activeTab === tab.key && styles.tabButtonActive]}>
+            <View style={[styles.tabIndicator, activeTab === tab.key && styles.tabIndicatorActive]} />
             <Text style={[styles.tabIcon, activeTab === tab.key && styles.tabActive]}>{tab.icon}</Text>
             <Text style={[styles.tabLabel, activeTab === tab.key && styles.tabActive]}>{tab.label}</Text>
           </Pressable>
@@ -336,8 +337,12 @@ function MapScreen({ listings, onOpen }: { listings: Listing[]; onOpen: (listing
           </NativeMapbox.MapView>
         ) : (
           <View style={styles.mapFallback}>
-            <Text style={styles.mapCanvasTitle}>Mapbox token needed</Text>
-            <Text style={styles.mapCanvasCopy}>Add EXPO_PUBLIC_MAPBOX_TOKEN to mobile/.env and run a custom Expo development build to load the native Mapbox map.</Text>
+            <Text style={styles.mapCanvasTitle}>{MAPBOX_TOKEN ? 'Native map build needed' : 'Mapbox token needed'}</Text>
+            <Text style={styles.mapCanvasCopy}>
+              {MAPBOX_TOKEN
+                ? 'The Mapbox token is configured. Run npm run ios:dev or npm run android:dev so Expo builds the native Mapbox module.'
+                : 'Add EXPO_PUBLIC_MAPBOX_TOKEN to mobile/.env, restart Expo with --clear, then run a custom development build.'}
+            </Text>
           </View>
         )}
         <View style={styles.mapOverlay} pointerEvents="box-none">
@@ -531,8 +536,11 @@ const styles = StyleSheet.create({
   cardStats: { color: '#324640', fontSize: 13, fontWeight: '800', marginTop: 10 },
   pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 12 },
   pill: { backgroundColor: colors.mint, borderRadius: 999, color: colors.green2, fontSize: 11, fontWeight: '900', overflow: 'hidden', paddingHorizontal: 10, paddingVertical: 6 },
-  tabBar: { backgroundColor: 'rgba(255,255,255,0.96)', borderTopColor: 'rgba(0,0,0,0.08)', borderTopWidth: 1, bottom: 0, flexDirection: 'row', left: 0, paddingBottom: 18, paddingTop: 10, position: 'absolute', right: 0 },
-  tabButton: { alignItems: 'center', flex: 1, gap: 2 },
+  tabBar: { backgroundColor: 'rgba(255,255,255,0.96)', borderTopColor: 'rgba(0,0,0,0.08)', borderTopWidth: 1, bottom: 0, flexDirection: 'row', left: 0, paddingBottom: 18, paddingTop: 8, position: 'absolute', right: 0 },
+  tabButton: { alignItems: 'center', borderRadius: 18, flex: 1, gap: 2, marginHorizontal: 3, paddingBottom: 4, paddingTop: 3 },
+  tabButtonActive: { backgroundColor: colors.mint },
+  tabIndicator: { backgroundColor: 'transparent', borderRadius: 999, height: 3, marginBottom: 2, width: 24 },
+  tabIndicatorActive: { backgroundColor: colors.green },
   tabIcon: { color: colors.muted, fontSize: 22, fontWeight: '800' },
   tabLabel: { color: colors.muted, fontSize: 11, fontWeight: '800' },
   tabActive: { color: colors.green },
