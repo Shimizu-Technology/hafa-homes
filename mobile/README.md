@@ -11,6 +11,8 @@ Expo native iOS/Android app for Hafa Homes.
 
 ## Setup
 
+See the root [Local Development](../docs/local-development.md) guide for the full API, web, and mobile workflow.
+
 Expo SDK 56 / React Native 0.85 expects Node `^20.19.4` or newer. Leon's current local Node `20.19.1` still passes `expo-doctor`, but npm prints engine warnings until Node is bumped.
 
 ```bash
@@ -19,14 +21,18 @@ cp .env.example .env
 npm install
 npm run typecheck
 npm run doctor
-npm run ios
+npm run start
 ```
+
+Then press `i` for iOS Simulator, `a` for Android Emulator, or scan the QR code with Expo Go.
 
 For local API access:
 
 - iOS simulator: `EXPO_PUBLIC_API_URL=http://localhost:3000`
 - Android emulator: `EXPO_PUBLIC_API_URL=http://10.0.2.2:3000`
 - physical device: use your Mac's LAN IP or a deployed API URL
+
+Plain `.env` files are intentionally ignored by `mobile/.gitignore`.
 
 ## Current scope
 

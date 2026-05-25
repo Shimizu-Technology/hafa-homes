@@ -90,6 +90,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<TabKey>('search')
   const [kind, setKind] = useState<ListingKind>('sale')
   const [listings, setListings] = useState<Listing[]>([])
+  const [listingCache, setListingCache] = useState<Record<number, Listing>>({})
   const [selectedListing, setSelectedListing] = useState<Listing | null>(null)
   const [savedListingIds, setSavedListingIds] = useState<number[]>([])
   const [loading, setLoading] = useState(true)
@@ -105,6 +106,13 @@ export default function App() {
         const results = await fetchListings(kind)
         if (!cancelled) {
           setListings(results)
+          setListingCache((current) => {
+            const next = { ...current }
+            results.forEach((listing) => {
+              next[listing.id] = listing
+            })
+            return next
+          })
           if (selectedListing && !results.some((listing) => listing.id === selectedListing.id)) {
             setSelectedListing(null)
           }
@@ -124,8 +132,8 @@ export default function App() {
   }, [kind])
 
   const savedListings = useMemo(
-    () => listings.filter((listing) => savedListingIds.includes(listing.id)),
-    [listings, savedListingIds],
+    () => savedListingIds.map((id) => listingCache[id]).filter((listing): listing is Listing => Boolean(listing)),
+    [listingCache, savedListingIds],
   )
 
   function toggleSaved(listingId: number) {
@@ -171,7 +179,7 @@ export default function App() {
       </View>
 
       <View style={styles.content}>
-        {loading && <CenteredState label="Loading Guam listings..." />}
+        {loading && <CenteredState label="Loading Guam listings..." loading />}
         {error && <CenteredState label={error} />}
         {!loading && !error && activeTab === 'search' && (
           <SearchScreen listings={listings} savedIds={savedListingIds} onOpen={setSelectedListing} onToggleSaved={toggleSaved} />
@@ -180,7 +188,7 @@ export default function App() {
           <MapScreen listings={listings} onOpen={setSelectedListing} />
         )}
         {!loading && !error && activeTab === 'saved' && (
-          <SavedScreen listings={savedListings} onOpen={setSelectedListing} />
+          <SavedScreen listings={savedListings} onOpen={setSelectedListing} onToggleSaved={toggleSaved} />
         )}
         {!loading && !error && activeTab === 'agents' && <AgentsScreen listings={listings} />}
         {!loading && !error && activeTab === 'more' && <MoreScreen />}
@@ -252,7 +260,7 @@ function MapScreen({ listings, onOpen }: { listings: Listing[]; onOpen: (listing
   )
 }
 
-function SavedScreen({ listings, onOpen }: { listings: Listing[]; onOpen: (listing: Listing) => void }) {
+function SavedScreen({ listings, onOpen, onToggleSaved }: { listings: Listing[]; onOpen: (listing: Listing) => void; onToggleSaved: (listingId: number) => void }) {
   if (listings.length === 0) {
     return <CenteredState label="Saved homes will appear here. Tap the heart on a listing to save it." />
   }
@@ -263,7 +271,7 @@ function SavedScreen({ listings, onOpen }: { listings: Listing[]; onOpen: (listi
       keyExtractor={(listing) => String(listing.id)}
       contentContainerStyle={styles.listContent}
       ListHeaderComponent={<Text style={styles.screenTitle}>Saved homes</Text>}
-      renderItem={({ item }) => <ListingCard listing={item} saved onOpen={() => onOpen(item)} onToggleSaved={() => {}} />}
+      renderItem={({ item }) => <ListingCard listing={item} saved onOpen={() => onOpen(item)} onToggleSaved={() => onToggleSaved(item.id)} />}
     />
   )
 }
@@ -373,10 +381,10 @@ function ListingDetailScreen({ listing, saved, onBack, onToggleSaved }: { listin
   )
 }
 
-function CenteredState({ label }: { label: string }) {
+function CenteredState({ label, loading = false }: { label: string; loading?: boolean }) {
   return (
     <View style={styles.centeredState}>
-      <ActivityIndicator color="#0f3d35" />
+      {loading && <ActivityIndicator color="#0f3d35" />}
       <Text style={styles.centeredText}>{label}</Text>
     </View>
   )

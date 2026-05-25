@@ -44,44 +44,37 @@ Reason: the PWA is easy to share, fast to iterate, and useful for web/admin/SEO.
 
 ## Local development
 
-### API
+See [Local Development](docs/local-development.md) for the full API, web, and Expo mobile setup.
+
+Quick start:
 
 ```bash
+# Terminal 1: API
 cd api
 bundle install
-bin/rails db:prepare db:seed
-bin/rails runner script/smoke.rb
-bin/rails server
-```
+bundle exec rails db:prepare db:seed
+bundle exec rails server
 
-### Web
-
-```bash
+# Terminal 2: Web PWA
 cd web
 npm install
 npm run dev
-```
 
-The web app expects the API at `http://localhost:3000` by default.
-
-### Mobile
-
-```bash
+# Terminal 3: Expo mobile
 cd mobile
 cp .env.example .env
 npm install
-npm run typecheck
-npm run doctor
-npm run ios
+npm run start
 ```
 
-The mobile app uses `EXPO_PUBLIC_API_URL` from `.env`. For local development, iOS simulator can usually use `http://localhost:3000`; Android emulator usually needs `http://10.0.2.2:3000`.
+The web app uses `VITE_API_URL`; the mobile app uses `EXPO_PUBLIC_API_URL`. Both default to `http://localhost:3000` for local API development.
 
 ## Documentation
 
 - [PRD](PRD.md)
 - [Build Plan](BUILD_PLAN.md)
 - [Architecture](docs/architecture.md)
+- [Local Development](docs/local-development.md)
 - [Product Brief](docs/product/product-brief.md)
 - [MVP Scope](docs/product/mvp-scope.md)
 - [Platform Strategy](docs/product/platform-strategy.md)
