@@ -237,6 +237,7 @@ function App() {
         <Route path="/villages/:slug" element={<VillageDetailPage />} />
         <Route path="/military" element={<MilitaryPage />} />
         <Route path="/saved" element={<SavedPage />} />
+        <Route path="/privacy" element={<PrivacyPage />} />
         <Route path="/admin/sync" element={<SyncPage />} />
         <Route path="/admin/leads" element={<LeadsPage />} />
       </Routes>
@@ -951,6 +952,28 @@ function SavedPage() {
         <ConceptCard icon={<Heart />} title="Favorites" description="Save listings and compare homes or rentals across villages." />
         <ConceptCard icon={<Bell />} title="Listing alerts" description="Get notified when matching homes hit the market or prices change." />
         <ConceptCard icon={<MessageSquare />} title="Tour requests" description="Reach out when you are ready to ask questions or schedule a showing." />
+      </section>
+    </Shell>
+  )
+}
+
+function PrivacyPage() {
+  return (
+    <Shell compact>
+      <ContentHeader
+        kicker="Privacy"
+        title="Hafa Homes privacy policy"
+        description="This preview app helps people explore Guam homes, rentals, and real estate resources while collecting only the information needed to support the experience."
+      />
+      <section className="mx-auto max-w-4xl px-5 pb-12">
+        <div className="grid gap-5 rounded-[2rem] bg-white p-6 text-sm leading-7 text-[#3d4d48] shadow-sm md:p-8">
+          <p><strong className="text-[#17211f]">Information we collect.</strong> Hafa Homes may collect contact details you submit through showing requests, price alerts, saved searches, or similar forms, plus basic app usage information used to improve the product.</p>
+          <p><strong className="text-[#17211f]">How we use it.</strong> We use submitted information to respond to inquiries, coordinate real estate follow-up, improve listing search, troubleshoot the app, and understand aggregate product usage.</p>
+          <p><strong className="text-[#17211f]">Saved listings.</strong> The native app stores saved listing IDs and cached listing details locally on your device so saved homes can remain available between sessions.</p>
+          <p><strong className="text-[#17211f]">Third-party services.</strong> The app may use services such as Mapbox for maps, hosting providers for the API/web app, and analytics or monitoring tools when enabled.</p>
+          <p><strong className="text-[#17211f]">Contact.</strong> For privacy questions or data requests, email <a className="font-bold text-[#0f705e]" href="mailto:hello@hafahomes.com">hello@hafahomes.com</a>.</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#7b8a84]">Last updated May 25, 2026</p>
+        </div>
       </section>
     </Shell>
   )
