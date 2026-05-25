@@ -242,19 +242,27 @@ export default function App() {
       </View>
 
       <View style={styles.content}>
-        {loading && <CenteredState label="Loading Guam listings..." loading />}
-        {error && <CenteredState label={error} />}
-        {!loading && !error && activeTab === 'search' && (
-          <SearchScreen listings={listings} savedIds={savedListingIds} onOpen={setSelectedListing} onToggleSaved={toggleSaved} />
+        {activeTab === 'search' && (
+          loading
+            ? <CenteredState label="Loading Guam listings..." loading />
+            : error
+              ? <CenteredState label={error} />
+              : <SearchScreen listings={listings} savedIds={savedListingIds} onOpen={setSelectedListing} onToggleSaved={toggleSaved} />
         )}
-        {!loading && !error && activeTab === 'map' && (
-          <MapScreen listings={listings} onOpen={setSelectedListing} />
+        {activeTab === 'map' && (
+          loading
+            ? <CenteredState label="Loading Guam listings..." loading />
+            : error
+              ? <CenteredState label={error} />
+              : <MapScreen listings={listings} onOpen={setSelectedListing} />
         )}
-        {!loading && !error && activeTab === 'saved' && (
-          <SavedScreen listings={savedListings} onOpen={setSelectedListing} onToggleSaved={toggleSaved} />
+        {activeTab === 'saved' && (
+          savedStorageLoaded
+            ? <SavedScreen listings={savedListings} onOpen={setSelectedListing} onToggleSaved={toggleSaved} />
+            : <CenteredState label="Loading saved homes..." loading />
         )}
-        {!loading && !error && activeTab === 'agents' && <AgentsScreen listings={listings} />}
-        {!loading && !error && activeTab === 'more' && <MoreScreen />}
+        {activeTab === 'agents' && <AgentsScreen listings={listings} />}
+        {activeTab === 'more' && <MoreScreen />}
       </View>
 
       <View style={styles.tabBar}>
@@ -586,7 +594,7 @@ const styles = StyleSheet.create({
   cardStats: { color: '#324640', fontSize: 13, fontWeight: '800', marginTop: 10 },
   pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 12 },
   pill: { backgroundColor: colors.mint, borderRadius: 999, color: colors.green2, fontSize: 11, fontWeight: '900', overflow: 'hidden', paddingHorizontal: 10, paddingVertical: 6 },
-  tabBar: { backgroundColor: 'rgba(255,255,255,0.96)', borderTopColor: 'rgba(0,0,0,0.08)', borderTopWidth: 1, bottom: 0, flexDirection: 'row', left: 0, paddingBottom: 18, paddingTop: 8, position: 'absolute', right: 0 },
+  tabBar: { backgroundColor: 'rgba(255,255,255,0.96)', borderTopColor: 'rgba(0,0,0,0.08)', borderTopWidth: 1, flexDirection: 'row', paddingBottom: 18, paddingTop: 8 },
   tabButton: { alignItems: 'center', borderRadius: 18, flex: 1, gap: 2, marginHorizontal: 3, paddingBottom: 4, paddingTop: 3 },
   tabButtonActive: { backgroundColor: colors.mint },
   tabIndicator: { backgroundColor: 'transparent', borderRadius: 999, height: 3, marginBottom: 2, width: 24 },
