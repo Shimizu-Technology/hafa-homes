@@ -111,25 +111,34 @@ Possible features:
 - Market snapshots
 - Village demand analytics
 
-## Phase 5: Native app packaging
+## Phase 5: Native mobile app
 
-Goal: Package PWA into iOS/Android once business validation and MLS access support it.
+Goal: Build a dedicated iOS/Android consumer app once the PWA proof-of-concept and broker/agent interest are validated.
+
+Current direction: add a new Expo app in `/mobile` while keeping `/web` for the PWA, landing pages, SEO/content, and admin/broker dashboards.
 
 Mike noted that brokerages may already have websites, so app-store/native app presence can become a selling point.
 
-Options:
+Recommended path:
 
-- Capacitor wrapper around current React app
-- React Native rebuild later if needed
-- Native apps after product/MLS validation
+- Keep Rails API as shared backend
+- Keep `/web` live for demo/admin/web/SEO
+- Add `/mobile` Expo app
+- Build native listing list/detail
+- Build native map search with marker preview bottom sheet
+- Add contact/showing/saved flows
+- Package with EAS Build for TestFlight/Google Play testing
 
 Reasons to do native:
 
 - App-store presence helps sales pitch
+- Better consumer app positioning than another brokerage website
 - Push notifications become important
 - Strong consumer adoption
 - Need deeper mobile capabilities
 - Brokerages/agents want to say their listings are in a real mobile app
+
+See: `docs/product/native-mobile-plan.md`
 
 ## Phase 6: Expansion
 

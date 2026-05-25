@@ -14,20 +14,32 @@ Reasoning:
 
 Target domain: `HafaHomes.com`
 
-## 2. Build PWA first
+## 2. Build PWA first, then dedicated native app
 
-Decision: Start with a mobile-first PWA/web app instead of native iOS/Android.
+Decision: Start with a mobile-first PWA/web app for proof-of-concept, then add a dedicated Expo iOS/Android app under `/mobile` once broker/agent interest is validated.
 
-Reasoning:
+Reasoning for PWA first:
 
 - Faster to build and demo
 - Easier to share with Mike/investor via link
 - No App Store/TestFlight friction
 - Easier to iterate while MLS access is being figured out
 - Good enough for search, maps, favorites, lead capture, and alerts
-- Can later be packaged into iOS/Android using Capacitor or rebuilt native if traction justifies it
 
-Native app decision is deferred until after demo validation and data access clarity. However, native iOS/Android app presence is now recognized as a possible sales differentiator because brokerages may already have websites and IDX pages.
+Updated direction:
+
+- Keep `/web` as the PWA, landing/content surface, and future admin/broker dashboard.
+- Add `/mobile` as the native Expo consumer app.
+- Keep `/api` as the shared backend for both.
+
+Reasoning for native app next:
+
+- Mike validated that brokerages may already have websites/IDX pages.
+- A real iOS/Android app can be a stronger sales differentiator.
+- App Store / Google Play presence supports the “Guam real estate app” positioning.
+- Native app enables push notifications, deep links, native sharing, and stronger retention later.
+
+See: `docs/product/native-mobile-plan.md`
 
 ## 3. Build demo before MLS is finalized
 
