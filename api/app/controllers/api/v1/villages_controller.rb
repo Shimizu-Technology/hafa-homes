@@ -14,6 +14,7 @@ module Api
               description: village.description,
               latitude: village.latitude&.to_f,
               longitude: village.longitude&.to_f,
+              local_intel: village.local_intel || {},
               active_listings_count: village.listings.active.count
             }
           end

@@ -71,7 +71,13 @@ module Api
       def village_json(village)
         return nil unless village
 
-        { id: village.id, name: village.name, slug: village.slug, region: village.region }
+        {
+          id: village.id,
+          name: village.name,
+          slug: village.slug,
+          region: village.region,
+          local_intel: village.local_intel || {}
+        }
       end
 
       def feature_json(feature)

@@ -27,11 +27,22 @@ type Feature = {
   slug: string
 }
 
+type LocalIntel = {
+  summary?: string
+  lifestyle_tags?: string[]
+  schools_note?: string
+  nearby_schools?: string[]
+  parks_and_recreation?: string[]
+  daily_life?: string[]
+  commute_notes?: string[]
+}
+
 type Village = {
   id: number
   name: string
   slug: string
   region?: string
+  local_intel?: LocalIntel
 }
 
 type ListingPhoto = {
@@ -812,6 +823,7 @@ function ListingDetailScreen({ listing, saved, onBack, onToggleSaved }: { listin
           <Text style={styles.detailStats}>{listing.beds} beds · {listing.baths} baths · {listing.square_feet?.toLocaleString() ?? '—'} sqft</Text>
           <Text style={styles.sectionTitle}>Local details</Text>
           <Text style={styles.detailCopy}>{listing.description || 'Explore this Guam listing, request a showing, save it for later, or ask an agent for next steps.'}</Text>
+          <LocalIntelSection listing={listing} />
           <Text style={styles.sectionTitle}>Agent</Text>
           <View style={styles.agentCard}>
             <View style={styles.agentAvatar}><Text style={styles.agentInitial}>{(listing.agent_name || 'H').charAt(0)}</Text></View>
@@ -838,6 +850,51 @@ function ListingDetailScreen({ listing, saved, onBack, onToggleSaved }: { listin
       </ScrollView>
       <ShowingRequestSheet listing={listing} open={showRequestForm} onClose={() => setShowRequestForm(false)} />
     </SafeAreaView>
+  )
+}
+
+function LocalIntelSection({ listing }: { listing: Listing }) {
+  const intel = listing.village.local_intel
+  if (!intel || Object.keys(intel).length === 0) return null
+
+  return (
+    <View style={styles.localIntelCard}>
+      <View style={styles.localIntelHeader}>
+        <View>
+          <Text style={styles.kicker}>Local intel</Text>
+          <Text style={styles.localIntelTitle}>Around {listing.village.name}</Text>
+        </View>
+        {listing.village.region && <Text style={styles.localIntelRegion}>{listing.village.region}</Text>}
+      </View>
+      {intel.summary && <Text style={styles.localIntelSummary}>{intel.summary}</Text>}
+      {Boolean(intel.lifestyle_tags?.length) && (
+        <View style={styles.pillRow}>
+          {intel.lifestyle_tags?.slice(0, 5).map((tag) => <Text key={tag} style={styles.pill}>{tag}</Text>)}
+        </View>
+      )}
+      <LocalIntelList title="Nearby schools" items={intel.nearby_schools} note={intel.schools_note} />
+      <LocalIntelList title="Parks and recreation" items={intel.parks_and_recreation} />
+      <LocalIntelList title="Daily life" items={intel.daily_life} />
+      <LocalIntelList title="Commute notes" items={intel.commute_notes} />
+      <Text style={styles.localIntelDisclaimer}>School assignments, access, and commute times should be verified before making housing decisions.</Text>
+    </View>
+  )
+}
+
+function LocalIntelList({ title, items, note }: { title: string; items?: string[]; note?: string }) {
+  if (!items?.length && !note) return null
+
+  return (
+    <View style={styles.localIntelGroup}>
+      <Text style={styles.localIntelGroupTitle}>{title}</Text>
+      {items?.slice(0, 5).map((item) => (
+        <View key={item} style={styles.localIntelBulletRow}>
+          <View style={styles.localIntelBullet} />
+          <Text style={styles.localIntelBulletText}>{item}</Text>
+        </View>
+      ))}
+      {note && <Text style={styles.localIntelNote}>{note}</Text>}
+    </View>
   )
 }
 
@@ -1057,6 +1114,18 @@ const styles = StyleSheet.create({
   featureRow: { alignItems: 'center', backgroundColor: 'white', borderRadius: 18, flexDirection: 'row', gap: 10, padding: 14 },
   featureBullet: { color: colors.green2, fontSize: 16, fontWeight: '900' },
   featureText: { color: colors.ink, fontSize: 15, fontWeight: '800' },
+  localIntelCard: { backgroundColor: colors.mint, borderColor: '#cfe2d9', borderRadius: 26, borderWidth: 1, marginTop: 24, padding: 16 },
+  localIntelHeader: { alignItems: 'flex-start', flexDirection: 'row', justifyContent: 'space-between', gap: 12 },
+  localIntelTitle: { color: colors.ink, fontSize: 24, fontWeight: '900', letterSpacing: -0.8, marginTop: 4 },
+  localIntelRegion: { backgroundColor: 'white', borderRadius: 999, color: colors.green, fontSize: 11, fontWeight: '900', overflow: 'hidden', paddingHorizontal: 10, paddingVertical: 7, textTransform: 'uppercase' },
+  localIntelSummary: { color: colors.muted, fontSize: 14, fontWeight: '700', lineHeight: 21, marginTop: 10 },
+  localIntelGroup: { backgroundColor: 'rgba(255,255,255,0.72)', borderRadius: 18, marginTop: 12, padding: 12 },
+  localIntelGroupTitle: { color: colors.green, fontSize: 13, fontWeight: '900', marginBottom: 7, textTransform: 'uppercase' },
+  localIntelBulletRow: { alignItems: 'flex-start', flexDirection: 'row', gap: 8, marginTop: 5 },
+  localIntelBullet: { backgroundColor: colors.green2, borderRadius: 999, height: 6, marginTop: 7, width: 6 },
+  localIntelBulletText: { color: colors.ink, flex: 1, fontSize: 13, fontWeight: '800', lineHeight: 19 },
+  localIntelNote: { color: colors.muted, fontSize: 12, fontWeight: '700', lineHeight: 18, marginTop: 8 },
+  localIntelDisclaimer: { color: colors.muted, fontSize: 11, fontWeight: '800', lineHeight: 16, marginTop: 12 },
   detailScroll: { backgroundColor: colors.sand },
   detailContent: { paddingBottom: 28 },
   detailHeader: { alignItems: 'center', backgroundColor: colors.green, flexDirection: 'row', justifyContent: 'space-between', padding: 16 },
