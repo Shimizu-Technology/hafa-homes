@@ -345,7 +345,7 @@ function SearchScreen({ listings, savedIds, onOpen, onToggleSaved }: { listings:
 }
 
 function MapScreen({ listings, onOpen, fullMap, onToggleFullMap }: { listings: Listing[]; onOpen: (listing: Listing) => void; fullMap: boolean; onToggleFullMap: () => void }) {
-  const points = listings.filter((listing) => listing.latitude && listing.longitude)
+  const points = useMemo(() => listings.filter((listing) => listing.latitude && listing.longitude), [listings])
   const mapHtml = useMemo(() => buildMapHtml(points), [points])
 
   return (
@@ -633,8 +633,8 @@ function ListingDetailScreen({ listing, saved, onBack, onToggleSaved }: { listin
       const supported = await Linking.canOpenURL(mailtoUrl)
       if (!supported) {
         Alert.alert(
-          'Email app unavailable',
-          'Please email hello@hafahomes.com and include the listing name so we can help schedule a showing.',
+          'Request a showing',
+          'Tour requests will open a quick in-app form in the production flow. For this preview, please email hello@hafahomes.com and include this listing name.',
         )
         return
       }
@@ -643,8 +643,8 @@ function ListingDetailScreen({ listing, saved, onBack, onToggleSaved }: { listin
     } catch (error) {
       console.warn('Unable to open showing request email', error)
       Alert.alert(
-        'Unable to open email',
-        'Please email hello@hafahomes.com and include the listing name so we can help schedule a showing.',
+        'Request a showing',
+        'Tour requests will open a quick in-app form in the production flow. For this preview, please email hello@hafahomes.com and include this listing name.',
       )
     }
   }
