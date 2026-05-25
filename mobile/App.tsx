@@ -4,10 +4,11 @@ import { WebView } from 'react-native-webview'
 import { useEffect, useMemo, useState } from 'react'
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   Image,
-  Linking,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -99,6 +100,25 @@ async function fetchListings(kind: ListingKind): Promise<Listing[]> {
   if (!response.ok) throw new Error('Unable to load listings')
   const json = await response.json()
   return json.listings ?? []
+}
+
+async function createLead(payload: {
+  listing_id: number
+  lead_type: 'showing_request'
+  name: string
+  email: string
+  phone: string
+  preferred_contact_method: string
+  message: string
+}) {
+  const response = await fetch(`${API_URL}/api/v1/leads`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ lead: payload }),
+  })
+
+  if (!response.ok) throw new Error('Unable to send request')
+  return response.json()
 }
 
 export default function App() {
@@ -296,7 +316,14 @@ export default function App() {
             ? <CenteredState label="Loading Guam listings..." loading />
             : error
               ? <CenteredState label={error} />
-              : <MapScreen listings={filteredListings} onOpen={setSelectedListing} fullMap={fullMapOpen} onToggleFullMap={() => setFullMapOpen((current) => !current)} />
+              : <MapScreen
+                listings={filteredListings}
+                savedIds={savedListingIds}
+                onOpen={setSelectedListing}
+                onToggleSaved={toggleSaved}
+                fullMap={fullMapOpen}
+                onToggleFullMap={() => setFullMapOpen((current) => !current)}
+              />
         )}
         {activeTab === 'saved' && (
           savedStorageLoaded
@@ -349,9 +376,17 @@ function SearchScreen({ listings, savedIds, onOpen, onToggleSaved }: { listings:
   )
 }
 
-function MapScreen({ listings, onOpen, fullMap, onToggleFullMap }: { listings: Listing[]; onOpen: (listing: Listing) => void; fullMap: boolean; onToggleFullMap: () => void }) {
+function MapScreen({ listings, savedIds, onOpen, onToggleSaved, fullMap, onToggleFullMap }: { listings: Listing[]; savedIds: number[]; onOpen: (listing: Listing) => void; onToggleSaved: (listingId: number) => void; fullMap: boolean; onToggleFullMap: () => void }) {
+  const [mapLoading, setMapLoading] = useState(true)
+  const [previewListing, setPreviewListing] = useState<Listing | null>(null)
   const points = useMemo(() => listings.filter((listing) => listing.latitude && listing.longitude), [listings])
   const mapHtml = useMemo(() => buildMapHtml(points), [points])
+  const mapSource = useMemo(() => ({ html: mapHtml }), [mapHtml])
+
+  useEffect(() => {
+    setMapLoading(Boolean(MAPBOX_TOKEN && points.length > 0))
+    setPreviewListing(null)
+  }, [mapHtml, points.length])
 
   return (
     <View style={styles.mapScreen}>
@@ -359,12 +394,26 @@ function MapScreen({ listings, onOpen, fullMap, onToggleFullMap }: { listings: L
         {MAPBOX_TOKEN && points.length > 0 ? (
           <WebView
             originWhitelist={['*']}
-            source={{ html: mapHtml }}
+            source={mapSource}
             style={styles.nativeMap}
+            onLoadEnd={() => setMapLoading(false)}
             onMessage={(event) => {
-              const listingId = Number(event.nativeEvent.data)
-              const listing = listings.find((item) => item.id === listingId)
-              if (listing) onOpen(listing)
+              try {
+                const message = JSON.parse(event.nativeEvent.data)
+                if (message.type === 'map-ready') {
+                  setMapLoading(false)
+                  return
+                }
+                if (message.type === 'listing-preview') {
+                  const listing = listings.find((item) => item.id === Number(message.id))
+                  if (listing) setPreviewListing(listing)
+                  return
+                }
+              } catch {
+                const listingId = Number(event.nativeEvent.data)
+                const listing = listings.find((item) => item.id === listingId)
+                if (listing) setPreviewListing(listing)
+              }
             }}
             scrollEnabled={false}
           />
@@ -374,10 +423,11 @@ function MapScreen({ listings, onOpen, fullMap, onToggleFullMap }: { listings: L
             <Text style={styles.mapCanvasCopy}>{MAPBOX_TOKEN ? 'Homes with map coordinates will appear here as soon as they are available.' : 'Add EXPO_PUBLIC_MAPBOX_TOKEN to mobile/.env and restart Expo with npm run start -- --clear.'}</Text>
           </View>
         )}
+        {mapLoading && <MapLoadingOverlay />}
         <View style={[styles.mapOverlay, fullMap && styles.mapOverlayFull]}>
           <View>
             <Text style={styles.mapTitle}>{fullMap ? 'Full map search' : 'Map search'}</Text>
-            <Text style={styles.mapOverlayHint}>{fullMap ? 'Explore Guam without the app chrome' : 'Tap full map for more room'}</Text>
+            <Text style={styles.mapOverlayHint}>{fullMap ? 'Explore Guam without the app chrome' : 'Zoom in for price pins'}</Text>
           </View>
           <View style={styles.mapOverlayActions}>
             <Text style={styles.mapCount}>{points.length} listings</Text>
@@ -386,6 +436,52 @@ function MapScreen({ listings, onOpen, fullMap, onToggleFullMap }: { listings: L
             </Pressable>
           </View>
         </View>
+        {previewListing && (
+          <MapListingPreview
+            listing={previewListing}
+            saved={savedIds.includes(previewListing.id)}
+            onClose={() => setPreviewListing(null)}
+            onOpen={() => onOpen(previewListing)}
+            onToggleSaved={() => onToggleSaved(previewListing.id)}
+          />
+        )}
+      </View>
+    </View>
+  )
+}
+
+function MapLoadingOverlay() {
+  return (
+    <View style={styles.mapLoadingOverlay} pointerEvents="none">
+      <View style={styles.mapLoadingCard}>
+        <ActivityIndicator color={colors.green} />
+        <Text style={styles.mapLoadingTitle}>Drawing Guam map</Text>
+        <Text style={styles.mapLoadingCopy}>Loading villages, homes, and search pins.</Text>
+      </View>
+    </View>
+  )
+}
+
+function MapListingPreview({ listing, saved, onOpen, onClose, onToggleSaved }: { listing: Listing; saved: boolean; onOpen: () => void; onClose: () => void; onToggleSaved: () => void }) {
+  const [imageUri, setImageUri] = useState(listing.primary_photo_url || FALLBACK_IMAGE)
+
+  return (
+    <View style={styles.mapPreviewCard}>
+      <Image source={{ uri: imageUri }} onError={() => setImageUri(FALLBACK_IMAGE)} style={styles.mapPreviewImage} />
+      <View style={styles.mapPreviewBody}>
+        <View style={styles.cardTopRow}>
+          <Text style={styles.mapPreviewPrice}>{currency(listing.price, listing.listing_kind)}</Text>
+          <View style={styles.mapPreviewActions}>
+            <Pressable onPress={onToggleSaved} hitSlop={10} style={[styles.saveButton, saved && styles.saveButtonActive]}>
+              <Text style={[styles.saveText, saved && styles.saveTextActive]}>{saved ? '♥' : '♡'}</Text>
+            </Pressable>
+            <Pressable onPress={onClose} hitSlop={10} style={styles.mapPreviewClose}><Text style={styles.mapPreviewCloseText}>×</Text></Pressable>
+          </View>
+        </View>
+        <Text numberOfLines={1} style={styles.cardTitle}>{listing.title}</Text>
+        <Text numberOfLines={1} style={styles.cardMeta}>{listing.village.name} · {listing.address}</Text>
+        <Text style={styles.cardStats}>{listing.beds} beds · {listing.baths} baths · {listing.square_feet?.toLocaleString() ?? '—'} sqft</Text>
+        <Pressable onPress={onOpen} style={styles.mapPreviewCta}><Text style={styles.mapPreviewCtaText}>View details</Text></Pressable>
       </View>
     </View>
   )
@@ -410,6 +506,7 @@ function buildMapHtml(points: Listing[]) {
     latitude: listing.latitude,
     longitude: listing.longitude,
     title: listing.title,
+    village: listing.village.name,
   }))
 
   return `<!doctype html>
@@ -421,18 +518,40 @@ function buildMapHtml(points: Listing[]) {
     <style>
       html, body, #map { height: 100%; margin: 0; width: 100%; }
       body { background: #9fd2eb; overflow: hidden; }
-      .marker {
+      .marker, .cluster {
         appearance: none;
-        background: #0f3d35;
         border: 0;
         border-radius: 999px;
         box-shadow: 0 14px 28px rgba(15, 61, 53, 0.28);
-        color: white;
         cursor: pointer;
         font: 800 13px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
         min-height: 38px;
-        padding: 0 14px;
         white-space: nowrap;
+      }
+      .marker {
+        background: #0f3d35;
+        color: white;
+        padding: 0 14px;
+      }
+      .cluster {
+        align-items: center;
+        background: rgba(255, 255, 255, 0.94);
+        border: 2px solid rgba(15, 61, 53, 0.18);
+        color: #0f3d35;
+        display: inline-flex;
+        gap: 7px;
+        padding: 0 13px;
+      }
+      .cluster-count {
+        align-items: center;
+        background: #0f3d35;
+        border-radius: 999px;
+        color: white;
+        display: inline-flex;
+        height: 24px;
+        justify-content: center;
+        min-width: 24px;
+        padding: 0 4px;
       }
     </style>
   </head>
@@ -453,25 +572,67 @@ function buildMapHtml(points: Listing[]) {
       map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'bottom-right');
 
       const bounds = new mapboxgl.LngLatBounds();
+      const priceMarkers = [];
+      const clusterMarkers = [];
+      const grouped = new Map();
+
+      function postMessage(message) {
+        window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify(message));
+      }
+
       points.forEach((listing) => {
         if (!listing.latitude || !listing.longitude) return;
-        const element = document.createElement('button');
-        element.className = 'marker';
-        element.textContent = listing.price;
-        element.setAttribute('aria-label', listing.title);
-        element.addEventListener('click', () => {
-          window.ReactNativeWebView && window.ReactNativeWebView.postMessage(String(listing.id));
-        });
-        new mapboxgl.Marker({ element, anchor: 'center' })
-          .setLngLat([listing.longitude, listing.latitude])
-          .addTo(map);
         bounds.extend([listing.longitude, listing.latitude]);
+
+        const priceElement = document.createElement('button');
+        priceElement.className = 'marker';
+        priceElement.textContent = listing.price;
+        priceElement.setAttribute('aria-label', 'Preview ' + listing.title);
+        priceElement.addEventListener('click', () => postMessage({ type: 'listing-preview', id: listing.id }));
+        priceMarkers.push(new mapboxgl.Marker({ element: priceElement, anchor: 'center' })
+          .setLngLat([listing.longitude, listing.latitude])
+          .addTo(map));
+
+        const key = listing.village || 'Guam';
+        const group = grouped.get(key) || { village: key, count: 0, latitude: 0, longitude: 0 };
+        group.count += 1;
+        group.latitude += listing.latitude;
+        group.longitude += listing.longitude;
+        grouped.set(key, group);
       });
 
+      grouped.forEach((group) => {
+        const clusterElement = document.createElement('button');
+        const countElement = document.createElement('span');
+        const labelElement = document.createElement('span');
+        clusterElement.className = 'cluster';
+        countElement.className = 'cluster-count';
+        countElement.textContent = String(group.count);
+        labelElement.textContent = group.village;
+        clusterElement.append(countElement, labelElement);
+        clusterElement.setAttribute('aria-label', group.count + ' listings in ' + group.village);
+        clusterElement.addEventListener('click', () => {
+          map.easeTo({ center: [group.longitude / group.count, group.latitude / group.count], zoom: Math.max(map.getZoom() + 1.4, 11.4), duration: 450 });
+        });
+        clusterMarkers.push(new mapboxgl.Marker({ element: clusterElement, anchor: 'center' })
+          .setLngLat([group.longitude / group.count, group.latitude / group.count])
+          .addTo(map));
+      });
+
+      function updateMarkerVisibility() {
+        const showPrices = map.getZoom() >= 11.35;
+        priceMarkers.forEach((marker) => { marker.getElement().style.display = showPrices ? 'block' : 'none'; });
+        clusterMarkers.forEach((marker) => { marker.getElement().style.display = showPrices ? 'none' : 'inline-flex'; });
+      }
+
+      map.on('zoomend', updateMarkerVisibility);
+      map.on('moveend', updateMarkerVisibility);
       map.on('load', () => {
         if (!bounds.isEmpty()) {
           map.fitBounds(bounds, { padding: { top: 130, right: 70, bottom: 120, left: 70 }, maxZoom: 12.2, duration: 650 });
         }
+        updateMarkerVisibility();
+        postMessage({ type: 'map-ready' });
       });
     </script>
   </body>
@@ -628,31 +789,7 @@ function CalculatorInput({ label, value, onChangeText, prefix, suffix }: { label
 function ListingDetailScreen({ listing, saved, onBack, onToggleSaved }: { listing: Listing; saved: boolean; onBack: () => void; onToggleSaved: () => void }) {
   const [imageUri, setImageUri] = useState(listing.photos?.[0]?.url || listing.primary_photo_url || FALLBACK_IMAGE)
   const [showMortgageCalculator, setShowMortgageCalculator] = useState(false)
-
-  async function requestShowing() {
-    const subject = `Showing request for ${listing.title}`
-    const body = `Hi Hafa Homes,\n\nI'm interested in scheduling a showing for ${listing.title} at ${listing.address}, ${listing.village.name}.\n\nThank you.`
-    const mailtoUrl = `mailto:hello@hafahomes.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
-
-    try {
-      const supported = await Linking.canOpenURL(mailtoUrl)
-      if (!supported) {
-        Alert.alert(
-          'Request a showing',
-          'Tour requests will open a quick in-app form in the production flow. For this preview, please email hello@hafahomes.com and include this listing name.',
-        )
-        return
-      }
-
-      await Linking.openURL(mailtoUrl)
-    } catch (error) {
-      console.warn('Unable to open showing request email', error)
-      Alert.alert(
-        'Request a showing',
-        'Tour requests will open a quick in-app form in the production flow. For this preview, please email hello@hafahomes.com and include this listing name.',
-      )
-    }
-  }
+  const [showRequestForm, setShowRequestForm] = useState(false)
 
   return (
     <SafeAreaView style={styles.shell}>
@@ -678,7 +815,7 @@ function ListingDetailScreen({ listing, saved, onBack, onToggleSaved }: { listin
               <Text style={styles.agentMeta}>{listing.brokerage_name || 'Brokerage partner'}</Text>
             </View>
           </View>
-          <Pressable style={styles.primaryCta} onPress={requestShowing}>
+          <Pressable style={styles.primaryCta} onPress={() => setShowRequestForm(true)}>
             <Text style={styles.primaryCtaText}>Request a showing</Text>
           </Pressable>
           {listing.listing_kind === 'sale' && (
@@ -694,7 +831,115 @@ function ListingDetailScreen({ listing, saved, onBack, onToggleSaved }: { listin
           )}
         </View>
       </ScrollView>
+      <ShowingRequestSheet listing={listing} open={showRequestForm} onClose={() => setShowRequestForm(false)} />
     </SafeAreaView>
+  )
+}
+
+function ShowingRequestSheet({ listing, open, onClose }: { listing: Listing; open: boolean; onClose: () => void }) {
+  const [name, setName] = useState('')
+  const [email, setEmail] = useState('')
+  const [phone, setPhone] = useState('')
+  const [preferredContact, setPreferredContact] = useState('phone')
+  const [message, setMessage] = useState(`I'm interested in ${listing.title}.`)
+  const [submitting, setSubmitting] = useState(false)
+  const [submitted, setSubmitted] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+    setMessage(`I'm interested in ${listing.title}.`)
+    setSubmitted(false)
+    setError(null)
+  }, [listing.title, open])
+
+  async function handleSubmit() {
+    if (!name.trim() || !email.trim()) {
+      setError('Please add your name and email so an agent can follow up.')
+      return
+    }
+
+    setSubmitting(true)
+    setError(null)
+    try {
+      await createLead({
+        listing_id: listing.id,
+        lead_type: 'showing_request',
+        name: name.trim(),
+        email: email.trim(),
+        phone: phone.trim(),
+        preferred_contact_method: preferredContact,
+        message: `${message.trim()}\n\nListing: ${listing.title} — ${listing.address}, ${listing.village.name}`,
+      })
+      setSubmitted(true)
+    } catch (submitError) {
+      console.warn('Unable to submit showing request', submitError)
+      setError('We could not send the request yet. Please try again in a moment.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <Modal visible={open} transparent animationType="slide" onRequestClose={onClose}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.sheetBackdrop}>
+        <Pressable style={styles.sheetScrim} onPress={onClose} />
+        <View style={styles.requestSheet}>
+          {submitted ? (
+            <View style={styles.requestSuccess}>
+              <Text style={styles.kicker}>Request sent</Text>
+              <Text style={styles.requestTitle}>Thanks — we received your showing request.</Text>
+              <Text style={styles.requestCopy}>The Hafa Homes team can follow up about {listing.title} and help coordinate next steps.</Text>
+              <Pressable style={styles.primaryCta} onPress={onClose}><Text style={styles.primaryCtaText}>Done</Text></Pressable>
+            </View>
+          ) : (
+            <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+              <View style={styles.sheetHandle} />
+              <View style={styles.sheetHeaderRow}>
+                <View style={styles.sheetHeaderCopy}>
+                  <Text style={styles.kicker}>Showing request</Text>
+                  <Text style={styles.requestTitle}>Ask about this home</Text>
+                </View>
+                <Pressable onPress={onClose} style={styles.sheetCloseButton}><Text style={styles.sheetCloseText}>×</Text></Pressable>
+              </View>
+              <View style={styles.requestListingSummary}>
+                <Text style={styles.requestListingPrice}>{currency(listing.price, listing.listing_kind)}</Text>
+                <Text numberOfLines={1} style={styles.requestListingTitle}>{listing.title}</Text>
+                <Text numberOfLines={1} style={styles.cardMeta}>{listing.village.name} · {listing.address}</Text>
+              </View>
+              <View style={styles.requestFieldGroup}>
+                <RequestInput label="Name" value={name} onChangeText={setName} placeholder="Your name" />
+                <RequestInput label="Email" value={email} onChangeText={setEmail} placeholder="you@example.com" keyboardType="email-address" autoCapitalize="none" />
+                <RequestInput label="Phone" value={phone} onChangeText={setPhone} placeholder="(671) 555-0123" keyboardType="phone-pad" />
+                <Text style={styles.requestLabel}>Preferred contact</Text>
+                <View style={styles.contactSegmentRow}>
+                  {['phone', 'text', 'email'].map((option) => (
+                    <Pressable key={option} onPress={() => setPreferredContact(option)} style={[styles.contactSegment, preferredContact === option && styles.contactSegmentActive]}>
+                      <Text style={[styles.contactSegmentText, preferredContact === option && styles.contactSegmentTextActive]}>{option}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+                <Text style={styles.requestLabel}>Message</Text>
+                <TextInput value={message} onChangeText={setMessage} multiline style={[styles.requestInput, styles.requestMessageInput]} />
+              </View>
+              {error && <Text style={styles.requestError}>{error}</Text>}
+              <Pressable disabled={submitting} style={[styles.primaryCta, submitting && styles.ctaDisabled]} onPress={handleSubmit}>
+                <Text style={styles.primaryCtaText}>{submitting ? 'Sending request...' : 'Send showing request'}</Text>
+              </Pressable>
+            </ScrollView>
+          )}
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  )
+}
+
+function RequestInput({ label, value, onChangeText, placeholder, keyboardType, autoCapitalize }: { label: string; value: string; onChangeText: (value: string) => void; placeholder: string; keyboardType?: 'default' | 'email-address' | 'phone-pad'; autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters' }) {
+  return (
+    <View>
+      <Text style={styles.requestLabel}>{label}</Text>
+      <TextInput value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor="#7b8a84" keyboardType={keyboardType} autoCapitalize={autoCapitalize} style={styles.requestInput} />
+    </View>
   )
 }
 
@@ -781,6 +1026,19 @@ const styles = StyleSheet.create({
   mapFullButtonText: { color: 'white', fontSize: 12, fontWeight: '900' },
   mapCanvasTitle: { color: colors.green, fontSize: 20, fontWeight: '900', textAlign: 'center' },
   mapCanvasCopy: { color: colors.muted, fontSize: 14, fontWeight: '700', lineHeight: 21, marginTop: 8, textAlign: 'center' },
+  mapLoadingOverlay: { alignItems: 'center', backgroundColor: 'rgba(159,210,235,0.76)', bottom: 0, justifyContent: 'center', left: 0, position: 'absolute', right: 0, top: 0 },
+  mapLoadingCard: { alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.94)', borderRadius: 28, maxWidth: 260, padding: 20, shadowColor: colors.green, shadowOpacity: 0.12, shadowRadius: 18, shadowOffset: { width: 0, height: 8 } },
+  mapLoadingTitle: { color: colors.ink, fontSize: 18, fontWeight: '900', marginTop: 10 },
+  mapLoadingCopy: { color: colors.muted, fontSize: 13, fontWeight: '700', lineHeight: 19, marginTop: 4, textAlign: 'center' },
+  mapPreviewCard: { backgroundColor: 'white', borderRadius: 28, bottom: 16, flexDirection: 'row', gap: 12, left: 14, padding: 12, position: 'absolute', right: 14, shadowColor: colors.green, shadowOpacity: 0.18, shadowRadius: 22, shadowOffset: { width: 0, height: 10 } },
+  mapPreviewImage: { backgroundColor: '#dbe8df', borderRadius: 20, height: 104, width: 104 },
+  mapPreviewBody: { flex: 1, minWidth: 0 },
+  mapPreviewPrice: { color: colors.ink, fontSize: 20, fontWeight: '900', letterSpacing: -0.6 },
+  mapPreviewActions: { alignItems: 'center', flexDirection: 'row', gap: 7 },
+  mapPreviewClose: { alignItems: 'center', backgroundColor: colors.sand, borderRadius: 999, height: 34, justifyContent: 'center', width: 34 },
+  mapPreviewCloseText: { color: colors.muted, fontSize: 24, fontWeight: '700', lineHeight: 28 },
+  mapPreviewCta: { alignItems: 'center', backgroundColor: colors.green, borderRadius: 16, marginTop: 10, paddingVertical: 10 },
+  mapPreviewCtaText: { color: 'white', fontSize: 13, fontWeight: '900' },
   mapMarker: { backgroundColor: colors.green, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 9, shadowColor: colors.green, shadowOpacity: 0.25, shadowRadius: 16, shadowOffset: { width: 0, height: 8 } },
   mapMarkerText: { color: 'white', fontSize: 13, fontWeight: '900' },
   agentCard: { alignItems: 'center', backgroundColor: 'white', borderRadius: 22, flexDirection: 'row', gap: 12, padding: 14 },
@@ -808,6 +1066,7 @@ const styles = StyleSheet.create({
   detailCopy: { color: colors.muted, fontSize: 15, fontWeight: '600', lineHeight: 24, marginTop: 8 },
   primaryCta: { alignItems: 'center', backgroundColor: colors.green, borderRadius: 20, marginTop: 22, padding: 16 },
   primaryCtaText: { color: 'white', fontSize: 15, fontWeight: '900' },
+  ctaDisabled: { opacity: 0.62 },
   secondaryCta: { alignItems: 'center', backgroundColor: colors.mint, borderRadius: 20, marginTop: 10, padding: 16 },
   secondaryCtaText: { color: colors.green, fontSize: 15, fontWeight: '900' },
   calculatorCard: { backgroundColor: colors.mint, borderColor: '#cfe2d9', borderRadius: 24, borderWidth: 1, marginTop: 14, padding: 16 },
@@ -824,4 +1083,28 @@ const styles = StyleSheet.create({
   calculatorBreakdown: { backgroundColor: 'rgba(255,255,255,0.68)', borderRadius: 18, gap: 7, marginTop: 14, padding: 12 },
   breakdownLine: { color: colors.muted, fontSize: 13, fontWeight: '800' },
   breakdownValue: { color: colors.ink, fontWeight: '900' },
+  sheetBackdrop: { flex: 1, justifyContent: 'flex-end' },
+  sheetScrim: { backgroundColor: 'rgba(9,24,21,0.44)', bottom: 0, left: 0, position: 'absolute', right: 0, top: 0 },
+  requestSheet: { backgroundColor: 'white', borderTopLeftRadius: 32, borderTopRightRadius: 32, maxHeight: '86%', padding: 18, paddingBottom: 28 },
+  sheetHandle: { alignSelf: 'center', backgroundColor: '#c9d6d0', borderRadius: 999, height: 5, marginBottom: 14, width: 52 },
+  sheetHeaderRow: { alignItems: 'flex-start', flexDirection: 'row', justifyContent: 'space-between' },
+  sheetHeaderCopy: { flex: 1, paddingRight: 12 },
+  sheetCloseButton: { alignItems: 'center', backgroundColor: colors.sand, borderRadius: 999, height: 42, justifyContent: 'center', width: 42 },
+  sheetCloseText: { color: colors.muted, fontSize: 28, fontWeight: '700', lineHeight: 32 },
+  requestTitle: { color: colors.ink, fontSize: 27, fontWeight: '900', letterSpacing: -0.9, marginTop: 4 },
+  requestCopy: { color: colors.muted, fontSize: 15, fontWeight: '700', lineHeight: 23, marginTop: 10 },
+  requestListingSummary: { backgroundColor: colors.sand, borderRadius: 22, marginTop: 16, padding: 14 },
+  requestListingPrice: { color: colors.green, fontSize: 23, fontWeight: '900', letterSpacing: -0.7 },
+  requestListingTitle: { color: colors.ink, fontSize: 15, fontWeight: '900', marginTop: 3 },
+  requestFieldGroup: { gap: 12, marginTop: 16 },
+  requestLabel: { color: colors.green, fontSize: 11, fontWeight: '900', letterSpacing: 1.1, marginBottom: 6, textTransform: 'uppercase' },
+  requestInput: { backgroundColor: colors.sand, borderColor: '#eadfce', borderRadius: 18, borderWidth: 1, color: colors.ink, fontSize: 15, fontWeight: '800', minHeight: 50, paddingHorizontal: 14, paddingVertical: 12 },
+  requestMessageInput: { minHeight: 96, textAlignVertical: 'top' },
+  contactSegmentRow: { backgroundColor: colors.sand, borderRadius: 18, flexDirection: 'row', gap: 6, padding: 5 },
+  contactSegment: { alignItems: 'center', borderRadius: 14, flex: 1, paddingVertical: 10 },
+  contactSegmentActive: { backgroundColor: 'white', shadowColor: colors.green, shadowOpacity: 0.08, shadowRadius: 10, shadowOffset: { width: 0, height: 4 } },
+  contactSegmentText: { color: colors.muted, fontSize: 13, fontWeight: '900', textTransform: 'capitalize' },
+  contactSegmentTextActive: { color: colors.green },
+  requestError: { color: '#a33b2f', fontSize: 13, fontWeight: '800', lineHeight: 19, marginTop: 12 },
+  requestSuccess: { paddingVertical: 20 },
 })
