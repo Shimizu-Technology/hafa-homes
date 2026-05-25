@@ -136,3 +136,14 @@ For Guam, equivalent local value includes:
 - Typhoon readiness features
 - Property manager/landlord workflows
 - Local market snapshots
+
+## Map behavior lesson
+
+Locations-style map search should avoid showing every individual price marker when the user is zoomed out across a large area.
+
+For Hafa Homes:
+
+- Whole-island zoom should prioritize orientation, village/region context, and grouped counts.
+- Medium zoom can show clusters or village-level listing counts.
+- Individual price markers should appear only once the user zooms into a meaningful local area.
+- This keeps dense areas readable and encourages intentional drill-down instead of overwhelming users with overlapping price pills.

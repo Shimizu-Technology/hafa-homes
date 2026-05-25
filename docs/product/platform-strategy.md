@@ -131,13 +131,16 @@ Build toward a broker/agent marketplace while keeping the existing consumer demo
 
 Next major product capabilities:
 
-1. Agent and brokerage profiles
-2. Lead routing by listing/agent/brokerage
-3. Brokerage/agent admin dashboard
-4. MLS/Flexmls sync adapter skeleton
-5. Neighborhood intelligence on listing detail pages
-6. Mortgage calculator and affordability guide
-7. Native app packaging plan
+1. Authentication/accounts for consumers, agents, brokerages, and admins
+2. Server-backed saved listings, saved searches, and alert preferences
+3. Agent and brokerage profiles
+4. Lead routing by listing/agent/brokerage
+5. Brokerage/agent admin dashboard
+6. MLS/Flexmls sync adapter skeleton
+7. Neighborhood intelligence on listing detail pages
+8. Mortgage calculator and affordability guide
+9. Native app TestFlight/App Store release process
+10. Map search polish: loading states, marker clustering/counts, and zoom-gated price pins
 
 ## Meeting source
 

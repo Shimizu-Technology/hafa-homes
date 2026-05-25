@@ -9,7 +9,10 @@
     "scheme": "hafahomes",
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.shimizutechnology.hafahomes"
+      "bundleIdentifier": "com.shimizutechnology.hafahomes",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.shimizutechnology.hafahomes",

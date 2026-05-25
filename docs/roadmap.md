@@ -79,6 +79,9 @@ Goal: Turn demo into working product with authorized data and broker/agent parti
 
 Features:
 
+- Authentication/accounts for buyers, renters, agents, and admins
+- Sign in with Apple for iOS plus email/password or magic-link sign-in
+- Server-backed saved listings and saved searches
 - Real listing import/sync
 - Brokerage profiles
 - Agent/realtor profiles
@@ -115,7 +118,9 @@ Possible features:
 
 Goal: Build a dedicated iOS/Android consumer app once the PWA proof-of-concept and broker/agent interest are validated.
 
-Current direction: add a new Expo app in `/mobile` while keeping `/web` for the PWA, landing pages, SEO/content, and admin/broker dashboards.
+Status as of 2026-05-26: iOS TestFlight build is live and installable. Next work is productionizing lead/auth/map flows and completing App Store metadata/screenshots/privacy answers.
+
+Current direction: keep improving the Expo app in `/mobile` while keeping `/web` for the PWA, landing pages, SEO/content, and admin/broker dashboards.
 
 Mike noted that brokerages may already have websites, so app-store/native app presence can become a selling point.
 
@@ -123,11 +128,13 @@ Recommended path:
 
 - Keep Rails API as shared backend
 - Keep `/web` live for demo/admin/web/SEO
-- Add `/mobile` Expo app
-- Build native listing list/detail
-- Build native map search with marker preview bottom sheet
-- Add contact/showing/saved flows
-- Package with EAS Build for TestFlight/Google Play testing
+- Continue EAS/TestFlight builds from `/mobile`
+- Replace request-showing prototype with an in-app lead form
+- Add authentication and server-backed saved listings/searches
+- Improve native map loading states
+- Add zoom-aware map behavior: clusters/counts at broad zoom, individual price pills only when zoomed in
+- Add native marker preview bottom sheet
+- Complete App Store metadata/screenshots/privacy answers
 
 Reasons to do native:
 

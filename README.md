@@ -85,6 +85,8 @@ The web app uses `VITE_API_URL`; the mobile app uses `EXPO_PUBLIC_API_URL`. Both
 - [Locations LLC Research](docs/research/locations-llc.md)
 - [Guam Market Research](docs/research/guam-market.md)
 - [Roadmap](docs/roadmap.md)
+- [Current Status & Next Steps](docs/product/current-status-next-steps.md)
+- [App Store / TestFlight Release Notes](docs/app-store-release.md)
 
 ## Repository
 

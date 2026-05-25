@@ -159,15 +159,52 @@ Next backend additions should support the marketplace/native direction:
 - Flexmls/MLS sync adapters
 - neighborhood/school/amenity data
 
+## Current TestFlight status
+
+Updated 2026-05-26:
+
+- `/mobile` Expo app exists and is linked to EAS.
+- First iOS production build reached TestFlight and was installed on a real phone.
+- Production app env points to `https://hafa-homes.onrender.com`.
+- App Store Connect app exists for `com.shimizutechnology.hafahomes`.
+- Public App Store release still needs metadata, screenshots, privacy answers, and review submission.
+
+## Authentication plan
+
+Authentication should be added before saved searches, alerts, and persistent saved listings become production-critical.
+
+Recommended approach:
+
+- Rails owns auth/session APIs for both web and mobile.
+- Mobile stores tokens in Expo SecureStore, not AsyncStorage.
+- Support Sign in with Apple for iOS App Store expectations.
+- Support email/password or magic-link email sign-in for web/mobile parity.
+- User accounts should own saved listings, saved searches, leads/showing requests, and notification preferences.
+- Keep local AsyncStorage saved homes as a guest-mode fallback, then merge or prompt on sign-in.
+
+## Map UX plan
+
+The map should follow the Locations-style pattern: broad geographic browsing first, then listing-level detail when zoomed in.
+
+Recommended behavior:
+
+- Show a branded loading/skeleton state while listings and Mapbox initialize.
+- At whole-island zoom, do not show every price marker; use village/region counts or clusters.
+- At medium zoom, show grouped counts and let users drill into villages/areas.
+- At higher zoom, reveal individual price pills.
+- Add a marker/listing bottom-sheet preview before opening full details.
+- Reduce marker collision and overlap near dense areas.
+
 ## Recommended next steps
 
 1. Keep `/web` live as the demo and admin/web surface.
-2. Add `/mobile` Expo app scaffold.
-3. Reuse the existing Rails API first instead of duplicating backend logic.
-4. Build native listing list/detail from current API.
-5. Add native map + marker preview bottom sheet.
+2. Replace the native `Request a showing` prototype with an in-app lead form.
+3. Add authentication and server-backed saved listings/searches.
+4. Improve map loading and zoom-aware marker behavior.
+5. Add native marker preview bottom sheet.
 6. Add agent/brokerage models to the backend before deeper marketplace work.
 7. Validate Flexmls/MLS access and display rules before app-store launch with real listing data.
+8. Complete App Store Connect metadata/screenshots/privacy answers for public release.
 
 ## Open questions
 
