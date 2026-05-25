@@ -4,7 +4,6 @@ import { WebView } from 'react-native-webview'
 import { useEffect, useMemo, useState } from 'react'
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   Image,
   Linking,
@@ -76,13 +75,22 @@ const tabs: Array<{ key: TabKey; label: string; icon: string }> = [
 ]
 
 function currency(value: number, kind: ListingKind) {
-  const formatted = new Intl.NumberFormat('en-US', {
+  const formatted = formatCurrency(value)
+
+  return kind === 'rent' ? `${formatted}/mo` : formatted
+}
+
+function formatCurrency(value: number) {
+  return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',
     maximumFractionDigits: 0,
   }).format(value)
+}
 
-  return kind === 'rent' ? `${formatted}/mo` : formatted
+function parseNumber(value: string, fallback = 0) {
+  const parsed = Number(value.replace(/[^0-9.]/g, ''))
+  return Number.isFinite(parsed) ? parsed : fallback
 }
 
 async function fetchListings(kind: ListingKind): Promise<Listing[]> {
@@ -279,6 +287,10 @@ export default function App() {
 }
 
 function SearchScreen({ listings, savedIds, onOpen, onToggleSaved }: { listings: Listing[]; savedIds: number[]; onOpen: (listing: Listing) => void; onToggleSaved: (listingId: number) => void }) {
+  if (listings.length === 0) {
+    return <CenteredState label="No matching homes yet. Try switching Buy/Rent or clearing filters." />
+  }
+
   return (
     <FlatList
       data={listings}
@@ -310,7 +322,7 @@ function MapScreen({ listings, onOpen }: { listings: Listing[]; onOpen: (listing
   return (
     <View style={styles.mapScreen}>
       <View style={styles.nativeMapFrame}>
-        {MAPBOX_TOKEN ? (
+        {MAPBOX_TOKEN && points.length > 0 ? (
           <WebView
             originWhitelist={['*']}
             source={{ html: mapHtml }}
@@ -324,8 +336,8 @@ function MapScreen({ listings, onOpen }: { listings: Listing[]; onOpen: (listing
           />
         ) : (
           <View style={styles.mapFallback}>
-            <Text style={styles.mapCanvasTitle}>Mapbox token needed</Text>
-            <Text style={styles.mapCanvasCopy}>Add EXPO_PUBLIC_MAPBOX_TOKEN to mobile/.env and restart Expo with npm run start -- --clear.</Text>
+            <Text style={styles.mapCanvasTitle}>{MAPBOX_TOKEN ? 'No mapped listings yet' : 'Mapbox token needed'}</Text>
+            <Text style={styles.mapCanvasCopy}>{MAPBOX_TOKEN ? 'Homes with map coordinates will appear here as soon as they are available.' : 'Add EXPO_PUBLIC_MAPBOX_TOKEN to mobile/.env and restart Expo with npm run start -- --clear.'}</Text>
           </View>
         )}
         <View style={styles.mapOverlay} pointerEvents="none">
@@ -494,8 +506,74 @@ function ListingCard({ listing, saved, onOpen, onToggleSaved }: { listing: Listi
   )
 }
 
+function MortgageCalculator({ listing }: { listing: Listing }) {
+  const [downPaymentPercent, setDownPaymentPercent] = useState('20')
+  const [interestRate, setInterestRate] = useState('6.75')
+  const [loanTermYears, setLoanTermYears] = useState('30')
+  const [annualTaxPercent, setAnnualTaxPercent] = useState('0.35')
+  const [insuranceMonthly, setInsuranceMonthly] = useState('175')
+
+  const downPercent = parseNumber(downPaymentPercent, 20)
+  const rate = parseNumber(interestRate, 6.75)
+  const termYears = parseNumber(loanTermYears, 30)
+  const annualTaxes = parseNumber(annualTaxPercent, 0.35)
+  const insurance = parseNumber(insuranceMonthly, 175)
+  const downPayment = listing.price * (downPercent / 100)
+  const loanAmount = Math.max(listing.price - downPayment, 0)
+  const monthlyRate = rate / 100 / 12
+  const numberOfPayments = Math.max(termYears * 12, 1)
+  const principalAndInterest = monthlyRate > 0
+    ? loanAmount * ((monthlyRate * (1 + monthlyRate) ** numberOfPayments) / (((1 + monthlyRate) ** numberOfPayments) - 1))
+    : loanAmount / numberOfPayments
+  const taxesMonthly = listing.price * (annualTaxes / 100) / 12
+  const estimatedMonthly = principalAndInterest + taxesMonthly + insurance
+
+  return (
+    <View style={styles.calculatorCard}>
+      <View style={styles.calculatorHeader}>
+        <View>
+          <Text style={styles.kicker}>Mortgage calculator</Text>
+          <Text style={styles.calculatorTotal}>{formatCurrency(estimatedMonthly)}/mo</Text>
+        </View>
+        <Text style={styles.calculatorBadge}>Estimate</Text>
+      </View>
+      <Text style={styles.calculatorCopy}>Includes principal, interest, estimated Guam property tax, and homeowners insurance. Final terms depend on lender, credit, taxes, insurance, and closing costs.</Text>
+
+      <View style={styles.calculatorGrid}>
+        <CalculatorInput label="Down payment" suffix="%" value={downPaymentPercent} onChangeText={setDownPaymentPercent} />
+        <CalculatorInput label="Interest rate" suffix="%" value={interestRate} onChangeText={setInterestRate} />
+        <CalculatorInput label="Loan term" suffix="yrs" value={loanTermYears} onChangeText={setLoanTermYears} />
+        <CalculatorInput label="Property tax" suffix="%/yr" value={annualTaxPercent} onChangeText={setAnnualTaxPercent} />
+        <CalculatorInput label="Insurance" prefix="$" suffix="/mo" value={insuranceMonthly} onChangeText={setInsuranceMonthly} />
+      </View>
+
+      <View style={styles.calculatorBreakdown}>
+        <Text style={styles.breakdownLine}>Home price <Text style={styles.breakdownValue}>{formatCurrency(listing.price)}</Text></Text>
+        <Text style={styles.breakdownLine}>Down payment <Text style={styles.breakdownValue}>{formatCurrency(downPayment)}</Text></Text>
+        <Text style={styles.breakdownLine}>Loan amount <Text style={styles.breakdownValue}>{formatCurrency(loanAmount)}</Text></Text>
+        <Text style={styles.breakdownLine}>Principal & interest <Text style={styles.breakdownValue}>{formatCurrency(principalAndInterest)}/mo</Text></Text>
+        <Text style={styles.breakdownLine}>Taxes & insurance <Text style={styles.breakdownValue}>{formatCurrency(taxesMonthly + insurance)}/mo</Text></Text>
+      </View>
+    </View>
+  )
+}
+
+function CalculatorInput({ label, value, onChangeText, prefix, suffix }: { label: string; value: string; onChangeText: (value: string) => void; prefix?: string; suffix?: string }) {
+  return (
+    <View style={styles.calculatorField}>
+      <Text style={styles.calculatorLabel}>{label}</Text>
+      <View style={styles.calculatorInputShell}>
+        {prefix && <Text style={styles.calculatorAffix}>{prefix}</Text>}
+        <TextInput value={value} onChangeText={onChangeText} keyboardType="decimal-pad" style={styles.calculatorInput} />
+        {suffix && <Text style={styles.calculatorAffix}>{suffix}</Text>}
+      </View>
+    </View>
+  )
+}
+
 function ListingDetailScreen({ listing, saved, onBack, onToggleSaved }: { listing: Listing; saved: boolean; onBack: () => void; onToggleSaved: () => void }) {
   const [imageUri, setImageUri] = useState(listing.photos?.[0]?.url || listing.primary_photo_url || FALLBACK_IMAGE)
+  const [showMortgageCalculator, setShowMortgageCalculator] = useState(false)
 
   return (
     <SafeAreaView style={styles.shell}>
@@ -526,10 +604,11 @@ function ListingDetailScreen({ listing, saved, onBack, onToggleSaved }: { listin
           </Pressable>
           <Pressable
             style={styles.secondaryCta}
-            onPress={() => Alert.alert('Mortgage estimate coming soon', 'The native app roadmap includes a guided mortgage calculator with down payment, rate, term, and monthly payment estimates.')}
+            onPress={() => setShowMortgageCalculator((current) => !current)}
           >
-            <Text style={styles.secondaryCtaText}>Estimate mortgage payment</Text>
+            <Text style={styles.secondaryCtaText}>{showMortgageCalculator ? 'Hide mortgage calculator' : 'Estimate mortgage payment'}</Text>
           </Pressable>
+          {showMortgageCalculator && <MortgageCalculator listing={listing} />}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -557,7 +636,7 @@ const colors = {
 }
 
 const styles = StyleSheet.create({
-  shell: { flex: 1, backgroundColor: colors.green },
+  shell: { flex: 1, backgroundColor: 'white' },
   header: { backgroundColor: colors.green, paddingHorizontal: 18, paddingBottom: 16, paddingTop: 12 },
   brandRow: { alignItems: 'center', flexDirection: 'row', gap: 12, marginBottom: 16 },
   brandMark: { alignItems: 'center', backgroundColor: '#0b312b', borderRadius: 18, height: 52, justifyContent: 'center', overflow: 'hidden', width: 52 },
@@ -594,13 +673,13 @@ const styles = StyleSheet.create({
   cardStats: { color: '#324640', fontSize: 13, fontWeight: '800', marginTop: 10 },
   pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 12 },
   pill: { backgroundColor: colors.mint, borderRadius: 999, color: colors.green2, fontSize: 11, fontWeight: '900', overflow: 'hidden', paddingHorizontal: 10, paddingVertical: 6 },
-  tabBar: { backgroundColor: 'rgba(255,255,255,0.96)', borderTopColor: 'rgba(0,0,0,0.08)', borderTopWidth: 1, flexDirection: 'row', paddingBottom: 18, paddingTop: 8 },
-  tabButton: { alignItems: 'center', borderRadius: 18, flex: 1, gap: 2, marginHorizontal: 3, paddingBottom: 4, paddingTop: 3 },
+  tabBar: { backgroundColor: 'rgba(255,255,255,0.96)', borderTopColor: 'rgba(0,0,0,0.08)', borderTopWidth: 1, flexDirection: 'row', paddingBottom: 8, paddingTop: 8 },
+  tabButton: { alignItems: 'center', borderRadius: 18, flex: 1, gap: 2, height: 68, justifyContent: 'center', marginHorizontal: 3, paddingBottom: 4, paddingTop: 3 },
   tabButtonActive: { backgroundColor: colors.mint },
   tabIndicator: { backgroundColor: 'transparent', borderRadius: 999, height: 3, marginBottom: 2, width: 24 },
   tabIndicatorActive: { backgroundColor: colors.green },
-  tabIcon: { color: colors.muted, fontSize: 22, fontWeight: '800' },
-  tabLabel: { color: colors.muted, fontSize: 11, fontWeight: '800' },
+  tabIcon: { color: colors.muted, fontSize: 22, fontWeight: '800', lineHeight: 25, textAlign: 'center' },
+  tabLabel: { color: colors.muted, fontSize: 11, fontWeight: '800', lineHeight: 14, textAlign: 'center' },
   tabActive: { color: colors.green },
   centeredState: { alignItems: 'center', flex: 1, gap: 12, justifyContent: 'center', padding: 24 },
   centeredText: { color: colors.muted, fontSize: 15, fontWeight: '700', lineHeight: 22, textAlign: 'center' },
@@ -642,4 +721,18 @@ const styles = StyleSheet.create({
   primaryCtaText: { color: 'white', fontSize: 15, fontWeight: '900' },
   secondaryCta: { alignItems: 'center', backgroundColor: colors.mint, borderRadius: 20, marginTop: 10, padding: 16 },
   secondaryCtaText: { color: colors.green, fontSize: 15, fontWeight: '900' },
+  calculatorCard: { backgroundColor: colors.mint, borderColor: '#cfe2d9', borderRadius: 24, borderWidth: 1, marginTop: 14, padding: 16 },
+  calculatorHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
+  calculatorTotal: { color: colors.green, fontSize: 30, fontWeight: '900', letterSpacing: -1, marginTop: 4 },
+  calculatorBadge: { backgroundColor: 'white', borderRadius: 999, color: colors.green2, fontSize: 11, fontWeight: '900', overflow: 'hidden', paddingHorizontal: 12, paddingVertical: 7, textTransform: 'uppercase' },
+  calculatorCopy: { color: colors.muted, fontSize: 12, fontWeight: '700', lineHeight: 18, marginTop: 8 },
+  calculatorGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 14 },
+  calculatorField: { flexBasis: '47%', flexGrow: 1 },
+  calculatorLabel: { color: colors.green, fontSize: 11, fontWeight: '900', marginBottom: 6, textTransform: 'uppercase' },
+  calculatorInputShell: { alignItems: 'center', backgroundColor: 'white', borderColor: '#d7e5de', borderRadius: 16, borderWidth: 1, flexDirection: 'row', minHeight: 46, paddingHorizontal: 12 },
+  calculatorInput: { color: colors.ink, flex: 1, fontSize: 16, fontWeight: '900', minWidth: 44, paddingVertical: 8 },
+  calculatorAffix: { color: colors.muted, fontSize: 13, fontWeight: '900' },
+  calculatorBreakdown: { backgroundColor: 'rgba(255,255,255,0.68)', borderRadius: 18, gap: 7, marginTop: 14, padding: 12 },
+  breakdownLine: { color: colors.muted, fontSize: 13, fontWeight: '800' },
+  breakdownValue: { color: colors.ink, fontWeight: '900' },
 })
