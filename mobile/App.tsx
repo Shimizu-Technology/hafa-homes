@@ -384,8 +384,13 @@ function MapScreen({ listings, savedIds, onOpen, onToggleSaved, fullMap, onToggl
   const mapSource = useMemo(() => ({ html: mapHtml }), [mapHtml])
 
   useEffect(() => {
-    setMapLoading(Boolean(MAPBOX_TOKEN && points.length > 0))
+    const shouldLoadMap = Boolean(MAPBOX_TOKEN && points.length > 0)
+    setMapLoading(shouldLoadMap)
     setPreviewListing(null)
+
+    if (!shouldLoadMap) return undefined
+    const safetyTimeout = setTimeout(() => setMapLoading(false), 8000)
+    return () => clearTimeout(safetyTimeout)
   }, [mapHtml, points.length])
 
   return (
@@ -396,7 +401,6 @@ function MapScreen({ listings, savedIds, onOpen, onToggleSaved, fullMap, onToggl
             originWhitelist={['*']}
             source={mapSource}
             style={styles.nativeMap}
-            onLoadEnd={() => setMapLoading(false)}
             onMessage={(event) => {
               try {
                 const message = JSON.parse(event.nativeEvent.data)
@@ -633,7 +637,7 @@ function buildMapHtml(points: Listing[]) {
           map.fitBounds(bounds, { padding: { top: 130, right: 70, bottom: 120, left: 70 }, maxZoom: 12.2, duration: 650 });
         }
         updateMarkerVisibility();
-        postMessage({ type: 'map-ready' });
+        map.once('idle', () => postMessage({ type: 'map-ready' }));
       });
     </script>
   </body>
