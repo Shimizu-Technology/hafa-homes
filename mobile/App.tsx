@@ -438,6 +438,7 @@ function MapScreen({ listings, savedIds, onOpen, onToggleSaved, fullMap, onToggl
         </View>
         {previewListing && (
           <MapListingPreview
+            key={previewListing.id}
             listing={previewListing}
             saved={savedIds.includes(previewListing.id)}
             onClose={() => setPreviewListing(null)}
@@ -854,8 +855,9 @@ function ShowingRequestSheet({ listing, open, onClose }: { listing: Listing; ope
   }, [listing.title, open])
 
   async function handleSubmit() {
-    if (!name.trim() || !email.trim()) {
-      setError('Please add your name and email so an agent can follow up.')
+    const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
+    if (!name.trim() || !email.trim() || !emailValid) {
+      setError('Please add your name and a valid email so an agent can follow up.')
       return
     }
 
