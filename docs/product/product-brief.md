@@ -80,17 +80,32 @@ Compared to existing Guam IDX sites:
 - Better storytelling and neighborhood content
 - Better investor/demo pitch
 
-## Business model possibilities
+## Business model direction
 
-Initial business model is TBD, but options include:
+Current working direction after Mike/Leon discussions:
 
-1. Brokerage/investor-owned lead generation
-2. Agent/property manager subscriptions
-3. Featured listings
-4. Rental listing boosts
-5. Relocation partner referrals
+> Hafa Homes is the consumer-facing Guam real estate app. Brokerages and agents subscribe to participate, connect or authorize their MLS/listing feed, publish their listings/agents, and receive leads through the platform.
+
+Brokerages/agents are not paying Hafa Homes for MLS data itself. They are paying for:
+
+- app-first mobile search experience
+- listing and agent distribution
+- lead capture and lead routing
+- saved searches and buyer/renter intent
+- brokerage/agent profile presence
+- MLS/feed integration support
+- analytics and admin workflows
+- future native iOS/Android app presence
+
+Possible revenue streams:
+
+1. Brokerage subscription
+2. Per-agent subscription/seats
+3. Setup/onboarding fee
+4. MLS/feed integration fee
+5. Featured agents/listings
 6. Mortgage/prequalification referrals
-7. Property management tools
+7. Property management/rental tools
 
 ## MVP goal
 

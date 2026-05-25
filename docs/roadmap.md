@@ -42,41 +42,59 @@ Deliverable:
 - Hosted demo URL
 - GitHub repo with code and docs
 
-## Phase 2: Data access discovery
+## Phase 2: Data access and platform model discovery
 
-Goal: Determine how real listing data can be legally and technically integrated.
+Goal: Determine how real listing data can be legally/technically integrated and validate the broker/agent subscription model.
+
+Current signal from Mike:
+
+- Guam brokers use `my.flexmls.com` / Flexmls.
+- Brokerages/agents already pay for MLS access.
+- Hafa Homes can be positioned as the app/search/lead platform that connects to authorized listing feeds.
+- The likely model is brokerages/agents subscribing to participate, publish listings/agents, and receive leads through Hafa Homes.
 
 Tasks:
 
-- Identify Guam MLS/IDX authority/vendor
-- Confirm access path through investor/brokerage/agent
-- Determine feed format
+- Confirm Flexmls/Guam MLS access path
+- Confirm whether Hafa Homes can be approved as vendor/app platform
+- Confirm whether multiple brokerages can authorize feeds into one consumer app
+- Determine feed format: IDX, RESO Web API, RETS, Flexmls IDX, embed/iframe, CSV/export, etc.
 - Review display/compliance rules
 - Confirm sold/rental data availability
 - Confirm refresh requirements
-- Confirm attribution requirements
+- Confirm attribution/disclaimer requirements
+- Confirm listing photo rights
+- Validate first pilot brokerage/agent
+- Validate pricing model: setup fee, monthly subscription, per-agent seats, featured placement
 
 Deliverable:
 
 - Data integration plan
+- Platform/business model plan
 - Updated technical architecture
 
-## Phase 3: Real MVP
+## Phase 3: Broker/agent marketplace MVP
 
-Goal: Turn demo into working product with authorized data.
+Goal: Turn demo into working product with authorized data and broker/agent participation.
 
 Features:
 
 - Real listing import/sync
+- Brokerage profiles
+- Agent/realtor profiles
+- Listing ownership/attribution by brokerage/agent
 - Admin dashboard
+- Broker/agent lead inbox
 - Listing normalization
 - Search/filter implementation
 - Saved listings
 - Saved searches
 - Email/SMS alerts
-- Lead routing
+- Lead routing to listing agent/brokerage
 - Contact/showing request flows
 - Basic analytics
+- Neighborhood intelligence sections
+- Mortgage calculator / affordability guide
 
 ## Phase 4: Business workflows
 
@@ -95,20 +113,23 @@ Possible features:
 
 ## Phase 5: Native app packaging
 
-Goal: Package PWA into iOS/Android only if business validation supports it.
+Goal: Package PWA into iOS/Android once business validation and MLS access support it.
+
+Mike noted that brokerages may already have websites, so app-store/native app presence can become a selling point.
 
 Options:
 
-- Capacitor wrapper
-- React Native rebuild
-- Native apps later
+- Capacitor wrapper around current React app
+- React Native rebuild later if needed
+- Native apps after product/MLS validation
 
 Reasons to do native:
 
-- Investor/client requires app store presence
+- App-store presence helps sales pitch
 - Push notifications become important
 - Strong consumer adoption
 - Need deeper mobile capabilities
+- Brokerages/agents want to say their listings are in a real mobile app
 
 ## Phase 6: Expansion
 

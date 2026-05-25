@@ -8,7 +8,9 @@ Mike noted that the key concern is:
 
 > Getting the software to update whenever there are daily changes on the MLS.
 
-This is a normal real estate app requirement. The coding side is straightforward if authorized access is provided. The bigger question is permission, contract terms, and the exact feed/API format.
+Mike later confirmed that Guam brokers use `my.flexmls.com` / Flexmls as the MLS platform. Brokers/agents already pay for their MLS access/membership, and the business opportunity is to provide the app/search/lead platform that connects to authorized listing feeds.
+
+This is a normal real estate app requirement. The coding side is straightforward if authorized access is provided. The bigger question is permission, contract terms, MLS/Flexmls approval, and the exact feed/API format.
 
 ## Data access options
 
@@ -25,11 +27,13 @@ Potential formats/vendors:
 - XML/CSV feed
 - FTP export
 
-### Option 2: Brokerage/investor-authorized access
+### Option 2: Participating brokerage/agent-authorized access
 
-If the investor, brokerage, or partner agent has MLS/IDX access, they may be able to authorize Hafa Homes as their technology/vendor platform.
+If a brokerage or agent subscribes to Hafa Homes and has MLS/IDX access, they may be able to authorize Hafa Homes as their technology/vendor platform.
 
-This may be faster than independently applying for direct access.
+This is currently the leading business hypothesis: brokerages/agents subscribe to Hafa Homes, connect or authorize their MLS/listing feed, and receive leads through the app.
+
+This may be faster than independently applying for direct MLS access, but it still requires confirming Flexmls/MLS rules.
 
 ### Option 3: Manual/admin listings
 
@@ -131,6 +135,10 @@ Before using real MLS data, confirm:
 
 - Who can authorize access?
 - Is Hafa Homes considered an IDX/vendor display?
+- Can Hafa Homes operate as an independent consumer platform with multiple participating brokerages?
+- Can each brokerage/agent authorize their own feed into the same Hafa Homes app?
+- Does the feed include all IDX-approved MLS listings or only that brokerage/agent's listings?
+- Can non-subscribed brokerage listings appear?
 - Are sold listings allowed?
 - Are rental listings included?
 - Are photos included?
@@ -138,7 +146,7 @@ Before using real MLS data, confirm:
 - How often must data refresh?
 - What disclaimers are required?
 - Are registration walls required for certain data?
-- Can leads go to any agent or only the sponsoring broker/agent?
+- Can leads go to listing agent, selected agent, sponsoring broker, or any subscribing agent?
 - Can listings be cached?
 - Can data be used for market reports/analytics?
 
