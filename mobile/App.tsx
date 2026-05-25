@@ -61,9 +61,21 @@ type Listing = {
 }
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000'
+const MAPBOX_TOKEN = process.env.EXPO_PUBLIC_MAPBOX_TOKEN
 const FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1600047509807-ba8f99d2cdde?auto=format&fit=crop&w=1200&q=80'
 const SAVED_LISTING_IDS_KEY = 'hafaHomes:savedListingIds'
 const SAVED_LISTINGS_KEY = 'hafaHomes:savedListings'
+
+type MapboxModule = typeof import('@rnmapbox/maps').default
+let Mapbox: MapboxModule | null = null
+
+try {
+  // @rnmapbox/maps needs a custom Expo dev build. Keep Expo Go usable by falling back if the native module is unavailable.
+  Mapbox = require('@rnmapbox/maps').default as MapboxModule
+  if (MAPBOX_TOKEN) Mapbox.setAccessToken(MAPBOX_TOKEN)
+} catch (mapboxError) {
+  console.warn('Native Mapbox module unavailable; showing fallback map state.', mapboxError)
+}
 
 const tabs: Array<{ key: TabKey; label: string; icon: string }> = [
   { key: 'search', label: 'Search', icon: '⌂' },
@@ -91,7 +103,7 @@ async function fetchListings(kind: ListingKind): Promise<Listing[]> {
 }
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<TabKey>('search')
+  const [activeTab, setActiveTab] = useState<TabKey>('map')
   const [kind, setKind] = useState<ListingKind>('sale')
   const [listings, setListings] = useState<Listing[]>([])
   const [listingCache, setListingCache] = useState<Record<number, Listing>>({})
@@ -219,7 +231,7 @@ export default function App() {
       <StatusBar style="light" />
       <View style={styles.header}>
         <View style={styles.brandRow}>
-          <View style={styles.brandMark}><Text style={styles.brandMarkText}>HH</Text></View>
+          <View style={styles.brandMark}><Image source={require('./assets/hafa-homes-icon.png')} style={styles.brandMarkImage} /></View>
           <View>
             <Text style={styles.brandTitle}>Hafa Homes</Text>
             <Text style={styles.brandSubtitle}>Guam real estate app</Text>
@@ -293,31 +305,47 @@ function SearchScreen({ listings, savedIds, onOpen, onToggleSaved }: { listings:
 }
 
 function MapScreen({ listings, onOpen }: { listings: Listing[]; onOpen: (listing: Listing) => void }) {
-  const featured = listings.slice(0, 8)
+  const points = listings.filter((listing) => listing.latitude && listing.longitude)
+  const NativeMapbox = Mapbox
 
   return (
-    <ScrollView contentContainerStyle={styles.mapScreen}>
-      <View style={styles.mapMock}>
-        <View style={styles.mapOverlay}>
+    <View style={styles.mapScreen}>
+      <View style={styles.nativeMapFrame}>
+        {MAPBOX_TOKEN && NativeMapbox ? (
+          <NativeMapbox.MapView style={styles.nativeMap} styleURL={NativeMapbox.StyleURL.Outdoors} logoEnabled={false} attributionEnabled>
+            <NativeMapbox.Camera
+              bounds={points.length > 1 ? {
+                ne: [Math.max(...points.map((listing) => listing.longitude ?? 144.7937)), Math.max(...points.map((listing) => listing.latitude ?? 13.4443))],
+                sw: [Math.min(...points.map((listing) => listing.longitude ?? 144.7937)), Math.min(...points.map((listing) => listing.latitude ?? 13.4443))],
+                paddingBottom: 120,
+                paddingLeft: 70,
+                paddingRight: 70,
+                paddingTop: 130,
+              } : undefined}
+              centerCoordinate={[144.7937, 13.4443]}
+              zoomLevel={10.2}
+              animationDuration={700}
+            />
+            {points.map((listing) => (
+              <NativeMapbox.MarkerView key={listing.id} coordinate={[listing.longitude ?? 144.7937, listing.latitude ?? 13.4443]} anchor={{ x: 0.5, y: 0.5 }}>
+                <Pressable onPress={() => onOpen(listing)} style={styles.mapMarker}>
+                  <Text style={styles.mapMarkerText}>{currency(listing.price, listing.listing_kind).replace('/mo', '')}</Text>
+                </Pressable>
+              </NativeMapbox.MarkerView>
+            ))}
+          </NativeMapbox.MapView>
+        ) : (
+          <View style={styles.mapFallback}>
+            <Text style={styles.mapCanvasTitle}>Mapbox token needed</Text>
+            <Text style={styles.mapCanvasCopy}>Add EXPO_PUBLIC_MAPBOX_TOKEN to mobile/.env and run a custom Expo development build to load the native Mapbox map.</Text>
+          </View>
+        )}
+        <View style={styles.mapOverlay} pointerEvents="box-none">
           <Text style={styles.mapTitle}>Map search</Text>
-          <Text style={styles.mapCount}>{listings.length} listings</Text>
+          <Text style={styles.mapCount}>{points.length} listings</Text>
         </View>
-        <View style={styles.mapCanvasFallback}>
-          <Text style={styles.mapCanvasTitle}>Native map coming next</Text>
-          <Text style={styles.mapCanvasCopy}>This screen is ready for Mapbox or React Native Maps once we choose the native map provider.</Text>
-        </View>
-        {featured.map((listing, index) => (
-          <Pressable
-            key={listing.id}
-            onPress={() => onOpen(listing)}
-            style={[styles.mapMarker, { left: `${12 + ((index * 19) % 62)}%`, top: `${26 + ((index * 17) % 50)}%` }]}
-          >
-            <Text style={styles.mapMarkerText}>{currency(listing.price, listing.listing_kind).replace('/mo', '')}</Text>
-          </Pressable>
-        ))}
       </View>
-      <Text style={styles.mapNote}>Marker taps will become bottom-sheet listing previews in the next pass.</Text>
-    </ScrollView>
+    </View>
   )
 }
 
@@ -466,10 +494,11 @@ const colors = {
 }
 
 const styles = StyleSheet.create({
-  shell: { flex: 1, backgroundColor: colors.sand },
+  shell: { flex: 1, backgroundColor: colors.green },
   header: { backgroundColor: colors.green, paddingHorizontal: 18, paddingBottom: 16, paddingTop: 12 },
   brandRow: { alignItems: 'center', flexDirection: 'row', gap: 12, marginBottom: 16 },
-  brandMark: { alignItems: 'center', backgroundColor: '#0b312b', borderRadius: 18, height: 52, justifyContent: 'center', width: 52 },
+  brandMark: { alignItems: 'center', backgroundColor: '#0b312b', borderRadius: 18, height: 52, justifyContent: 'center', overflow: 'hidden', width: 52 },
+  brandMarkImage: { height: 52, width: 52 },
   brandMarkText: { color: colors.amber, fontSize: 18, fontWeight: '900' },
   brandTitle: { color: 'white', fontSize: 28, fontWeight: '900', letterSpacing: -0.8 },
   brandSubtitle: { color: '#bdebdc', fontSize: 12, fontWeight: '700', marginTop: 2, textTransform: 'uppercase' },
@@ -482,7 +511,7 @@ const styles = StyleSheet.create({
   segmentText: { color: 'rgba(255,255,255,0.75)', fontSize: 16, fontWeight: '900', textAlign: 'center' },
   segmentTextActive: { color: colors.green },
   resultCount: { color: 'rgba(255,255,255,0.72)', fontSize: 12, fontWeight: '900', letterSpacing: 2, paddingHorizontal: 8, textTransform: 'uppercase' },
-  content: { flex: 1 },
+  content: { backgroundColor: colors.sand, flex: 1 },
   listContent: { gap: 14, padding: 16, paddingBottom: 110 },
   screenIntro: { backgroundColor: 'white', borderRadius: 28, padding: 18 },
   kicker: { color: colors.green2, fontSize: 11, fontWeight: '900', letterSpacing: 2.2, textTransform: 'uppercase' },
@@ -509,17 +538,17 @@ const styles = StyleSheet.create({
   tabActive: { color: colors.green },
   centeredState: { alignItems: 'center', flex: 1, gap: 12, justifyContent: 'center', padding: 24 },
   centeredText: { color: colors.muted, fontSize: 15, fontWeight: '700', lineHeight: 22, textAlign: 'center' },
-  mapScreen: { paddingBottom: 110 },
-  mapMock: { backgroundColor: '#9fd2eb', height: 610, margin: 16, overflow: 'hidden', borderRadius: 30 },
-  mapOverlay: { alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.94)', borderRadius: 24, flexDirection: 'row', justifyContent: 'space-between', margin: 14, padding: 16 },
+  mapScreen: { flex: 1, paddingBottom: 86 },
+  nativeMapFrame: { backgroundColor: '#9fd2eb', flex: 1, overflow: 'hidden' },
+  nativeMap: { flex: 1 },
+  mapFallback: { alignItems: 'center', backgroundColor: '#9fd2eb', flex: 1, justifyContent: 'center', padding: 28 },
+  mapOverlay: { alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.94)', borderRadius: 24, flexDirection: 'row', justifyContent: 'space-between', left: 14, padding: 16, position: 'absolute', right: 14, top: 14 },
   mapTitle: { color: colors.ink, fontSize: 20, fontWeight: '900' },
   mapCount: { backgroundColor: colors.mint, borderRadius: 999, color: colors.green, fontSize: 14, fontWeight: '900', overflow: 'hidden', paddingHorizontal: 14, paddingVertical: 8 },
-  mapCanvasFallback: { bottom: 22, left: 22, position: 'absolute', right: 22 },
-  mapCanvasTitle: { color: colors.green, fontSize: 18, fontWeight: '900' },
-  mapCanvasCopy: { color: colors.muted, fontSize: 13, fontWeight: '700', lineHeight: 20, marginTop: 4 },
-  mapMarker: { backgroundColor: colors.green, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 9, position: 'absolute', shadowColor: colors.green, shadowOpacity: 0.25, shadowRadius: 16, shadowOffset: { width: 0, height: 8 } },
+  mapCanvasTitle: { color: colors.green, fontSize: 20, fontWeight: '900', textAlign: 'center' },
+  mapCanvasCopy: { color: colors.muted, fontSize: 14, fontWeight: '700', lineHeight: 21, marginTop: 8, textAlign: 'center' },
+  mapMarker: { backgroundColor: colors.green, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 9, shadowColor: colors.green, shadowOpacity: 0.25, shadowRadius: 16, shadowOffset: { width: 0, height: 8 } },
   mapMarkerText: { color: 'white', fontSize: 13, fontWeight: '900' },
-  mapNote: { color: colors.muted, fontSize: 13, fontWeight: '700', lineHeight: 20, marginHorizontal: 20 },
   agentCard: { alignItems: 'center', backgroundColor: 'white', borderRadius: 22, flexDirection: 'row', gap: 12, padding: 14 },
   agentAvatar: { alignItems: 'center', backgroundColor: colors.green, borderRadius: 20, height: 44, justifyContent: 'center', width: 44 },
   agentInitial: { color: colors.amber, fontSize: 18, fontWeight: '900' },

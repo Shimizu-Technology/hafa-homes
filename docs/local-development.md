@@ -80,12 +80,16 @@ Then:
 - press `a` for Android Emulator
 - scan the QR code with Expo Go for a physical device
 
+Note: the native Mapbox screen uses `@rnmapbox/maps`, which requires custom native code. Plain Expo Go will show a fallback message for the map. Use a custom Expo development build when testing the real Mapbox map.
+
 Important env vars:
 
 ```env
 EXPO_PUBLIC_API_URL=http://localhost:3000
 EXPO_PUBLIC_MAPBOX_TOKEN=
 ```
+
+Use the same public Mapbox token as the web app, but keep it in `.env` and do not commit it.
 
 Do not commit `.env`; `mobile/.gitignore` ignores it.
 

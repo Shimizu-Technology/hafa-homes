@@ -43,13 +43,24 @@ This initial native build includes:
 - Listing list screen
 - Listing detail screen
 - Saved homes local mock state
-- Map concept screen ready for native map provider decision
+- Native Mapbox map screen with price markers when using a custom Expo dev build
 - Agents/Brokerage placeholder surface
 - More/Roadmap screen
 
+## Mapbox
+
+The app uses `@rnmapbox/maps` for the native map screen.
+
+Important: `@rnmapbox/maps` requires custom native code, so the real map will not run inside plain Expo Go. Expo Go falls back to a token/dev-build message. To test Mapbox locally, create a custom Expo development build after setting `EXPO_PUBLIC_MAPBOX_TOKEN` in `.env`.
+
+```bash
+EXPO_PUBLIC_MAPBOX_TOKEN=pk_...
+npm run ios
+# or create an EAS/dev-client build when ready
+```
+
 ## Next mobile work
 
-- Pick native map provider: Mapbox vs React Native Maps
 - Add marker bottom-sheet previews
 - Add real schedule-showing lead form
 - Add mortgage calculator / affordability guide
