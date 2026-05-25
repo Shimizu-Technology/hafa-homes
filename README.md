@@ -14,9 +14,10 @@ This repository contains the MVP/demo foundation:
 
 - `/api` — Rails API with Postgres-backed seed data and initial listing/search endpoints
 - `/web` — React/Vite/TypeScript PWA shell with Tailwind and app-like mobile UI
+- `/mobile` — Expo/React Native iOS/Android app shell for the consumer mobile experience
 - `/docs` — product, research, MLS, and architecture documentation
 
-The first implementation target is a mobile-first PWA that can later be packaged as iOS/Android if needed.
+The first implementation target was a mobile-first PWA. Current direction is to keep the PWA for demo/admin/web/SEO while building a dedicated Expo native app as the broker/agent sales differentiator.
 
 ## Why this exists
 
@@ -37,39 +38,48 @@ Do not build a generic “Zillow for Guam.” Build a Guam-specific housing plat
 
 ## Key decision
 
-We will start with a **mobile-first PWA/web app** rather than native iOS/Android.
+Start with a **mobile-first PWA/web app** for speed, then add a dedicated **Expo native app** for iOS/Android.
 
-Reason: the demo needs to be easy to share, fast to iterate, and accessible by link. Native apps can be added later once MLS access, investor interest, and product-market fit are clearer.
+Reason: the PWA is easy to share, fast to iterate, and useful for web/admin/SEO. The native app helps position Hafa Homes as a real Guam real estate app instead of another brokerage website or IDX page.
 
 ## Local development
 
-### API
+See [Local Development](docs/local-development.md) for the full API, web, and Expo mobile setup.
+
+Quick start:
 
 ```bash
+# Terminal 1: API
 cd api
 bundle install
-bin/rails db:prepare db:seed
-bin/rails runner script/smoke.rb
-bin/rails server
-```
+bundle exec rails db:prepare db:seed
+bundle exec rails server
 
-### Web
-
-```bash
+# Terminal 2: Web PWA
 cd web
 npm install
 npm run dev
+
+# Terminal 3: Expo mobile
+cd mobile
+cp .env.example .env
+npm install
+npm run start
 ```
 
-The web app expects the API at `http://localhost:3000` by default.
+The web app uses `VITE_API_URL`; the mobile app uses `EXPO_PUBLIC_API_URL`. Both default to `http://localhost:3000` for local API development.
 
 ## Documentation
 
 - [PRD](PRD.md)
 - [Build Plan](BUILD_PLAN.md)
 - [Architecture](docs/architecture.md)
+- [Local Development](docs/local-development.md)
 - [Product Brief](docs/product/product-brief.md)
 - [MVP Scope](docs/product/mvp-scope.md)
+- [Platform Strategy](docs/product/platform-strategy.md)
+- [Native Mobile Plan](docs/product/native-mobile-plan.md)
+- [Feature Ideas](docs/product/feature-ideas.md)
 - [Decisions](docs/decisions.md)
 - [MLS & Data Integration Notes](docs/mls-data-integration.md)
 - [Locations LLC Research](docs/research/locations-llc.md)

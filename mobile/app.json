@@ -1,0 +1,39 @@
+{
+  "expo": {
+    "name": "Hafa Homes",
+    "slug": "hafa-homes",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "scheme": "hafahomes",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.shimizutechnology.hafahomes"
+    },
+    "android": {
+      "package": "com.shimizutechnology.hafahomes",
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "extra": {},
+    "plugins": [
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 180,
+          "backgroundColor": "#0f3d35"
+        }
+      ]
+    ]
+  }
+}
