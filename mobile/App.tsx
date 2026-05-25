@@ -360,7 +360,6 @@ function buildMapHtml(points: Listing[]) {
         padding: 0 14px;
         white-space: nowrap;
       }
-      .mapboxgl-ctrl-logo, .mapboxgl-ctrl-attrib { display: none !important; }
     </style>
   </head>
   <body>
@@ -373,7 +372,7 @@ function buildMapHtml(points: Listing[]) {
         style: 'mapbox://styles/mapbox/outdoors-v12',
         center: [144.7937, 13.4443],
         zoom: 10.2,
-        attributionControl: false,
+        attributionControl: true,
         logoPosition: 'bottom-left'
       });
 
