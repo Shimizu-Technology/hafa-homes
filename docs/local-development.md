@@ -80,13 +80,7 @@ Then:
 - press `a` for Android Emulator
 - scan the QR code with Expo Go for a physical device
 
-Note: the native Mapbox screen uses `@rnmapbox/maps`, which requires custom native code. Plain Expo Go will show a fallback message for the map. Use a custom Expo development build when testing the real Mapbox map:
-
-```bash
-npm run ios:dev
-# or
-npm run android:dev
-```
+The mobile map uses Mapbox GL JS inside `react-native-webview`, so it works in Expo Go as long as `EXPO_PUBLIC_MAPBOX_TOKEN` is set.
 
 Important env vars:
 
@@ -95,7 +89,7 @@ EXPO_PUBLIC_API_URL=http://localhost:3000
 EXPO_PUBLIC_MAPBOX_TOKEN=
 ```
 
-Use the same public Mapbox token as the web app, but keep it in `.env` and do not commit it.
+Use the same public Mapbox token as the web app, but keep it in `.env` and do not commit it. Restart Expo with `npm run start -- --clear` after changing env vars.
 
 Do not commit `.env`; `mobile/.gitignore` ignores it.
 

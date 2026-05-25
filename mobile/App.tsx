@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { StatusBar } from 'expo-status-bar'
+import { WebView } from 'react-native-webview'
 import { useEffect, useMemo, useState } from 'react'
 import {
   ActivityIndicator,
@@ -65,17 +66,6 @@ const MAPBOX_TOKEN = process.env.EXPO_PUBLIC_MAPBOX_TOKEN
 const FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1600047509807-ba8f99d2cdde?auto=format&fit=crop&w=1200&q=80'
 const SAVED_LISTING_IDS_KEY = 'hafaHomes:savedListingIds'
 const SAVED_LISTINGS_KEY = 'hafaHomes:savedListings'
-
-type MapboxModule = typeof import('@rnmapbox/maps').default
-let Mapbox: MapboxModule | null = null
-
-try {
-  // @rnmapbox/maps needs a custom Expo dev build. Keep Expo Go usable by falling back if the native module is unavailable.
-  Mapbox = require('@rnmapbox/maps').default as MapboxModule
-  if (MAPBOX_TOKEN) Mapbox.setAccessToken(MAPBOX_TOKEN)
-} catch (mapboxError) {
-  console.warn('Native Mapbox module unavailable; showing fallback map state.', mapboxError)
-}
 
 const tabs: Array<{ key: TabKey; label: string; icon: string }> = [
   { key: 'search', label: 'Search', icon: '⌂' },
@@ -307,51 +297,112 @@ function SearchScreen({ listings, savedIds, onOpen, onToggleSaved }: { listings:
 
 function MapScreen({ listings, onOpen }: { listings: Listing[]; onOpen: (listing: Listing) => void }) {
   const points = listings.filter((listing) => listing.latitude && listing.longitude)
-  const NativeMapbox = Mapbox
+  const mapHtml = useMemo(() => buildMapHtml(points), [points])
 
   return (
     <View style={styles.mapScreen}>
       <View style={styles.nativeMapFrame}>
-        {MAPBOX_TOKEN && NativeMapbox ? (
-          <NativeMapbox.MapView style={styles.nativeMap} styleURL={NativeMapbox.StyleURL.Outdoors} logoEnabled={false} attributionEnabled>
-            <NativeMapbox.Camera
-              bounds={points.length > 1 ? {
-                ne: [Math.max(...points.map((listing) => listing.longitude ?? 144.7937)), Math.max(...points.map((listing) => listing.latitude ?? 13.4443))],
-                sw: [Math.min(...points.map((listing) => listing.longitude ?? 144.7937)), Math.min(...points.map((listing) => listing.latitude ?? 13.4443))],
-                paddingBottom: 120,
-                paddingLeft: 70,
-                paddingRight: 70,
-                paddingTop: 130,
-              } : undefined}
-              centerCoordinate={[144.7937, 13.4443]}
-              zoomLevel={10.2}
-              animationDuration={700}
-            />
-            {points.map((listing) => (
-              <NativeMapbox.MarkerView key={listing.id} coordinate={[listing.longitude ?? 144.7937, listing.latitude ?? 13.4443]} anchor={{ x: 0.5, y: 0.5 }}>
-                <Pressable onPress={() => onOpen(listing)} style={styles.mapMarker}>
-                  <Text style={styles.mapMarkerText}>{currency(listing.price, listing.listing_kind).replace('/mo', '')}</Text>
-                </Pressable>
-              </NativeMapbox.MarkerView>
-            ))}
-          </NativeMapbox.MapView>
+        {MAPBOX_TOKEN ? (
+          <WebView
+            originWhitelist={['*']}
+            source={{ html: mapHtml }}
+            style={styles.nativeMap}
+            onMessage={(event) => {
+              const listingId = Number(event.nativeEvent.data)
+              const listing = listings.find((item) => item.id === listingId)
+              if (listing) onOpen(listing)
+            }}
+            scrollEnabled={false}
+          />
         ) : (
           <View style={styles.mapFallback}>
-            <Text style={styles.mapCanvasTitle}>{MAPBOX_TOKEN ? 'Native map build needed' : 'Mapbox token needed'}</Text>
-            <Text style={styles.mapCanvasCopy}>
-              {MAPBOX_TOKEN
-                ? 'The Mapbox token is configured. Run npm run ios:dev or npm run android:dev so Expo builds the native Mapbox module.'
-                : 'Add EXPO_PUBLIC_MAPBOX_TOKEN to mobile/.env, restart Expo with --clear, then run a custom development build.'}
-            </Text>
+            <Text style={styles.mapCanvasTitle}>Mapbox token needed</Text>
+            <Text style={styles.mapCanvasCopy}>Add EXPO_PUBLIC_MAPBOX_TOKEN to mobile/.env and restart Expo with npm run start -- --clear.</Text>
           </View>
         )}
-        <View style={styles.mapOverlay} pointerEvents="box-none">
+        <View style={styles.mapOverlay} pointerEvents="none">
           <Text style={styles.mapTitle}>Map search</Text>
           <Text style={styles.mapCount}>{points.length} listings</Text>
         </View>
       </View>
     </View>
   )
+}
+
+function buildMapHtml(points: Listing[]) {
+  const safePoints = points.map((listing) => ({
+    id: listing.id,
+    price: currency(listing.price, listing.listing_kind).replace('/mo', ''),
+    latitude: listing.latitude,
+    longitude: listing.longitude,
+    title: listing.title,
+  }))
+
+  return `<!doctype html>
+<html>
+  <head>
+    <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no" />
+    <script src="https://api.mapbox.com/mapbox-gl-js/v3.10.0/mapbox-gl.js"></script>
+    <link href="https://api.mapbox.com/mapbox-gl-js/v3.10.0/mapbox-gl.css" rel="stylesheet" />
+    <style>
+      html, body, #map { height: 100%; margin: 0; width: 100%; }
+      body { background: #9fd2eb; overflow: hidden; }
+      .marker {
+        appearance: none;
+        background: #0f3d35;
+        border: 0;
+        border-radius: 999px;
+        box-shadow: 0 14px 28px rgba(15, 61, 53, 0.28);
+        color: white;
+        cursor: pointer;
+        font: 800 13px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        min-height: 38px;
+        padding: 0 14px;
+        white-space: nowrap;
+      }
+      .mapboxgl-ctrl-logo, .mapboxgl-ctrl-attrib { display: none !important; }
+    </style>
+  </head>
+  <body>
+    <div id="map"></div>
+    <script>
+      mapboxgl.accessToken = ${JSON.stringify(MAPBOX_TOKEN || '')};
+      const points = ${JSON.stringify(safePoints)};
+      const map = new mapboxgl.Map({
+        container: 'map',
+        style: 'mapbox://styles/mapbox/outdoors-v12',
+        center: [144.7937, 13.4443],
+        zoom: 10.2,
+        attributionControl: false,
+        logoPosition: 'bottom-left'
+      });
+
+      map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'bottom-right');
+
+      const bounds = new mapboxgl.LngLatBounds();
+      points.forEach((listing) => {
+        if (!listing.latitude || !listing.longitude) return;
+        const element = document.createElement('button');
+        element.className = 'marker';
+        element.textContent = listing.price;
+        element.setAttribute('aria-label', listing.title);
+        element.addEventListener('click', () => {
+          window.ReactNativeWebView && window.ReactNativeWebView.postMessage(String(listing.id));
+        });
+        new mapboxgl.Marker({ element, anchor: 'center' })
+          .setLngLat([listing.longitude, listing.latitude])
+          .addTo(map);
+        bounds.extend([listing.longitude, listing.latitude]);
+      });
+
+      map.on('load', () => {
+        if (!bounds.isEmpty()) {
+          map.fitBounds(bounds, { padding: { top: 130, right: 70, bottom: 120, left: 70 }, maxZoom: 12.2, duration: 650 });
+        }
+      });
+    </script>
+  </body>
+</html>`
 }
 
 function SavedScreen({ listings, onOpen, onToggleSaved }: { listings: Listing[]; onOpen: (listing: Listing) => void; onToggleSaved: (listingId: number) => void }) {
