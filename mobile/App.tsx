@@ -287,9 +287,9 @@ function SearchScreen({ listings, savedIds, onOpen, onToggleSaved }: { listings:
       contentContainerStyle={styles.listContent}
       ListHeaderComponent={(
         <View style={styles.screenIntro}>
-          <Text style={styles.kicker}>Native app preview</Text>
+            <Text style={styles.kicker}>Listings</Text>
           <Text style={styles.screenTitle}>Latest Guam homes</Text>
-          <Text style={styles.screenCopy}>Built for broker/agent listings, mobile search, saved homes, and direct showing requests.</Text>
+          <Text style={styles.screenCopy}>Search homes and rentals by village, price, features, and the details that matter on island.</Text>
         </View>
       )}
       renderItem={({ item }) => (
@@ -371,9 +371,9 @@ function AgentsScreen({ listings }: { listings: Listing[] }) {
   return (
     <ScrollView contentContainerStyle={styles.listContent}>
       <View style={styles.screenIntro}>
-        <Text style={styles.kicker}>Brokerage marketplace</Text>
+        <Text style={styles.kicker}>Local experts</Text>
         <Text style={styles.screenTitle}>Agents and brokerages</Text>
-        <Text style={styles.screenCopy}>The native app will route listing inquiries to participating agents and brokerages once profiles are connected.</Text>
+        <Text style={styles.screenCopy}>Connect with Guam real estate professionals for showings, questions, financing guidance, and neighborhood advice.</Text>
       </View>
       {(agentNames.length ? agentNames : ['Listing Agent', 'Relocation Specialist', 'Rental Advisor']).slice(0, 6).map((agent, index) => (
         <View key={agent} style={styles.agentCard}>
@@ -393,11 +393,11 @@ function MoreScreen() {
   return (
     <ScrollView contentContainerStyle={styles.listContent}>
       <View style={styles.screenIntro}>
-        <Text style={styles.kicker}>Roadmap</Text>
-        <Text style={styles.screenTitle}>Built for the Guam market</Text>
-        <Text style={styles.screenCopy}>Next native app passes will add real maps, mortgage guidance, neighborhood schools/parks, agent profiles, and Flexmls-ready sync.</Text>
+        <Text style={styles.kicker}>Resources</Text>
+        <Text style={styles.screenTitle}>Island home search tools</Text>
+        <Text style={styles.screenCopy}>Plan your search with local guidance for neighborhoods, schools, financing, saved homes, and relocation needs.</Text>
       </View>
-      {['Mortgage calculator', 'What is in your neighborhood', 'Flexmls sync layer', 'Brokerage subscriptions', 'Native push alerts'].map((item) => (
+      {['Mortgage calculator', 'Neighborhood guide', 'School and park nearby info', 'Saved search alerts', 'Military relocation tools'].map((item) => (
         <View key={item} style={styles.featureRow}>
           <Text style={styles.featureBullet}>✓</Text>
           <Text style={styles.featureText}>{item}</Text>
@@ -538,7 +538,7 @@ const styles = StyleSheet.create({
   tabActive: { color: colors.green },
   centeredState: { alignItems: 'center', flex: 1, gap: 12, justifyContent: 'center', padding: 24 },
   centeredText: { color: colors.muted, fontSize: 15, fontWeight: '700', lineHeight: 22, textAlign: 'center' },
-  mapScreen: { flex: 1, paddingBottom: 86 },
+  mapScreen: { flex: 1 },
   nativeMapFrame: { backgroundColor: '#9fd2eb', flex: 1, overflow: 'hidden' },
   nativeMap: { flex: 1 },
   mapFallback: { alignItems: 'center', backgroundColor: '#9fd2eb', flex: 1, justifyContent: 'center', padding: 28 },

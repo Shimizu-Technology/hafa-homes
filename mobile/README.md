@@ -54,10 +54,16 @@ The app uses `@rnmapbox/maps` for the native map screen.
 Important: `@rnmapbox/maps` requires custom native code, so the real map will not run inside plain Expo Go. Expo Go falls back to a token/dev-build message. To test Mapbox locally, create a custom Expo development build after setting `EXPO_PUBLIC_MAPBOX_TOKEN` in `.env`.
 
 ```bash
+# mobile/.env
 EXPO_PUBLIC_MAPBOX_TOKEN=pk_...
-npm run ios
-# or create an EAS/dev-client build when ready
+
+# then run a custom native build
+npm run ios:dev
+# or
+npm run android:dev
 ```
+
+Use `npm run start` / Expo Go for non-native screens, and `ios:dev` / `android:dev` when testing native Mapbox.
 
 ## Next mobile work
 

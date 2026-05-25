@@ -13,7 +13,7 @@ This repo has three app surfaces:
 Start the API first because both web and mobile read listings from it.
 
 ```bash
-cd /Users/leonshimizu/Desktop/ShimizuTechnology/hafa-homes/api
+cd api
 bundle install
 bundle exec rails db:prepare db:seed
 bundle exec rails runner script/smoke.rb
@@ -39,7 +39,7 @@ Then update the web/mobile API URL env vars accordingly.
 In a second terminal:
 
 ```bash
-cd /Users/leonshimizu/Desktop/ShimizuTechnology/hafa-homes/web
+cd web
 cp .env.example .env # only if .env does not already exist
 npm install
 npm run dev
@@ -66,7 +66,7 @@ npm run build
 In a third terminal:
 
 ```bash
-cd /Users/leonshimizu/Desktop/ShimizuTechnology/hafa-homes/mobile
+cd mobile
 cp .env.example .env # only if .env does not already exist
 npm install
 npm run typecheck
@@ -80,7 +80,13 @@ Then:
 - press `a` for Android Emulator
 - scan the QR code with Expo Go for a physical device
 
-Note: the native Mapbox screen uses `@rnmapbox/maps`, which requires custom native code. Plain Expo Go will show a fallback message for the map. Use a custom Expo development build when testing the real Mapbox map.
+Note: the native Mapbox screen uses `@rnmapbox/maps`, which requires custom native code. Plain Expo Go will show a fallback message for the map. Use a custom Expo development build when testing the real Mapbox map:
+
+```bash
+npm run ios:dev
+# or
+npm run android:dev
+```
 
 Important env vars:
 
