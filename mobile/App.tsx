@@ -386,6 +386,18 @@ function MapScreen({ listings, onOpen, fullMap, onToggleFullMap }: { listings: L
   )
 }
 
+function htmlSafeJson(value: unknown) {
+  const json = JSON.stringify(value)
+  if (typeof json !== 'string') return 'null'
+
+  return json
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029')
+}
+
 function buildMapHtml(points: Listing[]) {
   const safePoints = points.map((listing) => ({
     id: listing.id,
@@ -422,8 +434,8 @@ function buildMapHtml(points: Listing[]) {
   <body>
     <div id="map"></div>
     <script>
-      mapboxgl.accessToken = ${JSON.stringify(MAPBOX_TOKEN || '')};
-      const points = ${JSON.stringify(safePoints)};
+      mapboxgl.accessToken = ${htmlSafeJson(MAPBOX_TOKEN || '')};
+      const points = ${htmlSafeJson(safePoints)};
       const map = new mapboxgl.Map({
         container: 'map',
         style: 'mapbox://styles/mapbox/outdoors-v12',
