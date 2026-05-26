@@ -79,6 +79,7 @@ The web app uses `VITE_API_URL`; the mobile app uses `EXPO_PUBLIC_API_URL`. Both
 - [MVP Scope](docs/product/mvp-scope.md)
 - [Platform Strategy](docs/product/platform-strategy.md)
 - [Native Mobile Plan](docs/product/native-mobile-plan.md)
+- [Local Intel Plan](docs/product/local-intel-plan.md)
 - [Feature Ideas](docs/product/feature-ideas.md)
 - [Decisions](docs/decisions.md)
 - [MLS & Data Integration Notes](docs/mls-data-integration.md)

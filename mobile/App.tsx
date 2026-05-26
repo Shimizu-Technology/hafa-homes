@@ -27,11 +27,22 @@ type Feature = {
   slug: string
 }
 
+type LocalIntel = {
+  summary?: string
+  lifestyle_tags?: string[]
+  schools_note?: string
+  nearby_schools?: string[]
+  parks_and_recreation?: string[]
+  daily_life?: string[]
+  commute_notes?: string[]
+}
+
 type Village = {
   id: number
   name: string
   slug: string
   region?: string
+  local_intel?: LocalIntel
 }
 
 type ListingPhoto = {
@@ -100,6 +111,13 @@ async function fetchListings(kind: ListingKind): Promise<Listing[]> {
   if (!response.ok) throw new Error('Unable to load listings')
   const json = await response.json()
   return json.listings ?? []
+}
+
+async function fetchListing(listingId: number): Promise<Listing> {
+  const response = await fetch(`${API_URL}/api/v1/listings/${listingId}`)
+  if (!response.ok) throw new Error('Unable to load listing')
+  const json = await response.json()
+  return json.listing
 }
 
 async function createLead(payload: {
@@ -792,9 +810,28 @@ function CalculatorInput({ label, value, onChangeText, prefix, suffix }: { label
 }
 
 function ListingDetailScreen({ listing, saved, onBack, onToggleSaved }: { listing: Listing; saved: boolean; onBack: () => void; onToggleSaved: () => void }) {
+  const [detailListing, setDetailListing] = useState(listing)
   const [imageUri, setImageUri] = useState(listing.photos?.[0]?.url || listing.primary_photo_url || FALLBACK_IMAGE)
   const [showMortgageCalculator, setShowMortgageCalculator] = useState(false)
   const [showRequestForm, setShowRequestForm] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    setDetailListing(listing)
+    setImageUri(listing.photos?.[0]?.url || listing.primary_photo_url || FALLBACK_IMAGE)
+
+    if (listing.village.local_intel && Object.keys(listing.village.local_intel).length > 0) return undefined
+
+    fetchListing(listing.id)
+      .then((result) => {
+        if (!cancelled) setDetailListing(result)
+      })
+      .catch((detailError) => console.warn('Unable to load Hafa Homes listing detail', detailError))
+
+    return () => {
+      cancelled = true
+    }
+  }, [listing])
 
   return (
     <SafeAreaView style={styles.shell}>
@@ -806,24 +843,25 @@ function ListingDetailScreen({ listing, saved, onBack, onToggleSaved }: { listin
         </View>
         <Image source={{ uri: imageUri }} onError={() => setImageUri(FALLBACK_IMAGE)} style={styles.detailImage} />
         <View style={styles.detailPanel}>
-          <Text style={styles.priceLarge}>{currency(listing.price, listing.listing_kind)}</Text>
-          <Text style={styles.detailTitle}>{listing.title}</Text>
-          <Text style={styles.cardMeta}>{listing.village.name} · {listing.address}</Text>
-          <Text style={styles.detailStats}>{listing.beds} beds · {listing.baths} baths · {listing.square_feet?.toLocaleString() ?? '—'} sqft</Text>
+          <Text style={styles.priceLarge}>{currency(detailListing.price, detailListing.listing_kind)}</Text>
+          <Text style={styles.detailTitle}>{detailListing.title}</Text>
+          <Text style={styles.cardMeta}>{detailListing.village.name} · {detailListing.address}</Text>
+          <Text style={styles.detailStats}>{detailListing.beds} beds · {detailListing.baths} baths · {detailListing.square_feet?.toLocaleString() ?? '—'} sqft</Text>
           <Text style={styles.sectionTitle}>Local details</Text>
-          <Text style={styles.detailCopy}>{listing.description || 'Explore this Guam listing, request a showing, save it for later, or ask an agent for next steps.'}</Text>
+          <Text style={styles.detailCopy}>{detailListing.description || 'Explore this Guam listing, request a showing, save it for later, or ask an agent for next steps.'}</Text>
+          <LocalIntelSection listing={detailListing} />
           <Text style={styles.sectionTitle}>Agent</Text>
           <View style={styles.agentCard}>
-            <View style={styles.agentAvatar}><Text style={styles.agentInitial}>{(listing.agent_name || 'H').charAt(0)}</Text></View>
+            <View style={styles.agentAvatar}><Text style={styles.agentInitial}>{(detailListing.agent_name || 'H').charAt(0)}</Text></View>
             <View style={styles.agentInfo}>
-              <Text style={styles.agentName}>{listing.agent_name || 'Hafa Homes Agent'}</Text>
-              <Text style={styles.agentMeta}>{listing.brokerage_name || 'Brokerage partner'}</Text>
+              <Text style={styles.agentName}>{detailListing.agent_name || 'Hafa Homes Agent'}</Text>
+              <Text style={styles.agentMeta}>{detailListing.brokerage_name || 'Brokerage partner'}</Text>
             </View>
           </View>
           <Pressable style={styles.primaryCta} onPress={() => setShowRequestForm(true)}>
             <Text style={styles.primaryCtaText}>Request a showing</Text>
           </Pressable>
-          {listing.listing_kind === 'sale' && (
+          {detailListing.listing_kind === 'sale' && (
             <>
               <Pressable
                 style={styles.secondaryCta}
@@ -831,13 +869,58 @@ function ListingDetailScreen({ listing, saved, onBack, onToggleSaved }: { listin
               >
                 <Text style={styles.secondaryCtaText}>{showMortgageCalculator ? 'Hide mortgage calculator' : 'Estimate mortgage payment'}</Text>
               </Pressable>
-              {showMortgageCalculator && <MortgageCalculator listing={listing} />}
+              {showMortgageCalculator && <MortgageCalculator listing={detailListing} />}
             </>
           )}
         </View>
       </ScrollView>
-      <ShowingRequestSheet listing={listing} open={showRequestForm} onClose={() => setShowRequestForm(false)} />
+      <ShowingRequestSheet listing={detailListing} open={showRequestForm} onClose={() => setShowRequestForm(false)} />
     </SafeAreaView>
+  )
+}
+
+function LocalIntelSection({ listing }: { listing: Listing }) {
+  const intel = listing.village.local_intel
+  if (!intel || Object.keys(intel).length === 0) return null
+
+  return (
+    <View style={styles.localIntelCard}>
+      <View style={styles.localIntelHeader}>
+        <View>
+          <Text style={styles.kicker}>Local intel</Text>
+          <Text style={styles.localIntelTitle}>Around {listing.village.name}</Text>
+        </View>
+        {listing.village.region && <Text style={styles.localIntelRegion}>{listing.village.region}</Text>}
+      </View>
+      {intel.summary && <Text style={styles.localIntelSummary}>{intel.summary}</Text>}
+      {Boolean(intel.lifestyle_tags?.length) && (
+        <View style={styles.pillRow}>
+          {intel.lifestyle_tags?.slice(0, 5).map((tag) => <Text key={tag} style={styles.pill}>{tag}</Text>)}
+        </View>
+      )}
+      <LocalIntelList title="Nearby schools" items={intel.nearby_schools} note={intel.schools_note} />
+      <LocalIntelList title="Parks and recreation" items={intel.parks_and_recreation} />
+      <LocalIntelList title="Daily life" items={intel.daily_life} />
+      <LocalIntelList title="Commute notes" items={intel.commute_notes} />
+      <Text style={styles.localIntelDisclaimer}>School assignments, access, and commute times should be verified before making housing decisions.</Text>
+    </View>
+  )
+}
+
+function LocalIntelList({ title, items, note }: { title: string; items?: string[]; note?: string }) {
+  if (!items?.length && !note) return null
+
+  return (
+    <View style={styles.localIntelGroup}>
+      <Text style={styles.localIntelGroupTitle}>{title}</Text>
+      {items?.slice(0, 5).map((item) => (
+        <View key={item} style={styles.localIntelBulletRow}>
+          <View style={styles.localIntelBullet} />
+          <Text style={styles.localIntelBulletText}>{item}</Text>
+        </View>
+      ))}
+      {note && <Text style={styles.localIntelNote}>{note}</Text>}
+    </View>
   )
 }
 
@@ -1057,6 +1140,18 @@ const styles = StyleSheet.create({
   featureRow: { alignItems: 'center', backgroundColor: 'white', borderRadius: 18, flexDirection: 'row', gap: 10, padding: 14 },
   featureBullet: { color: colors.green2, fontSize: 16, fontWeight: '900' },
   featureText: { color: colors.ink, fontSize: 15, fontWeight: '800' },
+  localIntelCard: { backgroundColor: colors.mint, borderColor: '#cfe2d9', borderRadius: 26, borderWidth: 1, marginTop: 24, padding: 16 },
+  localIntelHeader: { alignItems: 'flex-start', flexDirection: 'row', justifyContent: 'space-between', gap: 12 },
+  localIntelTitle: { color: colors.ink, fontSize: 24, fontWeight: '900', letterSpacing: -0.8, marginTop: 4 },
+  localIntelRegion: { backgroundColor: 'white', borderRadius: 999, color: colors.green, fontSize: 11, fontWeight: '900', overflow: 'hidden', paddingHorizontal: 10, paddingVertical: 7, textTransform: 'uppercase' },
+  localIntelSummary: { color: colors.muted, fontSize: 14, fontWeight: '700', lineHeight: 21, marginTop: 10 },
+  localIntelGroup: { backgroundColor: 'rgba(255,255,255,0.72)', borderRadius: 18, marginTop: 12, padding: 12 },
+  localIntelGroupTitle: { color: colors.green, fontSize: 13, fontWeight: '900', marginBottom: 7, textTransform: 'uppercase' },
+  localIntelBulletRow: { alignItems: 'flex-start', flexDirection: 'row', gap: 8, marginTop: 5 },
+  localIntelBullet: { backgroundColor: colors.green2, borderRadius: 999, height: 6, marginTop: 7, width: 6 },
+  localIntelBulletText: { color: colors.ink, flex: 1, fontSize: 13, fontWeight: '800', lineHeight: 19 },
+  localIntelNote: { color: colors.muted, fontSize: 12, fontWeight: '700', lineHeight: 18, marginTop: 8 },
+  localIntelDisclaimer: { color: colors.muted, fontSize: 11, fontWeight: '800', lineHeight: 16, marginTop: 12 },
   detailScroll: { backgroundColor: colors.sand },
   detailContent: { paddingBottom: 28 },
   detailHeader: { alignItems: 'center', backgroundColor: colors.green, flexDirection: 'row', justifyContent: 'space-between', padding: 16 },
