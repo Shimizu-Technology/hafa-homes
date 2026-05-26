@@ -113,6 +113,13 @@ async function fetchListings(kind: ListingKind): Promise<Listing[]> {
   return json.listings ?? []
 }
 
+async function fetchListing(listingId: number): Promise<Listing> {
+  const response = await fetch(`${API_URL}/api/v1/listings/${listingId}`)
+  if (!response.ok) throw new Error('Unable to load listing')
+  const json = await response.json()
+  return json.listing
+}
+
 async function createLead(payload: {
   listing_id: number
   lead_type: 'showing_request'
@@ -803,9 +810,28 @@ function CalculatorInput({ label, value, onChangeText, prefix, suffix }: { label
 }
 
 function ListingDetailScreen({ listing, saved, onBack, onToggleSaved }: { listing: Listing; saved: boolean; onBack: () => void; onToggleSaved: () => void }) {
+  const [detailListing, setDetailListing] = useState(listing)
   const [imageUri, setImageUri] = useState(listing.photos?.[0]?.url || listing.primary_photo_url || FALLBACK_IMAGE)
   const [showMortgageCalculator, setShowMortgageCalculator] = useState(false)
   const [showRequestForm, setShowRequestForm] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    setDetailListing(listing)
+    setImageUri(listing.photos?.[0]?.url || listing.primary_photo_url || FALLBACK_IMAGE)
+
+    if (listing.village.local_intel && Object.keys(listing.village.local_intel).length > 0) return undefined
+
+    fetchListing(listing.id)
+      .then((result) => {
+        if (!cancelled) setDetailListing(result)
+      })
+      .catch((detailError) => console.warn('Unable to load Hafa Homes listing detail', detailError))
+
+    return () => {
+      cancelled = true
+    }
+  }, [listing])
 
   return (
     <SafeAreaView style={styles.shell}>
@@ -817,25 +843,25 @@ function ListingDetailScreen({ listing, saved, onBack, onToggleSaved }: { listin
         </View>
         <Image source={{ uri: imageUri }} onError={() => setImageUri(FALLBACK_IMAGE)} style={styles.detailImage} />
         <View style={styles.detailPanel}>
-          <Text style={styles.priceLarge}>{currency(listing.price, listing.listing_kind)}</Text>
-          <Text style={styles.detailTitle}>{listing.title}</Text>
-          <Text style={styles.cardMeta}>{listing.village.name} · {listing.address}</Text>
-          <Text style={styles.detailStats}>{listing.beds} beds · {listing.baths} baths · {listing.square_feet?.toLocaleString() ?? '—'} sqft</Text>
+          <Text style={styles.priceLarge}>{currency(detailListing.price, detailListing.listing_kind)}</Text>
+          <Text style={styles.detailTitle}>{detailListing.title}</Text>
+          <Text style={styles.cardMeta}>{detailListing.village.name} · {detailListing.address}</Text>
+          <Text style={styles.detailStats}>{detailListing.beds} beds · {detailListing.baths} baths · {detailListing.square_feet?.toLocaleString() ?? '—'} sqft</Text>
           <Text style={styles.sectionTitle}>Local details</Text>
-          <Text style={styles.detailCopy}>{listing.description || 'Explore this Guam listing, request a showing, save it for later, or ask an agent for next steps.'}</Text>
-          <LocalIntelSection listing={listing} />
+          <Text style={styles.detailCopy}>{detailListing.description || 'Explore this Guam listing, request a showing, save it for later, or ask an agent for next steps.'}</Text>
+          <LocalIntelSection listing={detailListing} />
           <Text style={styles.sectionTitle}>Agent</Text>
           <View style={styles.agentCard}>
-            <View style={styles.agentAvatar}><Text style={styles.agentInitial}>{(listing.agent_name || 'H').charAt(0)}</Text></View>
+            <View style={styles.agentAvatar}><Text style={styles.agentInitial}>{(detailListing.agent_name || 'H').charAt(0)}</Text></View>
             <View style={styles.agentInfo}>
-              <Text style={styles.agentName}>{listing.agent_name || 'Hafa Homes Agent'}</Text>
-              <Text style={styles.agentMeta}>{listing.brokerage_name || 'Brokerage partner'}</Text>
+              <Text style={styles.agentName}>{detailListing.agent_name || 'Hafa Homes Agent'}</Text>
+              <Text style={styles.agentMeta}>{detailListing.brokerage_name || 'Brokerage partner'}</Text>
             </View>
           </View>
           <Pressable style={styles.primaryCta} onPress={() => setShowRequestForm(true)}>
             <Text style={styles.primaryCtaText}>Request a showing</Text>
           </Pressable>
-          {listing.listing_kind === 'sale' && (
+          {detailListing.listing_kind === 'sale' && (
             <>
               <Pressable
                 style={styles.secondaryCta}
@@ -843,12 +869,12 @@ function ListingDetailScreen({ listing, saved, onBack, onToggleSaved }: { listin
               >
                 <Text style={styles.secondaryCtaText}>{showMortgageCalculator ? 'Hide mortgage calculator' : 'Estimate mortgage payment'}</Text>
               </Pressable>
-              {showMortgageCalculator && <MortgageCalculator listing={listing} />}
+              {showMortgageCalculator && <MortgageCalculator listing={detailListing} />}
             </>
           )}
         </View>
       </ScrollView>
-      <ShowingRequestSheet listing={listing} open={showRequestForm} onClose={() => setShowRequestForm(false)} />
+      <ShowingRequestSheet listing={detailListing} open={showRequestForm} onClose={() => setShowRequestForm(false)} />
     </SafeAreaView>
   )
 }

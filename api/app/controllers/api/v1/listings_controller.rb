@@ -53,6 +53,7 @@ module Api
 
       def listing_detail(listing)
         listing_summary(listing).merge(
+          village: village_json(listing.village, include_local_intel: true),
           external_id: listing.external_id,
           source: listing.source,
           lot_square_feet: listing.lot_square_feet,
@@ -68,16 +69,17 @@ module Api
         )
       end
 
-      def village_json(village)
+      def village_json(village, include_local_intel: false)
         return nil unless village
 
-        {
+        payload = {
           id: village.id,
           name: village.name,
           slug: village.slug,
-          region: village.region,
-          local_intel: village.local_intel || {}
+          region: village.region
         }
+        payload[:local_intel] = village.local_intel || {} if include_local_intel
+        payload
       end
 
       def feature_json(feature)
