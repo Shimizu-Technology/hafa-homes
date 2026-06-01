@@ -26,6 +26,8 @@ module ClerkAuthenticatable
   end
 
   def require_platform_admin!
+    return if performed?
+
     authenticate_user! unless @current_user
     return if performed?
 
@@ -33,6 +35,8 @@ module ClerkAuthenticatable
   end
 
   def require_staff!
+    return if performed?
+
     authenticate_user! unless @current_user
     return if performed?
 
@@ -71,26 +75,35 @@ module ClerkAuthenticatable
 
     if email.present?
       invited_user = User.find_by("LOWER(email) = ?", email.downcase)
-      if invited_user
-        invited_user.update(
-          clerk_id: clerk_id,
-          first_name: first_name.presence || invited_user.first_name,
-          last_name: last_name.presence || invited_user.last_name,
-          invitation_status: "accepted",
-          accepted_at: invited_user.accepted_at || Time.current,
-          last_sign_in_at: Time.current
-        )
-        return invited_user
-      end
+      return accept_invited_user(invited_user, clerk_id:, first_name:, last_name:) if invited_user
     end
 
-    role = default_role_for(email)
-    User.create(
+    create_public_user!(clerk_id:, email:, first_name:, last_name:)
+  rescue ActiveRecord::RecordNotUnique
+    User.find_by(clerk_id: clerk_id) || User.find_by("LOWER(email) = ?", email.to_s.downcase)
+  end
+
+  def accept_invited_user(user, clerk_id:, first_name:, last_name:)
+    user.update!(
+      clerk_id: clerk_id,
+      first_name: first_name.presence || user.first_name,
+      last_name: last_name.presence || user.last_name,
+      invitation_status: "accepted",
+      accepted_at: user.accepted_at || Time.current,
+      last_sign_in_at: Time.current
+    )
+    user
+  rescue ActiveRecord::RecordNotUnique
+    User.find_by(clerk_id: clerk_id) || user.reload
+  end
+
+  def create_public_user!(clerk_id:, email:, first_name:, last_name:)
+    User.create!(
       clerk_id: clerk_id,
       email: email.presence || "#{clerk_id}@clerk.local",
       first_name: first_name,
       last_name: last_name,
-      role: role,
+      role: default_role_for(email),
       invitation_status: "accepted",
       accepted_at: Time.current,
       last_sign_in_at: Time.current
@@ -98,8 +111,12 @@ module ClerkAuthenticatable
   end
 
   def default_role_for(email)
-    admin_email = ENV.fetch("PLATFORM_ADMIN_EMAIL", "shimizutechnology@gmail.com").downcase
-    email.to_s.downcase == admin_email ? "platform_admin" : "consumer"
+    admin_email = ENV.fetch("PLATFORM_ADMIN_EMAIL") do
+      Rails.logger.warn("[ClerkAuth] PLATFORM_ADMIN_EMAIL is not set; no automatic platform_admin will be granted on sign-up.")
+      nil
+    end
+
+    admin_email.present? && email.to_s.downcase == admin_email.downcase ? "platform_admin" : "consumer"
   end
 
   def email_from_claims(decoded)

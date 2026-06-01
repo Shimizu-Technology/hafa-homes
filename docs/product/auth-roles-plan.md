@@ -19,7 +19,7 @@ Default admin bootstrap email:
 shimizutechnology@gmail.com
 ```
 
-When that Clerk user first authenticates against the Rails API, Rails assigns `platform_admin` by default. All other public signups default to `consumer`.
+When `PLATFORM_ADMIN_EMAIL` is set to that address, that Clerk user is assigned `platform_admin` on first API authentication. Seeds also create a pending `platform_admin` user for that address. If the env var is absent, Rails logs a warning and all public signups default to `consumer`.
 
 ## Architecture
 
