@@ -11,7 +11,10 @@ module ClerkAuthenticatable
     end
 
     @current_user = find_or_create_user_from_clerk(decoded)
-    render_unauthorized("Unable to authenticate user") unless @current_user
+    unless @current_user
+      render_unauthorized("Unable to authenticate user")
+      return
+    end
   end
 
   def authenticate_user_optional
