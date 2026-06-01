@@ -1,6 +1,11 @@
 module Api
   module V1
     class DataSyncRunsController < ApplicationController
+      include ClerkAuthenticatable
+
+      before_action :authenticate_user!
+      before_action :require_staff!
+
       def index
         runs = DataSyncRun.order(started_at: :desc, created_at: :desc).limit(10)
 

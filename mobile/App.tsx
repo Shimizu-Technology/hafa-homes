@@ -1,4 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
+import { ClerkLoaded, ClerkProvider, useAuth, useSignIn, useSignUp, useUser } from '@clerk/clerk-expo'
+import { tokenCache } from '@clerk/clerk-expo/token-cache'
 import { StatusBar } from 'expo-status-bar'
 import { WebView } from 'react-native-webview'
 import { useEffect, useMemo, useState } from 'react'
@@ -75,6 +77,7 @@ type Listing = {
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000'
 const MAPBOX_TOKEN = process.env.EXPO_PUBLIC_MAPBOX_TOKEN
+const CLERK_PUBLISHABLE_KEY = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY
 const FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1600047509807-ba8f99d2cdde?auto=format&fit=crop&w=1200&q=80'
 const SAVED_LISTING_IDS_KEY = 'hafaHomes:savedListingIds'
 const SAVED_LISTINGS_KEY = 'hafaHomes:savedListings'
@@ -140,6 +143,18 @@ async function createLead(payload: {
 }
 
 export default function App() {
+  if (!CLERK_PUBLISHABLE_KEY) return <AppContent />
+
+  return (
+    <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY} tokenCache={tokenCache}>
+      <ClerkLoaded>
+        <AppContent />
+      </ClerkLoaded>
+    </ClerkProvider>
+  )
+}
+
+function AppContent() {
   const [activeTab, setActiveTab] = useState<TabKey>('map')
   const [kind, setKind] = useState<ListingKind>('sale')
   const [searchQuery, setSearchQuery] = useState('')
@@ -349,7 +364,7 @@ export default function App() {
             : <CenteredState label="Loading saved homes..." loading />
         )}
         {activeTab === 'agents' && <AgentsScreen listings={listings} />}
-        {activeTab === 'more' && <MoreScreen />}
+        {activeTab === 'more' && <MoreScreen clerkEnabled={Boolean(CLERK_PUBLISHABLE_KEY)} />}
       </View>
 
       {!(activeTab === 'map' && fullMapOpen) && <View style={styles.tabBar}>
@@ -702,7 +717,7 @@ function AgentsScreen({ listings }: { listings: Listing[] }) {
   )
 }
 
-function MoreScreen() {
+function MoreScreen({ clerkEnabled }: { clerkEnabled: boolean }) {
   return (
     <ScrollView contentContainerStyle={styles.listContent}>
       <View style={styles.screenIntro}>
@@ -710,6 +725,7 @@ function MoreScreen() {
         <Text style={styles.screenTitle}>Island home search tools</Text>
         <Text style={styles.screenCopy}>Plan your search with local guidance for neighborhoods, schools, financing, saved homes, and relocation needs.</Text>
       </View>
+      {clerkEnabled ? <AccountCard /> : <AuthUnavailableCard />}
       {['Mortgage calculator', 'Neighborhood guide', 'School and park nearby info', 'Saved search alerts', 'Military relocation tools'].map((item) => (
         <View key={item} style={styles.featureRow}>
           <Text style={styles.featureBullet}>✓</Text>
@@ -717,6 +733,136 @@ function MoreScreen() {
         </View>
       ))}
     </ScrollView>
+  )
+}
+
+function AuthUnavailableCard() {
+  return (
+    <View style={styles.accountCard}>
+      <Text style={styles.accountKicker}>Account</Text>
+      <Text style={styles.accountTitle}>Sign-in coming online</Text>
+      <Text style={styles.accountCopy}>Clerk is ready in the app. Add EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY to enable public consumer accounts.</Text>
+    </View>
+  )
+}
+
+function AccountCard() {
+  const { isSignedIn, signOut } = useAuth()
+  const { user } = useUser()
+  const [authOpen, setAuthOpen] = useState(false)
+
+  if (isSignedIn) {
+    return (
+      <View style={styles.accountCard}>
+        <Text style={styles.accountKicker}>Account</Text>
+        <Text style={styles.accountTitle}>{user?.fullName || user?.primaryEmailAddress?.emailAddress || 'Hafa Homes account'}</Text>
+        <Text style={styles.accountCopy}>You are signed in. Server-backed saved homes and broker/agent tools will build on this account foundation.</Text>
+        <Pressable style={styles.secondaryCta} onPress={() => signOut()}><Text style={styles.secondaryCtaText}>Sign out</Text></Pressable>
+      </View>
+    )
+  }
+
+  return (
+    <View style={styles.accountCard}>
+      <Text style={styles.accountKicker}>Account</Text>
+      <Text style={styles.accountTitle}>Save and sync your Guam home search</Text>
+      <Text style={styles.accountCopy}>Create a free Hafa Homes account. Public browsing stays open; accounts unlock future saved homes, alerts, and lead history.</Text>
+      <Pressable style={styles.primaryCta} onPress={() => setAuthOpen(true)}><Text style={styles.primaryCtaText}>Sign in or create account</Text></Pressable>
+      <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} />
+    </View>
+  )
+}
+
+function AuthModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { signIn, setActive: setSignInActive, isLoaded: signInLoaded } = useSignIn()
+  const { signUp, setActive: setSignUpActive, isLoaded: signUpLoaded } = useSignUp()
+  const [mode, setMode] = useState<'sign-in' | 'sign-up'>('sign-in')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [code, setCode] = useState('')
+  const [pendingVerification, setPendingVerification] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [message, setMessage] = useState<string | null>(null)
+
+  async function handleSubmit() {
+    if (!email.trim() || !password.trim()) {
+      setMessage('Enter your email and password.')
+      return
+    }
+
+    setLoading(true)
+    setMessage(null)
+    try {
+      if (mode === 'sign-in') {
+        if (!signInLoaded) return
+        const result = await signIn.create({ identifier: email.trim(), password })
+        if (result.status === 'complete') {
+          await setSignInActive({ session: result.createdSessionId })
+          onClose()
+        } else {
+          setMessage('Could not complete sign in. Please try again.')
+        }
+      } else {
+        if (!signUpLoaded) return
+        await signUp.create({ emailAddress: email.trim(), password })
+        await signUp.prepareEmailAddressVerification({ strategy: 'email_code' })
+        setPendingVerification(true)
+        setMessage('Check your email for a verification code.')
+      }
+    } catch (authError: any) {
+      setMessage(authError?.errors?.[0]?.longMessage || authError?.errors?.[0]?.message || 'Authentication failed. Please try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function verifyEmail() {
+    if (!signUpLoaded || !code.trim()) return
+    setLoading(true)
+    setMessage(null)
+    try {
+      const result = await signUp.attemptEmailAddressVerification({ code: code.trim() })
+      if (result.status === 'complete') {
+        await setSignUpActive({ session: result.createdSessionId })
+        onClose()
+      } else {
+        setMessage('Could not verify this code. Please try again.')
+      }
+    } catch (authError: any) {
+      setMessage(authError?.errors?.[0]?.longMessage || authError?.errors?.[0]?.message || 'Verification failed. Please try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <Modal visible={open} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+      <SafeAreaView style={styles.authModalShell}>
+        <View style={styles.authHeader}>
+          <Text style={styles.authTitle}>{mode === 'sign-in' ? 'Sign in' : 'Create account'}</Text>
+          <Pressable onPress={onClose}><Text style={styles.authClose}>Close</Text></Pressable>
+        </View>
+        <View style={styles.authBody}>
+          {pendingVerification ? (
+            <>
+              <RequestInput label="Verification code" value={code} onChangeText={setCode} keyboardType="number-pad" />
+              {message && <Text style={styles.authMessage}>{message}</Text>}
+              <Pressable style={styles.primaryCta} onPress={verifyEmail} disabled={loading}><Text style={styles.primaryCtaText}>{loading ? 'Verifying...' : 'Verify email'}</Text></Pressable>
+            </>
+          ) : (
+            <>
+              <RequestInput label="Email" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
+              <RequestInput label="Password" value={password} onChangeText={setPassword} secureTextEntry />
+              {message && <Text style={styles.authMessage}>{message}</Text>}
+              <Pressable style={styles.primaryCta} onPress={handleSubmit} disabled={loading}><Text style={styles.primaryCtaText}>{loading ? 'Please wait...' : mode === 'sign-in' ? 'Sign in' : 'Create account'}</Text></Pressable>
+              <Pressable style={styles.secondaryCta} onPress={() => { setMode(mode === 'sign-in' ? 'sign-up' : 'sign-in'); setMessage(null) }}>
+                <Text style={styles.secondaryCtaText}>{mode === 'sign-in' ? 'Create a new account' : 'I already have an account'}</Text>
+              </Pressable>
+            </>
+          )}
+        </View>
+      </SafeAreaView>
+    </Modal>
   )
 }
 
@@ -1023,11 +1169,11 @@ function ShowingRequestSheet({ listing, open, onClose }: { listing: Listing; ope
   )
 }
 
-function RequestInput({ label, value, onChangeText, placeholder, keyboardType, autoCapitalize }: { label: string; value: string; onChangeText: (value: string) => void; placeholder: string; keyboardType?: 'default' | 'email-address' | 'phone-pad'; autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters' }) {
+function RequestInput({ label, value, onChangeText, placeholder = '', keyboardType, autoCapitalize, secureTextEntry }: { label: string; value: string; onChangeText: (value: string) => void; placeholder?: string; keyboardType?: 'default' | 'email-address' | 'phone-pad' | 'number-pad'; autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters'; secureTextEntry?: boolean }) {
   return (
     <View>
       <Text style={styles.requestLabel}>{label}</Text>
-      <TextInput value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor="#7b8a84" keyboardType={keyboardType} autoCapitalize={autoCapitalize} style={styles.requestInput} />
+      <TextInput value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor="#7b8a84" keyboardType={keyboardType} autoCapitalize={autoCapitalize} secureTextEntry={secureTextEntry} style={styles.requestInput} />
     </View>
   )
 }
@@ -1140,6 +1286,16 @@ const styles = StyleSheet.create({
   featureRow: { alignItems: 'center', backgroundColor: 'white', borderRadius: 18, flexDirection: 'row', gap: 10, padding: 14 },
   featureBullet: { color: colors.green2, fontSize: 16, fontWeight: '900' },
   featureText: { color: colors.ink, fontSize: 15, fontWeight: '800' },
+  accountCard: { backgroundColor: colors.green, borderRadius: 26, gap: 10, marginBottom: 12, padding: 18 },
+  accountKicker: { color: colors.mint, fontSize: 12, fontWeight: '900', letterSpacing: 1.8, textTransform: 'uppercase' },
+  accountTitle: { color: 'white', fontSize: 22, fontWeight: '900', letterSpacing: -0.5 },
+  accountCopy: { color: 'rgba(255,255,255,0.78)', fontSize: 14, fontWeight: '700', lineHeight: 21 },
+  authModalShell: { backgroundColor: colors.sand, flex: 1 },
+  authHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', padding: 20 },
+  authTitle: { color: colors.ink, fontSize: 28, fontWeight: '900', letterSpacing: -0.8 },
+  authClose: { color: colors.green, fontSize: 15, fontWeight: '900' },
+  authBody: { gap: 14, padding: 20 },
+  authMessage: { color: colors.muted, fontSize: 13, fontWeight: '800', lineHeight: 19 },
   localIntelCard: { backgroundColor: colors.mint, borderColor: '#cfe2d9', borderRadius: 26, borderWidth: 1, marginTop: 24, padding: 16 },
   localIntelHeader: { alignItems: 'flex-start', flexDirection: 'row', justifyContent: 'space-between', gap: 12 },
   localIntelTitle: { color: colors.ink, fontSize: 24, fontWeight: '900', letterSpacing: -0.8, marginTop: 4 },

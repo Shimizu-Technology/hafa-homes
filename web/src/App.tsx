@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link, Route, Routes, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { SignedIn, SignedOut, SignInButton, UserButton } from '@clerk/clerk-react'
 import { Brand } from './components/Brand'
 import { PostHogPageView, captureAnalyticsEvent } from './providers/PostHogProvider'
 import {
@@ -33,6 +34,8 @@ import {
   X,
 } from 'lucide-react'
 import { useMutation, useQuery } from '@tanstack/react-query'
+import { authHeaders } from './lib/api'
+import { useAuthContext } from './contexts/AuthContext'
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
@@ -115,6 +118,17 @@ type Lead = {
 
 type LeadsResponse = { leads: Lead[] }
 
+type CurrentUser = {
+  id: number
+  email: string
+  full_name: string
+  role: 'platform_admin' | 'brokerage_admin' | 'agent' | 'consumer'
+  is_staff: boolean
+  is_platform_admin: boolean
+}
+
+type MeResponse = { user: CurrentUser }
+
 type LeadPayload = {
   lead_type: string
   name: string
@@ -172,14 +186,20 @@ async function fetchVillages(): Promise<VillagesResponse> {
   return response.json()
 }
 
+async function fetchMe(): Promise<MeResponse> {
+  const response = await fetch(`${API_URL}/api/v1/me`, { headers: await authHeaders() })
+  if (!response.ok) throw new Error('Unable to load current user')
+  return response.json()
+}
+
 async function fetchSyncRuns(): Promise<SyncRunsResponse> {
-  const response = await fetch(`${API_URL}/api/v1/data_sync_runs`)
+  const response = await fetch(`${API_URL}/api/v1/data_sync_runs`, { headers: await authHeaders() })
   if (!response.ok) throw new Error('Unable to load sync runs')
   return response.json()
 }
 
 async function fetchLeads(): Promise<LeadsResponse> {
-  const response = await fetch(`${API_URL}/api/v1/leads`)
+  const response = await fetch(`${API_URL}/api/v1/leads`, { headers: await authHeaders() })
   if (!response.ok) throw new Error('Unable to load leads')
   return response.json()
 }
@@ -226,6 +246,66 @@ function tourDateOptions(count = 4) {
   })
 }
 
+function RequireStaff({ children }: { children: React.ReactNode }) {
+  const { isClerkEnabled, isSignedIn, isLoading } = useAuthContext()
+  const { data, isLoading: isMeLoading, isError } = useQuery({
+    queryKey: ['me'],
+    queryFn: fetchMe,
+    enabled: isClerkEnabled && isSignedIn,
+    retry: false,
+  })
+
+  if (!isClerkEnabled) {
+    return (
+      <Shell compact>
+        <ContentHeader kicker="Admin access" title="Clerk is not configured yet." description="Add VITE_CLERK_PUBLISHABLE_KEY on the web app and Clerk JWKS settings on the API to enable protected brokerage/admin access." />
+      </Shell>
+    )
+  }
+
+  if (isLoading || isMeLoading) {
+    return (
+      <Shell compact>
+        <StateCard>Checking admin access...</StateCard>
+      </Shell>
+    )
+  }
+
+  if (!isSignedIn) {
+    return (
+      <Shell compact>
+        <section className="mx-auto max-w-3xl px-5 py-12">
+          <div className="rounded-[2rem] bg-white p-8 text-center shadow-sm">
+            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#0f705e]">Admin access</p>
+            <h1 className="mt-3 text-3xl font-semibold tracking-[-0.05em]">Sign in to continue.</h1>
+            <p className="mt-3 text-[#66746f]">Brokerage, agent, and platform dashboards are protected with Clerk.</p>
+            <SignInButton mode="modal">
+              <button className="mt-6 rounded-full bg-[#0f3d35] px-6 py-3 text-sm font-bold text-white shadow-lg shadow-[#0f3d35]/20">Sign in</button>
+            </SignInButton>
+          </div>
+        </section>
+      </Shell>
+    )
+  }
+
+  if (isError || !data?.user.is_staff) {
+    return (
+      <Shell compact>
+        <section className="mx-auto max-w-3xl px-5 py-12">
+          <div className="rounded-[2rem] bg-white p-8 text-center shadow-sm">
+            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#b45309]">Access pending</p>
+            <h1 className="mt-3 text-3xl font-semibold tracking-[-0.05em]">This account does not have admin access.</h1>
+            <p className="mt-3 text-[#66746f]">Use the platform admin account or ask a platform admin to assign a brokerage or agent role.</p>
+            <div className="mt-5 flex justify-center"><UserButton /></div>
+          </div>
+        </section>
+      </Shell>
+    )
+  }
+
+  return <>{children}</>
+}
+
 function App() {
   return (
     <>
@@ -238,8 +318,8 @@ function App() {
         <Route path="/military" element={<MilitaryPage />} />
         <Route path="/saved" element={<SavedPage />} />
         <Route path="/privacy" element={<PrivacyPage />} />
-        <Route path="/admin/sync" element={<SyncPage />} />
-        <Route path="/admin/leads" element={<LeadsPage />} />
+        <Route path="/admin/sync" element={<RequireStaff><SyncPage /></RequireStaff>} />
+        <Route path="/admin/leads" element={<RequireStaff><LeadsPage /></RequireStaff>} />
       </Routes>
     </>
   )
@@ -1547,6 +1627,10 @@ function TopNav() {
         <Link to="/saved">Saved</Link>
         <Link to="/admin/sync">MLS sync</Link>
         <Link to="/admin/leads">Leads</Link>
+        <SignedOut>
+          <SignInButton mode="modal"><button className="rounded-full border border-white/25 px-4 py-2 text-white">Sign in</button></SignInButton>
+        </SignedOut>
+        <SignedIn><UserButton /></SignedIn>
       </div>
       <button className="rounded-full border border-white/25 p-2 md:hidden"><Menu size={18} /></button>
     </nav>

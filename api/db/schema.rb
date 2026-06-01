@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_05_26_030100) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_01_113305) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -128,6 +128,26 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_26_030100) do
     t.datetime "updated_at", null: false
   end
 
+  create_table "users", force: :cascade do |t|
+    t.datetime "accepted_at"
+    t.string "clerk_id", null: false
+    t.string "clerk_invitation_id"
+    t.datetime "created_at", null: false
+    t.string "email", null: false
+    t.string "first_name"
+    t.string "invitation_status", default: "accepted", null: false
+    t.datetime "invited_at"
+    t.bigint "invited_by_id"
+    t.string "last_name"
+    t.datetime "last_sign_in_at"
+    t.string "role", default: "consumer", null: false
+    t.datetime "updated_at", null: false
+    t.index "lower((email)::text)", name: "index_users_on_lower_email", unique: true
+    t.index ["clerk_id"], name: "index_users_on_clerk_id", unique: true
+    t.index ["invited_by_id"], name: "index_users_on_invited_by_id"
+    t.index ["role"], name: "index_users_on_role"
+  end
+
   create_table "villages", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.text "description"
@@ -147,4 +167,5 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_26_030100) do
   add_foreign_key "listing_photos", "listings"
   add_foreign_key "listings", "villages"
   add_foreign_key "saved_listings", "listings"
+  add_foreign_key "users", "users", column: "invited_by_id"
 end

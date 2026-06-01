@@ -1,6 +1,11 @@
 module Api
   module V1
     class LeadsController < ApplicationController
+      include ClerkAuthenticatable
+
+      before_action :authenticate_user!, only: [:index]
+      before_action :require_staff!, only: [:index]
+
       def index
         leads = Lead.includes(:listing).order(created_at: :desc).limit(100)
 

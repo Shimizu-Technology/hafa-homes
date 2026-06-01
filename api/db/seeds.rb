@@ -9,6 +9,15 @@ Listing.delete_all
 Feature.delete_all
 Village.delete_all
 DataSyncRun.delete_all
+User.where(email: "shimizutechnology@gmail.com").delete_all
+
+User.create!(
+  clerk_id: "pending_platform_admin",
+  email: "shimizutechnology@gmail.com",
+  role: "platform_admin",
+  invitation_status: "pending",
+  invited_at: Time.current
+)
 
 local_intel = {
   "tamuning" => {

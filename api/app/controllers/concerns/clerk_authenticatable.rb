@@ -1,0 +1,130 @@
+module ClerkAuthenticatable
+  extend ActiveSupport::Concern
+
+  private
+
+  def authenticate_user!
+    decoded = decoded_clerk_token
+    unless decoded
+      render_unauthorized("Invalid or missing authentication token")
+      return
+    end
+
+    @current_user = find_or_create_user_from_clerk(decoded)
+    render_unauthorized("Unable to authenticate user") unless @current_user
+  end
+
+  def authenticate_user_optional
+    decoded = decoded_clerk_token
+    return unless decoded
+
+    @current_user = find_or_create_user_from_clerk(decoded)
+  end
+
+  def current_user
+    @current_user
+  end
+
+  def require_platform_admin!
+    authenticate_user! unless @current_user
+    return if performed?
+
+    render_forbidden("Platform admin access required") unless @current_user&.platform_admin?
+  end
+
+  def require_staff!
+    authenticate_user! unless @current_user
+    return if performed?
+
+    render_forbidden("Staff access required") unless @current_user&.staff?
+  end
+
+  def decoded_clerk_token
+    header = request.headers["Authorization"]
+    return nil unless header.present?
+
+    token = header.split.last
+    ClerkAuth.verify(token)
+  end
+
+  def find_or_create_user_from_clerk(decoded)
+    clerk_id = decoded["sub"]
+    email = email_from_claims(decoded)
+    first_name = decoded["first_name"] || decoded.dig("user", "first_name")
+    last_name = decoded["last_name"] || decoded.dig("user", "last_name")
+
+    if email.blank? && clerk_id.present?
+      email = ClerkAuth.fetch_user_email(clerk_id)
+    end
+
+    return nil if clerk_id.blank?
+
+    user = User.find_by(clerk_id: clerk_id)
+    if user
+      updates = { last_sign_in_at: Time.current }
+      updates[:email] = email if email.present? && email.downcase != user.email
+      updates[:first_name] = first_name if first_name.present?
+      updates[:last_name] = last_name if last_name.present?
+      user.update(updates)
+      return user
+    end
+
+    if email.present?
+      invited_user = User.find_by("LOWER(email) = ?", email.downcase)
+      if invited_user
+        invited_user.update(
+          clerk_id: clerk_id,
+          first_name: first_name.presence || invited_user.first_name,
+          last_name: last_name.presence || invited_user.last_name,
+          invitation_status: "accepted",
+          accepted_at: invited_user.accepted_at || Time.current,
+          last_sign_in_at: Time.current
+        )
+        return invited_user
+      end
+    end
+
+    role = default_role_for(email)
+    User.create(
+      clerk_id: clerk_id,
+      email: email.presence || "#{clerk_id}@clerk.local",
+      first_name: first_name,
+      last_name: last_name,
+      role: role,
+      invitation_status: "accepted",
+      accepted_at: Time.current,
+      last_sign_in_at: Time.current
+    )
+  end
+
+  def default_role_for(email)
+    admin_email = ENV.fetch("PLATFORM_ADMIN_EMAIL", "shimizutechnology@gmail.com").downcase
+    email.to_s.downcase == admin_email ? "platform_admin" : "consumer"
+  end
+
+  def email_from_claims(decoded)
+    direct = decoded["email"] || decoded["email_address"] || decoded["primary_email_address"]
+    return direct if direct.present?
+
+    nested = decoded.dig("user", "email") || decoded.dig("user", "email_address") || decoded.dig("user", "primary_email_address")
+    return nested if nested.present?
+
+    emails = decoded["email_addresses"] || decoded.dig("user", "email_addresses")
+    if emails.is_a?(Array)
+      primary_id = decoded["primary_email_address_id"] || decoded.dig("user", "primary_email_address_id")
+      primary = emails.find { |address| address.is_a?(Hash) && address["id"] == primary_id }
+      first = primary || emails.find { |address| address.is_a?(Hash) }
+      return first["email_address"] || first["email"] if first
+    end
+
+    nil
+  end
+
+  def render_unauthorized(message = "Unauthorized")
+    render json: { error: message }, status: :unauthorized
+  end
+
+  def render_forbidden(message = "Forbidden")
+    render json: { error: message }, status: :forbidden
+  end
+end

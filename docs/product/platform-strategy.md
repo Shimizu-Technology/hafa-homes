@@ -1,16 +1,16 @@
 # Hafa Homes Platform Strategy
 
-_Last updated: 2026-05-24 after Leon/Mike Hafa Homes discussion._
+_Last updated: 2026-06-01 after SSI Automation meeting with Mike Sakazaki and John Ilao._
 
 ## Current direction
 
-Hafa Homes is evolving from a proof-of-concept search demo into a potential Guam-wide real estate app/platform.
+Hafa Homes is evolving from a proof-of-concept search demo into a broker-first Guam real estate software platform.
 
 The working strategy is:
 
-> Hafa Homes is the consumer-facing Guam real estate app. Brokerages and agents subscribe to participate, connect or authorize their MLS/listing feed, publish their listings/agents, and receive leads through the platform.
+> Hafa Homes is the consumer-facing Guam real estate app plus a brokerage subscription platform. Brokerages subscribe, authorize or connect their MLS/listing feed, publish their listings/agents, receive/reroute leads, and can eventually manage rental/tenant workflows.
 
-This is closer to a Guam-first Locations LLC-style platform than a one-off website for a single brokerage.
+This is closer to a Guam-first brokerage app + lead platform + property-management portal than a one-off website for a single brokerage.
 
 ## Why this is valuable
 
@@ -34,20 +34,24 @@ The pitch is not just “we can show MLS listings.” The pitch is:
 
 ## Business model hypothesis
 
-### Primary model: agent/brokerage subscription
+### Primary model: brokerage subscription
+
+Brokerages pay Hafa Homes for software, app presence, lead conversion, and operational tooling. Individual agents may benefit through their brokerage, but the first sales motion should target brokers rather than agent-by-agent subscriptions.
 
 Brokerages/agents pay Hafa Homes for software and distribution, not for the MLS data itself.
 
 Possible paid components:
 
 - brokerage subscription
-- per-agent seats
 - setup/onboarding fee
+- package tiers: search/app, lead engagement, property management
+- per-agent seats or included agent allowances
 - MLS/feed integration fee
 - featured agent/listing placement
 - lead inbox/CRM tools
 - analytics/reporting
 - native app packaging/support
+- property-management / tenant portal features
 
 ### What subscribers get
 
@@ -127,23 +131,28 @@ Native app selling points:
 
 ## Recommended next product direction
 
-Build toward a broker/agent marketplace while keeping the existing consumer demo polished.
+Build toward a broker-first platform while keeping the existing consumer demo polished.
 
 Next major product capabilities:
 
-1. Authentication/accounts for consumers, agents, brokerages, and admins
-2. Server-backed saved listings, saved searches, and alert preferences
-3. Agent and brokerage profiles
-4. Lead routing by listing/agent/brokerage
-5. Brokerage/agent admin dashboard
-6. MLS/Flexmls sync adapter skeleton
-7. Neighborhood intelligence on listing detail pages
-8. Mortgage calculator and affordability guide
-9. Native app TestFlight/App Store release process
-10. Map search polish: loading states, marker clustering/counts, and zoom-gated price pins
+1. Brokerage and agent data model
+2. Listing ownership/attribution by brokerage and optionally agent
+3. Lead routing by listing/agent/brokerage
+4. Brokerage/agent admin dashboard and lead inbox
+5. Authentication/accounts for consumers, agents, brokerages, and admins
+6. Server-backed saved listings, saved searches, and alert preferences
+7. MLS/Flexmls sync adapter skeleton once a broker authorizes access
+8. Property-management / tenant portal preview for premium package
+9. Neighborhood intelligence on listing detail pages
+10. Mortgage calculator and affordability guide
+11. Native app TestFlight/App Store release process
+12. Map search polish: loading states, marker clustering/counts, and zoom-gated price pins
 
 ## Meeting source
 
 Source notes/transcript:
 
 - `Brain-Dump/work/shimizu-tech/Michael Sazaki (BOH)/2) Talk with Mike about HafaHomes and Shimizu Technology - May 24, 2026.md`
+- `Brain-Dump/work/shimizu-tech/SSI-Automation/1) 1st Meeting with Mike and John for SSI Automation.md`
+- `docs/meetings/2026-06-01-ssi-automation-hafa-homes.md`
+- `docs/product/brokerage-platform-plan.md`
