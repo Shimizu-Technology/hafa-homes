@@ -229,7 +229,7 @@ async function saveSearch(payload: { name: string; email: string; alert_frequenc
 async function createLead(payload: LeadPayload) {
   const response = await fetch(`${API_URL}/api/v1/leads`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
     body: JSON.stringify({ lead: payload }),
   })
   if (!response.ok) throw new Error('Unable to submit lead')
