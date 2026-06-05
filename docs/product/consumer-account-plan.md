@@ -26,6 +26,8 @@ Mobile uses one shared Clerk sign-in/sign-up modal for:
 - More/account screen
 - post-inquiry account CTA
 
+Email sign-up collects first/last name so showing requests and future broker workflows have a real contact name. Google SSO uses Clerk's native SSO flow; on native mobile, provider buttons are custom UI wired to Clerk strategies rather than Clerk's web drop-in components automatically rendering every enabled provider.
+
 This avoids fragmented auth UI and keeps Clerk behavior consistent.
 
 ### Saved homes require an account
@@ -56,7 +58,7 @@ Mobile behavior:
 Showing requests should remain low-friction for lead conversion.
 
 - Signed-out users can still submit name/email/phone/message.
-- Signed-in users get name/email prefilled from Clerk.
+- Signed-in users get name/email prefilled from Clerk. If Clerk has no name, the name field stays editable instead of falling back to email.
 - If a signed-in user submits, Rails attaches `lead.user_id`.
 - If signed out, the lead remains contact-info based with `user_id = nil`.
 

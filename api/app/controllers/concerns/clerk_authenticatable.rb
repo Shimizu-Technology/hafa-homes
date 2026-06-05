@@ -56,15 +56,15 @@ module ClerkAuthenticatable
 
   def find_or_create_user_from_clerk(decoded)
     clerk_id = decoded["sub"]
+    return nil if clerk_id.blank?
+
     email = email_from_claims(decoded)
     first_name = decoded["first_name"] || decoded.dig("user", "first_name")
     last_name = decoded["last_name"] || decoded.dig("user", "last_name")
 
-    if email.blank? && clerk_id.present?
+    if email.blank?
       email = ClerkAuth.fetch_user_email(clerk_id)
     end
-
-    return nil if clerk_id.blank?
 
     user = User.find_by(clerk_id: clerk_id)
     if user
@@ -79,6 +79,9 @@ module ClerkAuthenticatable
     if email.present?
       invited_user = User.find_by("LOWER(email) = ?", email.downcase)
       return accept_invited_user(invited_user, clerk_id:, first_name:, last_name:) if invited_user
+    else
+      Rails.logger.warn("[ClerkAuth] No email resolved for Clerk user #{clerk_id}; refusing to create a local user without a verified email.")
+      return nil
     end
 
     create_public_user!(clerk_id:, email:, first_name:, last_name:)
@@ -101,12 +104,14 @@ module ClerkAuthenticatable
   end
 
   def create_public_user!(clerk_id:, email:, first_name:, last_name:)
+    resolved_email = email.to_s.strip.downcase
+
     User.create!(
       clerk_id: clerk_id,
-      email: email.presence || "#{clerk_id}@clerk.local",
+      email: resolved_email,
       first_name: first_name,
       last_name: last_name,
-      role: default_role_for(email),
+      role: default_role_for(resolved_email),
       invitation_status: "accepted",
       accepted_at: Time.current,
       last_sign_in_at: Time.current

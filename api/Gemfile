@@ -50,6 +50,9 @@ group :development, :test do
 
   # Omakase Ruby styling [https://github.com/rails/rubocop-rails-omakase/]
   gem "rubocop-rails-omakase", require: false
+
+  # Load api/.env for local Rails server/runner auth testing.
+  gem "dotenv-rails"
 end
 
 gem "jwt", "~> 3.2"

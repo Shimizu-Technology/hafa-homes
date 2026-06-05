@@ -3,14 +3,14 @@ class ClerkAuth
   JWKS_CACHE_TTL = 1.hour
 
   class << self
-    def verify(token)
+    def verify(token, refreshed_jwks: false)
       return nil if token.blank?
 
       if Rails.env.test? && token.start_with?("test_token_")
         return handle_test_token(token)
       end
 
-      jwks = fetch_jwks
+      jwks = fetch_jwks(force_refresh: refreshed_jwks)
       return nil unless jwks
 
       options = {
@@ -35,7 +35,13 @@ class ClerkAuth
       Rails.logger.debug("Clerk JWT token expired")
       nil
     rescue JWT::DecodeError => e
-      Rails.logger.warn("Clerk JWT decode error: #{e.message}")
+      unless refreshed_jwks
+        Rails.logger.warn("Clerk JWT decode error: #{e.message}; refreshing JWKS cache and retrying once")
+        Rails.cache.delete(JWKS_CACHE_KEY)
+        return verify(token, refreshed_jwks: true)
+      end
+
+      Rails.logger.warn("Clerk JWT decode error after JWKS refresh: #{e.message}")
       nil
     end
 
@@ -63,8 +69,8 @@ class ClerkAuth
 
     private
 
-    def fetch_jwks
-      cached = Rails.cache.read(JWKS_CACHE_KEY)
+    def fetch_jwks(force_refresh: false)
+      cached = Rails.cache.read(JWKS_CACHE_KEY) unless force_refresh
       return cached if cached.present?
 
       uri = jwks_url

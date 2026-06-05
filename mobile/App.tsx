@@ -1,6 +1,8 @@
-import { ClerkLoaded, ClerkProvider, useAuth, useSignIn, useSignUp, useUser } from '@clerk/clerk-expo'
+import { ClerkLoaded, ClerkProvider, useAuth, useSignIn, useSignUp, useSSO, useUser } from '@clerk/clerk-expo'
 import { tokenCache } from '@clerk/clerk-expo/token-cache'
+import * as Linking from 'expo-linking'
 import { StatusBar } from 'expo-status-bar'
+import * as WebBrowser from 'expo-web-browser'
 import { WebView } from 'react-native-webview'
 import { useEffect, useMemo, useState } from 'react'
 import {
@@ -92,6 +94,8 @@ type AuthPrompt = {
   copy?: string
   initialMode?: 'sign-in' | 'sign-up'
 }
+
+WebBrowser.maybeCompleteAuthSession()
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000'
 const MAPBOX_TOKEN = process.env.EXPO_PUBLIC_MAPBOX_TOKEN
@@ -215,7 +219,8 @@ function AuthenticatedAppContent() {
   const { getToken, isSignedIn, signOut } = useAuth()
   const { user } = useUser()
   const userEmail = user?.primaryEmailAddress?.emailAddress
-  const userName = user?.fullName || userEmail || undefined
+  const fullName = [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim()
+  const userName = user?.fullName || fullName || undefined
   const userInitial = (user?.firstName || userEmail || 'A').charAt(0).toUpperCase()
 
   const auth = useMemo<AppAuth>(() => ({
@@ -937,7 +942,10 @@ function AccountCard({ auth, onOpenAuth }: { auth: AppAuth; onOpenAuth: (prompt?
 function AuthModal({ open, prompt, onClose }: { open: boolean; prompt: AuthPrompt | null; onClose: () => void }) {
   const { signIn, setActive: setSignInActive, isLoaded: signInLoaded } = useSignIn()
   const { signUp, setActive: setSignUpActive, isLoaded: signUpLoaded } = useSignUp()
+  const { startSSOFlow } = useSSO()
   const [mode, setMode] = useState<'sign-in' | 'sign-up'>('sign-in')
+  const [firstName, setFirstName] = useState('')
+  const [lastName, setLastName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [code, setCode] = useState('')
@@ -949,6 +957,8 @@ function AuthModal({ open, prompt, onClose }: { open: boolean; prompt: AuthPromp
     if (!open) return
 
     setMode(prompt?.initialMode ?? 'sign-in')
+    setFirstName('')
+    setLastName('')
     setEmail('')
     setPassword('')
     setCode('')
@@ -957,9 +967,42 @@ function AuthModal({ open, prompt, onClose }: { open: boolean; prompt: AuthPromp
     setMessage(null)
   }, [open, prompt?.initialMode])
 
+  function switchMode(nextMode: 'sign-in' | 'sign-up') {
+    setMode(nextMode)
+    setPendingVerification(false)
+    setMessage(null)
+  }
+
+  async function handleGoogleSignIn() {
+    setLoading(true)
+    setMessage(null)
+    try {
+      const { createdSessionId, setActive } = await startSSOFlow({
+        strategy: 'oauth_google',
+        redirectUrl: Linking.createURL('/oauth-native-callback'),
+      })
+
+      if (createdSessionId && setActive) {
+        await setActive({ session: createdSessionId })
+        onClose()
+      } else {
+        setMessage('Google sign-in did not finish. Please try again.')
+      }
+    } catch (authError: any) {
+      setMessage(authError?.errors?.[0]?.longMessage || authError?.errors?.[0]?.message || 'Google sign-in failed. Please try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   async function handleSubmit() {
     if (!email.trim() || !password.trim()) {
       setMessage('Enter your email and password.')
+      return
+    }
+
+    if (mode === 'sign-up' && !firstName.trim()) {
+      setMessage('Add your name so agents know who to follow up with.')
       return
     }
 
@@ -977,7 +1020,12 @@ function AuthModal({ open, prompt, onClose }: { open: boolean; prompt: AuthPromp
         }
       } else {
         if (!signUpLoaded) return
-        await signUp.create({ emailAddress: email.trim(), password })
+        await signUp.create({
+          emailAddress: email.trim(),
+          password,
+          firstName: firstName.trim(),
+          lastName: lastName.trim() || undefined,
+        })
         await signUp.prepareEmailAddressVerification({ strategy: 'email_code' })
         setPendingVerification(true)
         setMessage('Check your email for a verification code.')
@@ -1008,33 +1056,79 @@ function AuthModal({ open, prompt, onClose }: { open: boolean; prompt: AuthPromp
     }
   }
 
+  const title = prompt?.title || (mode === 'sign-in' ? 'Welcome back' : 'Create your account')
+  const intro = prompt?.copy || (mode === 'sign-in'
+    ? 'Sign in to save Guam homes, sync your shortlist, and keep your search moving.'
+    : 'Create a free Hafa Homes account to sync saved homes and make showing requests easier.')
+
   return (
-    <Modal visible={open} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <Modal visible={open} animationType="slide" presentationStyle="fullScreen" onRequestClose={onClose}>
       <SafeAreaView style={styles.authModalShell}>
-        <View style={styles.authHeader}>
-          <Text style={styles.authTitle}>{prompt?.title || (mode === 'sign-in' ? 'Sign in' : 'Create account')}</Text>
-          <Pressable onPress={onClose}><Text style={styles.authClose}>Close</Text></Pressable>
-        </View>
-        <View style={styles.authBody}>
-          {prompt?.copy && <Text style={styles.authIntro}>{prompt.copy}</Text>}
-          {pendingVerification ? (
-            <>
-              <RequestInput label="Verification code" value={code} onChangeText={setCode} keyboardType="number-pad" />
-              {message && <Text style={styles.authMessage}>{message}</Text>}
-              <Pressable style={styles.primaryCta} onPress={verifyEmail} disabled={loading}><Text style={styles.primaryCtaText}>{loading ? 'Verifying...' : 'Verify email'}</Text></Pressable>
-            </>
-          ) : (
-            <>
-              <RequestInput label="Email" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
-              <RequestInput label="Password" value={password} onChangeText={setPassword} secureTextEntry />
-              {message && <Text style={styles.authMessage}>{message}</Text>}
-              <Pressable style={styles.primaryCta} onPress={handleSubmit} disabled={loading}><Text style={styles.primaryCtaText}>{loading ? 'Please wait...' : mode === 'sign-in' ? 'Sign in' : 'Create account'}</Text></Pressable>
-              <Pressable style={styles.secondaryCta} onPress={() => { setMode(mode === 'sign-in' ? 'sign-up' : 'sign-in'); setMessage(null) }}>
-                <Text style={styles.secondaryCtaText}>{mode === 'sign-in' ? 'Create a new account' : 'I already have an account'}</Text>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.authKeyboard}>
+          <View style={styles.authHeader}>
+            <View>
+              <Text style={styles.authEyebrow}>Hafa Homes account</Text>
+              <Text style={styles.authTitle}>{title}</Text>
+            </View>
+            <Pressable onPress={onClose} style={styles.authCloseButton}><Text style={styles.authClose}>Close</Text></Pressable>
+          </View>
+          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.authBody}>
+            <View style={styles.authHeroCard}>
+              <Text style={styles.authHeroTitle}>{mode === 'sign-in' ? 'Pick up your Guam search.' : 'Make your shortlist portable.'}</Text>
+              <Text style={styles.authHeroCopy}>{intro}</Text>
+            </View>
+
+            <View style={styles.authModeTabs}>
+              <Pressable onPress={() => switchMode('sign-in')} style={[styles.authModeTab, mode === 'sign-in' && styles.authModeTabActive]}>
+                <Text style={[styles.authModeText, mode === 'sign-in' && styles.authModeTextActive]}>Sign in</Text>
               </Pressable>
-            </>
-          )}
-        </View>
+              <Pressable onPress={() => switchMode('sign-up')} style={[styles.authModeTab, mode === 'sign-up' && styles.authModeTabActive]}>
+                <Text style={[styles.authModeText, mode === 'sign-up' && styles.authModeTextActive]}>Create account</Text>
+              </Pressable>
+            </View>
+
+            {!pendingVerification && (
+              <>
+                <Pressable style={styles.socialCta} onPress={handleGoogleSignIn} disabled={loading}>
+                  <View style={styles.socialCtaMark}><Text style={styles.socialCtaMarkText}>G</Text></View>
+                  <Text style={styles.socialCtaText}>Continue with Google</Text>
+                </Pressable>
+                <View style={styles.authDividerRow}>
+                  <View style={styles.authDividerLine} />
+                  <Text style={styles.authDividerText}>or use email</Text>
+                  <View style={styles.authDividerLine} />
+                </View>
+              </>
+            )}
+
+            <View style={styles.authFormCard}>
+              {pendingVerification ? (
+                <>
+                  <Text style={styles.authIntro}>Enter the verification code Clerk sent to {email.trim()}.</Text>
+                  <RequestInput label="Verification code" value={code} onChangeText={setCode} keyboardType="number-pad" />
+                  {message && <Text style={styles.authMessage}>{message}</Text>}
+                  <Pressable style={styles.primaryCta} onPress={verifyEmail} disabled={loading}><Text style={styles.primaryCtaText}>{loading ? 'Verifying...' : 'Verify email'}</Text></Pressable>
+                </>
+              ) : (
+                <>
+                  {mode === 'sign-up' && (
+                    <>
+                      <RequestInput label="First name" value={firstName} onChangeText={setFirstName} placeholder="Leon" />
+                      <RequestInput label="Last name" value={lastName} onChangeText={setLastName} placeholder="Shimizu" />
+                    </>
+                  )}
+                  <RequestInput label="Email" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" placeholder="you@example.com" />
+                  <RequestInput label="Password" value={password} onChangeText={setPassword} secureTextEntry placeholder="At least 8 characters" />
+                  {message && <Text style={styles.authMessage}>{message}</Text>}
+                  <Pressable style={styles.primaryCta} onPress={handleSubmit} disabled={loading}><Text style={styles.primaryCtaText}>{loading ? 'Please wait...' : mode === 'sign-in' ? 'Sign in' : 'Create account'}</Text></Pressable>
+                  <Pressable style={styles.secondaryCta} onPress={() => switchMode(mode === 'sign-in' ? 'sign-up' : 'sign-in')}>
+                    <Text style={styles.secondaryCtaText}>{mode === 'sign-in' ? 'Create a new account' : 'I already have an account'}</Text>
+                  </Pressable>
+                </>
+              )}
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
       </SafeAreaView>
     </Modal>
   )
@@ -1479,11 +1573,30 @@ const styles = StyleSheet.create({
   accountTitle: { color: 'white', fontSize: 22, fontWeight: '900', letterSpacing: -0.5 },
   accountCopy: { color: 'rgba(255,255,255,0.78)', fontSize: 14, fontWeight: '700', lineHeight: 21 },
   authModalShell: { backgroundColor: colors.sand, flex: 1 },
-  authHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', padding: 20 },
-  authTitle: { color: colors.ink, fontSize: 28, fontWeight: '900', letterSpacing: -0.8 },
+  authKeyboard: { flex: 1 },
+  authHeader: { alignItems: 'flex-start', flexDirection: 'row', justifyContent: 'space-between', padding: 20, paddingBottom: 12 },
+  authEyebrow: { color: colors.green2, fontSize: 11, fontWeight: '900', letterSpacing: 1.8, marginBottom: 4, textTransform: 'uppercase' },
+  authTitle: { color: colors.ink, flexShrink: 1, fontSize: 28, fontWeight: '900', letterSpacing: -0.8, maxWidth: 260 },
+  authCloseButton: { backgroundColor: 'white', borderRadius: 999, paddingHorizontal: 14, paddingVertical: 10 },
   authClose: { color: colors.green, fontSize: 15, fontWeight: '900' },
-  authBody: { gap: 14, padding: 20 },
+  authBody: { gap: 14, padding: 20, paddingBottom: 42 },
+  authHeroCard: { backgroundColor: colors.green, borderRadius: 28, gap: 8, padding: 18 },
+  authHeroTitle: { color: 'white', fontSize: 25, fontWeight: '900', letterSpacing: -0.7 },
+  authHeroCopy: { color: 'rgba(255,255,255,0.78)', fontSize: 14, fontWeight: '700', lineHeight: 21 },
   authIntro: { color: colors.muted, fontSize: 14, fontWeight: '700', lineHeight: 21 },
+  authModeTabs: { backgroundColor: '#e9dfcf', borderRadius: 20, flexDirection: 'row', gap: 6, padding: 5 },
+  authModeTab: { alignItems: 'center', borderRadius: 16, flex: 1, paddingVertical: 11 },
+  authModeTabActive: { backgroundColor: 'white' },
+  authModeText: { color: colors.muted, fontSize: 14, fontWeight: '900' },
+  authModeTextActive: { color: colors.green },
+  socialCta: { alignItems: 'center', backgroundColor: 'white', borderColor: '#eadfce', borderRadius: 20, borderWidth: 1, flexDirection: 'row', gap: 12, justifyContent: 'center', padding: 15 },
+  socialCtaMark: { alignItems: 'center', backgroundColor: colors.sand, borderRadius: 999, height: 28, justifyContent: 'center', width: 28 },
+  socialCtaMarkText: { color: colors.green, fontSize: 14, fontWeight: '900' },
+  socialCtaText: { color: colors.ink, fontSize: 15, fontWeight: '900' },
+  authDividerRow: { alignItems: 'center', flexDirection: 'row', gap: 10, marginVertical: 2 },
+  authDividerLine: { backgroundColor: '#eadfce', flex: 1, height: 1 },
+  authDividerText: { color: colors.muted, fontSize: 11, fontWeight: '900', letterSpacing: 1, textTransform: 'uppercase' },
+  authFormCard: { backgroundColor: 'white', borderRadius: 28, gap: 13, padding: 16 },
   authMessage: { color: colors.muted, fontSize: 13, fontWeight: '800', lineHeight: 19 },
   localIntelCard: { backgroundColor: colors.mint, borderColor: '#cfe2d9', borderRadius: 26, borderWidth: 1, marginTop: 24, padding: 16 },
   localIntelHeader: { alignItems: 'flex-start', flexDirection: 'row', justifyContent: 'space-between', gap: 12 },
