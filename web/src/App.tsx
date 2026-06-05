@@ -41,6 +41,16 @@ const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
 const FALLBACK_LISTING_IMAGE = 'https://images.unsplash.com/photo-1600047509807-ba8f99d2cdde?auto=format&fit=crop&w=1400&q=80'
 
+class ApiFetchError extends Error {
+  status: number
+
+  constructor(message: string, status: number) {
+    super(message)
+    this.name = 'ApiFetchError'
+    this.status = status
+  }
+}
+
 type Village = {
   id: number
   name: string
@@ -188,7 +198,9 @@ async function fetchVillages(): Promise<VillagesResponse> {
 
 async function fetchMe(): Promise<MeResponse> {
   const response = await fetch(`${API_URL}/api/v1/me`, { headers: await authHeaders() })
-  if (!response.ok) throw new Error('Unable to load current user')
+  if (!response.ok) {
+    throw new ApiFetchError('Unable to load current user', response.status)
+  }
   return response.json()
 }
 
@@ -248,7 +260,7 @@ function tourDateOptions(count = 4) {
 
 function RequireStaff({ children }: { children: React.ReactNode }) {
   const { isClerkEnabled, isSignedIn, isLoading } = useAuthContext()
-  const { data, isLoading: isMeLoading, isError } = useQuery({
+  const { data, isLoading: isMeLoading, isError, error, refetch, isFetching } = useQuery({
     queryKey: ['me'],
     queryFn: fetchMe,
     enabled: isClerkEnabled && isSignedIn,
@@ -288,7 +300,32 @@ function RequireStaff({ children }: { children: React.ReactNode }) {
     )
   }
 
-  if (isError || !data?.user.is_staff) {
+  if (isError || !data?.user) {
+    const status = error instanceof ApiFetchError ? error.status : null
+    const description = status === 401
+      ? 'Your session could not be verified. Sign out and sign back in, or retry after the API is back online.'
+      : 'We could not reach the Hafa Homes API to verify your role. This can happen during a deploy, local server restart, or temporary network issue.'
+
+    return (
+      <Shell compact>
+        <section className="mx-auto max-w-3xl px-5 py-12">
+          <div className="rounded-[2rem] bg-white p-8 text-center shadow-sm">
+            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#b45309]">Admin check unavailable</p>
+            <h1 className="mt-3 text-3xl font-semibold tracking-[-0.05em]">Unable to verify admin access.</h1>
+            <p className="mt-3 text-[#66746f]">{description}</p>
+            <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+              <button type="button" onClick={() => refetch()} disabled={isFetching} className="rounded-full bg-[#0f3d35] px-6 py-3 text-sm font-bold text-white shadow-lg shadow-[#0f3d35]/20 disabled:opacity-60">
+                {isFetching ? 'Checking...' : 'Try again'}
+              </button>
+              <UserButton />
+            </div>
+          </div>
+        </section>
+      </Shell>
+    )
+  }
+
+  if (!data.user.is_staff) {
     return (
       <Shell compact>
         <section className="mx-auto max-w-3xl px-5 py-12">
