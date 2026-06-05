@@ -259,11 +259,11 @@ function tourDateOptions(count = 4) {
 }
 
 function RequireStaff({ children }: { children: React.ReactNode }) {
-  const { isClerkEnabled, isSignedIn, isLoading } = useAuthContext()
+  const { isClerkEnabled, isSignedIn, isLoading, userId } = useAuthContext()
   const { data, isLoading: isMeLoading, isError, error, refetch, isFetching } = useQuery({
-    queryKey: ['me'],
+    queryKey: ['me', userId],
     queryFn: fetchMe,
-    enabled: isClerkEnabled && isSignedIn,
+    enabled: isClerkEnabled && isSignedIn && Boolean(userId),
     retry: false,
   })
 
