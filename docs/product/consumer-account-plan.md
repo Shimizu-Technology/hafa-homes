@@ -52,6 +52,7 @@ Mobile behavior:
 - after sign-in, the originally tapped listing is saved automatically
 - Saved tab shows a sign-in CTA until authenticated
 - saved homes load from the API, not local device storage
+- legacy local saved homes from the pre-auth app are migrated to server-backed saves after the user signs in, then the old local keys are cleared
 
 ### Showing requests stay public, but link when signed in
 

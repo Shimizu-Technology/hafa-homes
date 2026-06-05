@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import { ClerkLoaded, ClerkProvider, useAuth, useSignIn, useSignUp, useSSO, useUser } from '@clerk/clerk-expo'
 import { tokenCache } from '@clerk/clerk-expo/token-cache'
 import * as Linking from 'expo-linking'
@@ -102,6 +103,8 @@ const MAPBOX_TOKEN = process.env.EXPO_PUBLIC_MAPBOX_TOKEN
 const CLERK_PUBLISHABLE_KEY = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY
 const CLERK_JWT_TEMPLATE = process.env.EXPO_PUBLIC_CLERK_JWT_TEMPLATE
 const FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1600047509807-ba8f99d2cdde?auto=format&fit=crop&w=1200&q=80'
+const LEGACY_SAVED_LISTING_IDS_KEY = 'hafaHomes:savedListingIds'
+const LEGACY_SAVED_LISTINGS_KEY = 'hafaHomes:savedListings'
 
 const tabs: Array<{ key: TabKey; label: string; icon: string }> = [
   { key: 'search', label: 'Search', icon: '⌂' },
@@ -246,6 +249,7 @@ function AppContent({ auth }: { auth: AppAuth }) {
   const [savedListingIds, setSavedListingIds] = useState<number[]>([])
   const [savedListingsLoading, setSavedListingsLoading] = useState(false)
   const [pendingSaveListingId, setPendingSaveListingId] = useState<number | null>(null)
+  const [legacySaveMigrationAttempted, setLegacySaveMigrationAttempted] = useState(false)
   const [authPrompt, setAuthPrompt] = useState<AuthPrompt | null>(null)
   const [fullMapOpen, setFullMapOpen] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -317,6 +321,7 @@ function AppContent({ auth }: { auth: AppAuth }) {
       if (!auth.isSignedIn || !auth.getToken) {
         setSavedListingIds([])
         setSavedListingsLoading(false)
+        setLegacySaveMigrationAttempted(false)
         return
       }
 
@@ -348,6 +353,73 @@ function AppContent({ auth }: { auth: AppAuth }) {
       cancelled = true
     }
   }, [auth.getToken, auth.isSignedIn])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function migrateLegacyLocalSaves() {
+      if (!auth.isSignedIn || !auth.getToken || legacySaveMigrationAttempted) return
+
+      setLegacySaveMigrationAttempted(true)
+      try {
+        const [savedIdsJson, savedListingsJson] = await Promise.all([
+          AsyncStorage.getItem(LEGACY_SAVED_LISTING_IDS_KEY),
+          AsyncStorage.getItem(LEGACY_SAVED_LISTINGS_KEY),
+        ])
+        if (cancelled) return
+
+        const persistedIds = savedIdsJson ? JSON.parse(savedIdsJson) : []
+        const persistedListings = savedListingsJson ? JSON.parse(savedListingsJson) : []
+        const legacyListings = Array.isArray(persistedListings)
+          ? persistedListings.filter((listing): listing is Listing => listing && typeof listing.id === 'number')
+          : []
+        const legacyIds = Array.from(new Set([
+          ...(Array.isArray(persistedIds) ? persistedIds.filter((id): id is number => typeof id === 'number') : []),
+          ...legacyListings.map((listing) => listing.id),
+        ]))
+
+        if (legacyListings.length > 0) {
+          setListingCache((current) => {
+            const next = { ...current }
+            legacyListings.forEach((listing) => { next[listing.id] = listing })
+            return next
+          })
+        }
+
+        if (legacyIds.length === 0) return
+
+        const results = await Promise.allSettled(legacyIds.map((listingId) => saveListingForUser(listingId, auth.getToken!)))
+        if (cancelled) return
+
+        const migratedListings = results
+          .filter((result): result is PromiseFulfilledResult<{ listing: Listing; listing_id: number; saved: boolean }> => result.status === 'fulfilled')
+          .map((result) => result.value.listing)
+          .filter((listing): listing is Listing => Boolean(listing))
+        const migratedIds = migratedListings.map((listing) => listing.id)
+
+        if (migratedIds.length > 0) {
+          setSavedListingIds((current) => Array.from(new Set([...current, ...migratedIds])))
+          setListingCache((current) => {
+            const next = { ...current }
+            migratedListings.forEach((listing) => { next[listing.id] = listing })
+            return next
+          })
+        }
+
+        if (results.every((result) => result.status === 'fulfilled')) {
+          await AsyncStorage.multiRemove([LEGACY_SAVED_LISTING_IDS_KEY, LEGACY_SAVED_LISTINGS_KEY])
+        }
+      } catch (migrationError) {
+        console.warn('Unable to migrate legacy local saved Hafa Homes listings', migrationError)
+      }
+    }
+
+    migrateLegacyLocalSaves()
+
+    return () => {
+      cancelled = true
+    }
+  }, [auth.getToken, auth.isSignedIn, legacySaveMigrationAttempted])
 
   function openAuthPrompt(prompt: AuthPrompt = {}) {
     if (!auth.clerkEnabled) {
