@@ -62,10 +62,6 @@ module ClerkAuthenticatable
     first_name = decoded["first_name"] || decoded.dig("user", "first_name")
     last_name = decoded["last_name"] || decoded.dig("user", "last_name")
 
-    if email.blank?
-      email = ClerkAuth.fetch_user_email(clerk_id)
-    end
-
     user = User.find_by(clerk_id: clerk_id)
     if user
       updates = { last_sign_in_at: Time.current }
@@ -74,6 +70,10 @@ module ClerkAuthenticatable
       updates[:last_name] = last_name if last_name.present?
       user.update(updates)
       return user
+    end
+
+    if email.blank?
+      email = ClerkAuth.fetch_user_email(clerk_id)
     end
 
     if email.present?
