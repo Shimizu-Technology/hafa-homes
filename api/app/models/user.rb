@@ -3,6 +3,9 @@ class User < ApplicationRecord
   ADMIN_ROLES = %w[platform_admin brokerage_admin agent].freeze
 
   belongs_to :invited_by, class_name: "User", optional: true
+  has_many :saved_listing_records, class_name: "SavedListing", dependent: :destroy
+  has_many :saved_listings, through: :saved_listing_records, source: :listing
+  has_many :leads, dependent: :nullify
 
   normalizes :email, with: ->(email) { email.to_s.strip.downcase }
 

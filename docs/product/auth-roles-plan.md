@@ -79,15 +79,18 @@ EXPO_PUBLIC_CLERK_JWT_TEMPLATE=optional-template-name
 ## Implementation sequence
 
 1. Auth/roles foundation.
-2. Brokerage and agent models.
-3. Lead routing by brokerage/agent.
-4. Broker/admin lead inbox.
-5. Server-backed saved listings.
-6. Property-management preview.
+2. Server-backed saved listings and signed-in lead association.
+3. Brokerage and agent models.
+4. Lead routing by brokerage/agent.
+5. Broker/admin lead inbox.
+6. Consumer inquiry history.
+7. Property-management preview.
 
 ## Notes
 
 - Keep consumer browsing public to reduce friction.
 - Do not rely only on Clerk metadata for authorization; use Rails roles.
 - Future brokerage roles should be scoped by brokerage ID once brokerages exist.
+- Saved homes require auth because they are user-owned and server-backed.
+- Showing requests stay public for lead conversion, but attach `user_id` when submitted by a signed-in user.
 - Add Sign in with Apple before enabling Apple/Google social auth in the public iOS app.

@@ -1,4 +1,3 @@
-import AsyncStorage from '@react-native-async-storage/async-storage'
 import { ClerkLoaded, ClerkProvider, useAuth, useSignIn, useSignUp, useUser } from '@clerk/clerk-expo'
 import { tokenCache } from '@clerk/clerk-expo/token-cache'
 import { StatusBar } from 'expo-status-bar'
@@ -6,6 +5,7 @@ import { WebView } from 'react-native-webview'
 import { useEffect, useMemo, useState } from 'react'
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Image,
   KeyboardAvoidingView,
@@ -75,12 +75,29 @@ type Listing = {
   photos?: ListingPhoto[]
 }
 
+type GetAuthToken = (options?: { template?: string }) => Promise<string | null>
+
+type AppAuth = {
+  clerkEnabled: boolean
+  isSignedIn: boolean
+  userName?: string
+  userEmail?: string
+  userInitial?: string
+  getToken?: GetAuthToken
+  signOut?: () => Promise<void> | void
+}
+
+type AuthPrompt = {
+  title?: string
+  copy?: string
+  initialMode?: 'sign-in' | 'sign-up'
+}
+
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000'
 const MAPBOX_TOKEN = process.env.EXPO_PUBLIC_MAPBOX_TOKEN
 const CLERK_PUBLISHABLE_KEY = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY
+const CLERK_JWT_TEMPLATE = process.env.EXPO_PUBLIC_CLERK_JWT_TEMPLATE
 const FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1600047509807-ba8f99d2cdde?auto=format&fit=crop&w=1200&q=80'
-const SAVED_LISTING_IDS_KEY = 'hafaHomes:savedListingIds'
-const SAVED_LISTINGS_KEY = 'hafaHomes:savedListings'
 
 const tabs: Array<{ key: TabKey; label: string; icon: string }> = [
   { key: 'search', label: 'Search', icon: '⌂' },
@@ -123,6 +140,44 @@ async function fetchListing(listingId: number): Promise<Listing> {
   return json.listing
 }
 
+async function authHeaders(getToken?: GetAuthToken): Promise<Record<string, string>> {
+  if (!getToken) return {}
+
+  try {
+    const token = await getToken(CLERK_JWT_TEMPLATE ? { template: CLERK_JWT_TEMPLATE } : undefined)
+    return token ? { Authorization: `Bearer ${token}` } : {}
+  } catch (tokenError) {
+    console.warn('Unable to load Clerk token', tokenError)
+    return {}
+  }
+}
+
+async function fetchSavedListings(getToken: GetAuthToken): Promise<{ listing_ids: number[]; listings: Listing[] }> {
+  const response = await fetch(`${API_URL}/api/v1/me/saved_listings`, {
+    headers: await authHeaders(getToken),
+  })
+  if (!response.ok) throw new Error('Unable to load saved homes')
+  return response.json()
+}
+
+async function saveListingForUser(listingId: number, getToken: GetAuthToken): Promise<{ listing: Listing; listing_id: number; saved: boolean }> {
+  const response = await fetch(`${API_URL}/api/v1/listings/${listingId}/save`, {
+    method: 'POST',
+    headers: await authHeaders(getToken),
+  })
+  if (!response.ok) throw new Error('Unable to save home')
+  return response.json()
+}
+
+async function removeSavedListingForUser(listingId: number, getToken: GetAuthToken): Promise<{ listing_id: number; saved: boolean }> {
+  const response = await fetch(`${API_URL}/api/v1/listings/${listingId}/save`, {
+    method: 'DELETE',
+    headers: await authHeaders(getToken),
+  })
+  if (!response.ok) throw new Error('Unable to remove saved home')
+  return response.json()
+}
+
 async function createLead(payload: {
   listing_id: number
   lead_type: 'showing_request'
@@ -131,10 +186,10 @@ async function createLead(payload: {
   phone: string
   preferred_contact_method: string
   message: string
-}) {
+}, getToken?: GetAuthToken) {
   const response = await fetch(`${API_URL}/api/v1/leads`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...(await authHeaders(getToken)) },
     body: JSON.stringify({ lead: payload }),
   })
 
@@ -142,19 +197,41 @@ async function createLead(payload: {
   return response.json()
 }
 
+const disabledAuth: AppAuth = { clerkEnabled: false, isSignedIn: false }
+
 export default function App() {
-  if (!CLERK_PUBLISHABLE_KEY) return <AppContent />
+  if (!CLERK_PUBLISHABLE_KEY) return <AppContent auth={disabledAuth} />
 
   return (
     <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY} tokenCache={tokenCache}>
       <ClerkLoaded>
-        <AppContent />
+        <AuthenticatedAppContent />
       </ClerkLoaded>
     </ClerkProvider>
   )
 }
 
-function AppContent() {
+function AuthenticatedAppContent() {
+  const { getToken, isSignedIn, signOut } = useAuth()
+  const { user } = useUser()
+  const userEmail = user?.primaryEmailAddress?.emailAddress
+  const userName = user?.fullName || userEmail || undefined
+  const userInitial = (user?.firstName || userEmail || 'A').charAt(0).toUpperCase()
+
+  const auth = useMemo<AppAuth>(() => ({
+    clerkEnabled: true,
+    isSignedIn: Boolean(isSignedIn),
+    userName,
+    userEmail,
+    userInitial,
+    getToken,
+    signOut: () => signOut(),
+  }), [getToken, isSignedIn, signOut, userEmail, userInitial, userName])
+
+  return <AppContent auth={auth} />
+}
+
+function AppContent({ auth }: { auth: AppAuth }) {
   const [activeTab, setActiveTab] = useState<TabKey>('map')
   const [kind, setKind] = useState<ListingKind>('sale')
   const [searchQuery, setSearchQuery] = useState('')
@@ -162,56 +239,12 @@ function AppContent() {
   const [listingCache, setListingCache] = useState<Record<number, Listing>>({})
   const [selectedListing, setSelectedListing] = useState<Listing | null>(null)
   const [savedListingIds, setSavedListingIds] = useState<number[]>([])
-  const [savedStorageLoaded, setSavedStorageLoaded] = useState(false)
-  const [savedStorageWritable, setSavedStorageWritable] = useState(false)
+  const [savedListingsLoading, setSavedListingsLoading] = useState(false)
+  const [pendingSaveListingId, setPendingSaveListingId] = useState<number | null>(null)
+  const [authPrompt, setAuthPrompt] = useState<AuthPrompt | null>(null)
   const [fullMapOpen, setFullMapOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    let cancelled = false
-
-    async function loadSavedListings() {
-      try {
-        const [savedIdsJson, savedListingsJson] = await Promise.all([
-          AsyncStorage.getItem(SAVED_LISTING_IDS_KEY),
-          AsyncStorage.getItem(SAVED_LISTINGS_KEY),
-        ])
-        if (cancelled) return
-
-        const persistedIds = savedIdsJson ? JSON.parse(savedIdsJson) : []
-        const persistedListings = savedListingsJson ? JSON.parse(savedListingsJson) : []
-
-        if (Array.isArray(persistedIds)) {
-          setSavedListingIds(persistedIds.filter((id): id is number => typeof id === 'number'))
-        }
-
-        if (Array.isArray(persistedListings)) {
-          setListingCache((current) => {
-            const next = { ...current }
-            persistedListings.forEach((listing) => {
-              if (listing && typeof listing.id === 'number') next[listing.id] = listing as Listing
-            })
-            return next
-          })
-        }
-
-        if (!cancelled) {
-          setSavedStorageWritable(true)
-          setSavedStorageLoaded(true)
-        }
-      } catch (storageError) {
-        console.warn('Unable to load saved Hafa Homes listings', storageError)
-        if (!cancelled) setSavedStorageLoaded(true)
-      }
-    }
-
-    loadSavedListings()
-
-    return () => {
-      cancelled = true
-    }
-  }, [])
 
   useEffect(() => {
     if (activeTab !== 'map' && fullMapOpen) setFullMapOpen(false)
@@ -273,32 +306,123 @@ function AppContent() {
   )
 
   useEffect(() => {
-    if (!savedStorageLoaded || !savedStorageWritable) return
+    let cancelled = false
 
-    Promise.all([
-      AsyncStorage.setItem(SAVED_LISTING_IDS_KEY, JSON.stringify(savedListingIds)),
-      AsyncStorage.setItem(SAVED_LISTINGS_KEY, JSON.stringify(savedListings)),
-    ]).catch((storageError) => console.warn('Unable to persist saved Hafa Homes listings', storageError))
-  }, [savedListingIds, savedListings, savedStorageLoaded, savedStorageWritable])
+    async function loadServerSavedListings() {
+      if (!auth.isSignedIn || !auth.getToken) {
+        setSavedListingIds([])
+        setSavedListingsLoading(false)
+        return
+      }
 
-  function toggleSaved(listingId: number) {
+      setSavedListingsLoading(true)
+      try {
+        const result = await fetchSavedListings(auth.getToken)
+        if (cancelled) return
+
+        const serverListings = Array.isArray(result.listings) ? result.listings : []
+        const serverIds = Array.isArray(result.listing_ids) ? result.listing_ids : serverListings.map((listing) => listing.id)
+        setSavedListingIds(serverIds.filter((id): id is number => typeof id === 'number'))
+        setListingCache((current) => {
+          const next = { ...current }
+          serverListings.forEach((listing) => {
+            if (listing && typeof listing.id === 'number') next[listing.id] = listing
+          })
+          return next
+        })
+      } catch (savedError) {
+        console.warn('Unable to load server-backed Hafa Homes saves', savedError)
+      } finally {
+        if (!cancelled) setSavedListingsLoading(false)
+      }
+    }
+
+    loadServerSavedListings()
+
+    return () => {
+      cancelled = true
+    }
+  }, [auth.getToken, auth.isSignedIn])
+
+  function openAuthPrompt(prompt: AuthPrompt = {}) {
+    if (!auth.clerkEnabled) {
+      Alert.alert('Sign-in coming online', 'Accounts need Clerk configuration before saved homes can sync.')
+      return
+    }
+
+    setAuthPrompt({ initialMode: 'sign-in', ...prompt })
+  }
+
+  function cacheListingForSave(listingId: number) {
     const listingToCache = listingCache[listingId] ?? listings.find((listing) => listing.id === listingId) ?? selectedListing
-
     if (listingToCache && !listingCache[listingId]) {
       setListingCache((current) => ({ ...current, [listingId]: listingToCache }))
     }
-
-    setSavedListingIds((current) => (
-      current.includes(listingId) ? current.filter((id) => id !== listingId) : [...current, listingId]
-    ))
   }
+
+  async function ensureSaved(listingId: number) {
+    if (!auth.getToken) return
+
+    cacheListingForSave(listingId)
+    setSavedListingIds((current) => current.includes(listingId) ? current : [...current, listingId])
+
+    try {
+      const result = await saveListingForUser(listingId, auth.getToken)
+      if (result.listing) setListingCache((current) => ({ ...current, [result.listing.id]: result.listing }))
+    } catch (saveError) {
+      console.warn('Unable to save Hafa Homes listing', saveError)
+      setSavedListingIds((current) => current.filter((id) => id !== listingId))
+      Alert.alert('Unable to save home', 'Please try again in a moment.')
+    }
+  }
+
+  async function removeSaved(listingId: number) {
+    if (!auth.getToken) return
+
+    setSavedListingIds((current) => current.filter((id) => id !== listingId))
+
+    try {
+      await removeSavedListingForUser(listingId, auth.getToken)
+    } catch (saveError) {
+      console.warn('Unable to remove Hafa Homes saved listing', saveError)
+      setSavedListingIds((current) => current.includes(listingId) ? current : [...current, listingId])
+      Alert.alert('Unable to update saved homes', 'Please try again in a moment.')
+    }
+  }
+
+  function toggleSaved(listingId: number) {
+    if (!auth.isSignedIn || !auth.getToken) {
+      setPendingSaveListingId(listingId)
+      openAuthPrompt({
+        title: 'Sign in to save this home',
+        copy: 'Create a free Hafa Homes account to sync saved homes across devices and pick up your search later.',
+      })
+      return
+    }
+
+    if (savedListingIds.includes(listingId)) {
+      removeSaved(listingId)
+    } else {
+      ensureSaved(listingId)
+    }
+  }
+
+  useEffect(() => {
+    if (!auth.isSignedIn || !auth.getToken || !pendingSaveListingId) return
+
+    const listingId = pendingSaveListingId
+    setPendingSaveListingId(null)
+    ensureSaved(listingId)
+  }, [auth.getToken, auth.isSignedIn, pendingSaveListingId])
 
   if (selectedListing) {
     return (
       <ListingDetailScreen
         listing={selectedListing}
         saved={savedListingIds.includes(selectedListing.id)}
+        auth={auth}
         onBack={() => setSelectedListing(null)}
+        onOpenAuth={openAuthPrompt}
         onToggleSaved={() => toggleSaved(selectedListing.id)}
       />
     )
@@ -309,11 +433,14 @@ function AppContent() {
       <StatusBar style="light" />
       {!(activeTab === 'map' && fullMapOpen) && <View style={styles.header}>
         <View style={styles.brandRow}>
-          <View style={styles.brandMark}><Image source={require('./assets/hafa-homes-icon.png')} style={styles.brandMarkImage} /></View>
-          <View>
-            <Text style={styles.brandTitle}>Hafa Homes</Text>
-            <Text style={styles.brandSubtitle}>Guam real estate app</Text>
+          <View style={styles.brandIdentity}>
+            <View style={styles.brandMark}><Image source={require('./assets/hafa-homes-icon.png')} style={styles.brandMarkImage} /></View>
+            <View>
+              <Text style={styles.brandTitle}>Hafa Homes</Text>
+              <Text style={styles.brandSubtitle}>Guam real estate app</Text>
+            </View>
           </View>
+          <HeaderAuthButton auth={auth} onOpenAccount={() => setActiveTab('more')} onOpenAuth={() => openAuthPrompt()} />
         </View>
         <View style={styles.searchBar}>
           <Text style={styles.searchIcon}>⌕</Text>
@@ -359,12 +486,14 @@ function AppContent() {
               />
         )}
         {activeTab === 'saved' && (
-          savedStorageLoaded
-            ? <SavedScreen listings={savedListings} onOpen={setSelectedListing} onToggleSaved={toggleSaved} />
-            : <CenteredState label="Loading saved homes..." loading />
+          !auth.isSignedIn
+            ? <SavedSignInScreen clerkEnabled={auth.clerkEnabled} onOpenAuth={() => openAuthPrompt({ title: 'Sign in to view saved homes', copy: 'Saved homes are tied to your Hafa Homes account so they stay with you across devices.' })} />
+            : savedListingsLoading
+              ? <CenteredState label="Loading saved homes..." loading />
+              : <SavedScreen listings={savedListings} onOpen={setSelectedListing} onToggleSaved={toggleSaved} />
         )}
         {activeTab === 'agents' && <AgentsScreen listings={listings} />}
-        {activeTab === 'more' && <MoreScreen clerkEnabled={Boolean(CLERK_PUBLISHABLE_KEY)} />}
+        {activeTab === 'more' && <MoreScreen auth={auth} onOpenAuth={openAuthPrompt} />}
       </View>
 
       {!(activeTab === 'map' && fullMapOpen) && <View style={styles.tabBar}>
@@ -376,7 +505,26 @@ function AppContent() {
           </Pressable>
         ))}
       </View>}
+      {auth.clerkEnabled && <AuthModal open={Boolean(authPrompt)} prompt={authPrompt} onClose={() => setAuthPrompt(null)} />}
     </SafeAreaView>
+  )
+}
+
+function HeaderAuthButton({ auth, onOpenAuth, onOpenAccount }: { auth: AppAuth; onOpenAuth: () => void; onOpenAccount: () => void }) {
+  if (!auth.clerkEnabled) return null
+
+  if (auth.isSignedIn) {
+    return (
+      <Pressable onPress={onOpenAccount} style={styles.headerAccountPill} accessibilityRole="button" accessibilityLabel="Open account">
+        <Text style={styles.headerAccountInitial}>{auth.userInitial || 'A'}</Text>
+      </Pressable>
+    )
+  }
+
+  return (
+    <Pressable onPress={onOpenAuth} style={styles.headerSignInPill} accessibilityRole="button" accessibilityLabel="Sign in or create account">
+      <Text style={styles.headerSignInText}>Sign in</Text>
+    </Pressable>
   )
 }
 
@@ -677,6 +825,24 @@ function buildMapHtml(points: Listing[]) {
 </html>`
 }
 
+function SavedSignInScreen({ clerkEnabled, onOpenAuth }: { clerkEnabled: boolean; onOpenAuth: () => void }) {
+  return (
+    <ScrollView contentContainerStyle={styles.listContent}>
+      <View style={styles.screenIntro}>
+        <Text style={styles.kicker}>Saved homes</Text>
+        <Text style={styles.screenTitle}>Keep your Guam shortlist synced</Text>
+        <Text style={styles.screenCopy}>Saved homes are connected to your Hafa Homes account so your shortlist can follow you across devices.</Text>
+      </View>
+      <View style={styles.accountCard}>
+        <Text style={styles.accountKicker}>Account required</Text>
+        <Text style={styles.accountTitle}>{clerkEnabled ? 'Sign in to view saved homes' : 'Sign-in coming online'}</Text>
+        <Text style={styles.accountCopy}>{clerkEnabled ? 'Create a free account or sign in before saving homes. Public browsing stays open.' : 'Clerk is ready in the app. Add EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY to enable synced saved homes.'}</Text>
+        {clerkEnabled && <Pressable style={styles.primaryCta} onPress={onOpenAuth}><Text style={styles.primaryCtaText}>Sign in or create account</Text></Pressable>}
+      </View>
+    </ScrollView>
+  )
+}
+
 function SavedScreen({ listings, onOpen, onToggleSaved }: { listings: Listing[]; onOpen: (listing: Listing) => void; onToggleSaved: (listingId: number) => void }) {
   if (listings.length === 0) {
     return <CenteredState label="Saved homes will appear here. Tap the heart on a listing to save it." />
@@ -717,7 +883,7 @@ function AgentsScreen({ listings }: { listings: Listing[] }) {
   )
 }
 
-function MoreScreen({ clerkEnabled }: { clerkEnabled: boolean }) {
+function MoreScreen({ auth, onOpenAuth }: { auth: AppAuth; onOpenAuth: (prompt?: AuthPrompt) => void }) {
   return (
     <ScrollView contentContainerStyle={styles.listContent}>
       <View style={styles.screenIntro}>
@@ -725,7 +891,7 @@ function MoreScreen({ clerkEnabled }: { clerkEnabled: boolean }) {
         <Text style={styles.screenTitle}>Island home search tools</Text>
         <Text style={styles.screenCopy}>Plan your search with local guidance for neighborhoods, schools, financing, saved homes, and relocation needs.</Text>
       </View>
-      {clerkEnabled ? <AccountCard /> : <AuthUnavailableCard />}
+      {auth.clerkEnabled ? <AccountCard auth={auth} onOpenAuth={onOpenAuth} /> : <AuthUnavailableCard />}
       {['Mortgage calculator', 'Neighborhood guide', 'School and park nearby info', 'Saved search alerts', 'Military relocation tools'].map((item) => (
         <View key={item} style={styles.featureRow}>
           <Text style={styles.featureBullet}>✓</Text>
@@ -746,18 +912,14 @@ function AuthUnavailableCard() {
   )
 }
 
-function AccountCard() {
-  const { isSignedIn, signOut } = useAuth()
-  const { user } = useUser()
-  const [authOpen, setAuthOpen] = useState(false)
-
-  if (isSignedIn) {
+function AccountCard({ auth, onOpenAuth }: { auth: AppAuth; onOpenAuth: (prompt?: AuthPrompt) => void }) {
+  if (auth.isSignedIn) {
     return (
       <View style={styles.accountCard}>
         <Text style={styles.accountKicker}>Account</Text>
-        <Text style={styles.accountTitle}>{user?.fullName || user?.primaryEmailAddress?.emailAddress || 'Hafa Homes account'}</Text>
-        <Text style={styles.accountCopy}>You are signed in. Server-backed saved homes and broker/agent tools will build on this account foundation.</Text>
-        <Pressable style={styles.secondaryCta} onPress={() => signOut()}><Text style={styles.secondaryCtaText}>Sign out</Text></Pressable>
+        <Text style={styles.accountTitle}>{auth.userName || auth.userEmail || 'Hafa Homes account'}</Text>
+        <Text style={styles.accountCopy}>You are signed in. Saved homes now sync to this account; future lead history and broker tools will build on the same profile.</Text>
+        <Pressable style={styles.secondaryCta} onPress={() => auth.signOut?.()}><Text style={styles.secondaryCtaText}>Sign out</Text></Pressable>
       </View>
     )
   }
@@ -766,14 +928,13 @@ function AccountCard() {
     <View style={styles.accountCard}>
       <Text style={styles.accountKicker}>Account</Text>
       <Text style={styles.accountTitle}>Save and sync your Guam home search</Text>
-      <Text style={styles.accountCopy}>Create a free Hafa Homes account. Public browsing stays open; accounts unlock future saved homes, alerts, and lead history.</Text>
-      <Pressable style={styles.primaryCta} onPress={() => setAuthOpen(true)}><Text style={styles.primaryCtaText}>Sign in or create account</Text></Pressable>
-      <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} />
+      <Text style={styles.accountCopy}>Create a free Hafa Homes account. Public browsing stays open; accounts unlock synced saved homes, alerts, and future lead history.</Text>
+      <Pressable style={styles.primaryCta} onPress={() => onOpenAuth()}><Text style={styles.primaryCtaText}>Sign in or create account</Text></Pressable>
     </View>
   )
 }
 
-function AuthModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+function AuthModal({ open, prompt, onClose }: { open: boolean; prompt: AuthPrompt | null; onClose: () => void }) {
   const { signIn, setActive: setSignInActive, isLoaded: signInLoaded } = useSignIn()
   const { signUp, setActive: setSignUpActive, isLoaded: signUpLoaded } = useSignUp()
   const [mode, setMode] = useState<'sign-in' | 'sign-up'>('sign-in')
@@ -783,6 +944,18 @@ function AuthModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [pendingVerification, setPendingVerification] = useState(false)
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+
+    setMode(prompt?.initialMode ?? 'sign-in')
+    setEmail('')
+    setPassword('')
+    setCode('')
+    setPendingVerification(false)
+    setLoading(false)
+    setMessage(null)
+  }, [open, prompt?.initialMode])
 
   async function handleSubmit() {
     if (!email.trim() || !password.trim()) {
@@ -839,10 +1012,11 @@ function AuthModal({ open, onClose }: { open: boolean; onClose: () => void }) {
     <Modal visible={open} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <SafeAreaView style={styles.authModalShell}>
         <View style={styles.authHeader}>
-          <Text style={styles.authTitle}>{mode === 'sign-in' ? 'Sign in' : 'Create account'}</Text>
+          <Text style={styles.authTitle}>{prompt?.title || (mode === 'sign-in' ? 'Sign in' : 'Create account')}</Text>
           <Pressable onPress={onClose}><Text style={styles.authClose}>Close</Text></Pressable>
         </View>
         <View style={styles.authBody}>
+          {prompt?.copy && <Text style={styles.authIntro}>{prompt.copy}</Text>}
           {pendingVerification ? (
             <>
               <RequestInput label="Verification code" value={code} onChangeText={setCode} keyboardType="number-pad" />
@@ -955,7 +1129,7 @@ function CalculatorInput({ label, value, onChangeText, prefix, suffix }: { label
   )
 }
 
-function ListingDetailScreen({ listing, saved, onBack, onToggleSaved }: { listing: Listing; saved: boolean; onBack: () => void; onToggleSaved: () => void }) {
+function ListingDetailScreen({ listing, saved, auth, onBack, onOpenAuth, onToggleSaved }: { listing: Listing; saved: boolean; auth: AppAuth; onBack: () => void; onOpenAuth: (prompt?: AuthPrompt) => void; onToggleSaved: () => void }) {
   const [detailListing, setDetailListing] = useState(listing)
   const [imageUri, setImageUri] = useState(listing.photos?.[0]?.url || listing.primary_photo_url || FALLBACK_IMAGE)
   const [showMortgageCalculator, setShowMortgageCalculator] = useState(false)
@@ -1020,7 +1194,7 @@ function ListingDetailScreen({ listing, saved, onBack, onToggleSaved }: { listin
           )}
         </View>
       </ScrollView>
-      <ShowingRequestSheet listing={detailListing} open={showRequestForm} onClose={() => setShowRequestForm(false)} />
+      <ShowingRequestSheet listing={detailListing} auth={auth} open={showRequestForm} onOpenAuth={onOpenAuth} onClose={() => setShowRequestForm(false)} />
     </SafeAreaView>
   )
 }
@@ -1070,7 +1244,7 @@ function LocalIntelList({ title, items, note }: { title: string; items?: string[
   )
 }
 
-function ShowingRequestSheet({ listing, open, onClose }: { listing: Listing; open: boolean; onClose: () => void }) {
+function ShowingRequestSheet({ listing, auth, open, onOpenAuth, onClose }: { listing: Listing; auth: AppAuth; open: boolean; onOpenAuth: (prompt?: AuthPrompt) => void; onClose: () => void }) {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
@@ -1085,7 +1259,11 @@ function ShowingRequestSheet({ listing, open, onClose }: { listing: Listing; ope
     setMessage(`I'm interested in ${listing.title}.`)
     setSubmitted(false)
     setError(null)
-  }, [listing.title, open])
+    if (auth.isSignedIn) {
+      setName((current) => current || auth.userName || '')
+      setEmail((current) => current || auth.userEmail || '')
+    }
+  }, [auth.isSignedIn, auth.userEmail, auth.userName, listing.title, open])
 
   async function handleSubmit() {
     const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
@@ -1105,7 +1283,7 @@ function ShowingRequestSheet({ listing, open, onClose }: { listing: Listing; ope
         phone: phone.trim(),
         preferred_contact_method: preferredContact,
         message: `${message.trim()}\n\nListing: ${listing.title} — ${listing.address}, ${listing.village.name}`,
-      })
+      }, auth.isSignedIn ? auth.getToken : undefined)
       setSubmitted(true)
     } catch (submitError) {
       console.warn('Unable to submit showing request', submitError)
@@ -1124,8 +1302,13 @@ function ShowingRequestSheet({ listing, open, onClose }: { listing: Listing; ope
             <View style={styles.requestSuccess}>
               <Text style={styles.kicker}>Request sent</Text>
               <Text style={styles.requestTitle}>Thanks — we received your showing request.</Text>
-              <Text style={styles.requestCopy}>The Hafa Homes team can follow up about {listing.title} and help coordinate next steps.</Text>
+              <Text style={styles.requestCopy}>{auth.isSignedIn ? `This request is linked to your Hafa Homes account, and the team can follow up about ${listing.title}.` : `The Hafa Homes team can follow up about ${listing.title}. Create an account later with the same email to connect future saved homes and inquiries.`}</Text>
               <Pressable style={styles.primaryCta} onPress={onClose}><Text style={styles.primaryCtaText}>Done</Text></Pressable>
+              {!auth.isSignedIn && auth.clerkEnabled && (
+                <Pressable style={styles.secondaryCta} onPress={() => { onClose(); onOpenAuth({ title: 'Create your Hafa Homes account', copy: 'Use the same email to keep your saved homes and future inquiries connected.', initialMode: 'sign-up' }) }}>
+                  <Text style={styles.secondaryCtaText}>Create account</Text>
+                </Pressable>
+              )}
             </View>
           ) : (
             <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
@@ -1201,12 +1384,17 @@ const colors = {
 const styles = StyleSheet.create({
   shell: { flex: 1, backgroundColor: colors.green },
   header: { backgroundColor: colors.green, paddingHorizontal: 18, paddingBottom: 16, paddingTop: 12 },
-  brandRow: { alignItems: 'center', flexDirection: 'row', gap: 12, marginBottom: 16 },
+  brandRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', gap: 12, marginBottom: 16 },
+  brandIdentity: { alignItems: 'center', flex: 1, flexDirection: 'row', gap: 12, minWidth: 0 },
   brandMark: { alignItems: 'center', backgroundColor: '#0b312b', borderRadius: 18, height: 52, justifyContent: 'center', overflow: 'hidden', width: 52 },
   brandMarkImage: { height: 52, width: 52 },
   brandMarkText: { color: colors.amber, fontSize: 18, fontWeight: '900' },
   brandTitle: { color: 'white', fontSize: 28, fontWeight: '900', letterSpacing: -0.8 },
   brandSubtitle: { color: '#bdebdc', fontSize: 12, fontWeight: '700', marginTop: 2, textTransform: 'uppercase' },
+  headerSignInPill: { alignItems: 'center', backgroundColor: 'white', borderRadius: 999, justifyContent: 'center', paddingHorizontal: 14, paddingVertical: 10 },
+  headerSignInText: { color: colors.green, fontSize: 12, fontWeight: '900' },
+  headerAccountPill: { alignItems: 'center', backgroundColor: 'white', borderColor: 'rgba(255,255,255,0.28)', borderRadius: 999, borderWidth: 1, height: 40, justifyContent: 'center', width: 40 },
+  headerAccountInitial: { color: colors.green, fontSize: 15, fontWeight: '900' },
   searchBar: { alignItems: 'center', backgroundColor: 'white', borderRadius: 24, flexDirection: 'row', gap: 10, minHeight: 56, paddingHorizontal: 16 },
   searchIcon: { color: colors.muted, fontSize: 24 },
   searchInput: { color: colors.ink, flex: 1, fontSize: 16, fontWeight: '700' },
@@ -1295,6 +1483,7 @@ const styles = StyleSheet.create({
   authTitle: { color: colors.ink, fontSize: 28, fontWeight: '900', letterSpacing: -0.8 },
   authClose: { color: colors.green, fontSize: 15, fontWeight: '900' },
   authBody: { gap: 14, padding: 20 },
+  authIntro: { color: colors.muted, fontSize: 14, fontWeight: '700', lineHeight: 21 },
   authMessage: { color: colors.muted, fontSize: 13, fontWeight: '800', lineHeight: 19 },
   localIntelCard: { backgroundColor: colors.mint, borderColor: '#cfe2d9', borderRadius: 26, borderWidth: 1, marginTop: 24, padding: 16 },
   localIntelHeader: { alignItems: 'flex-start', flexDirection: 'row', justifyContent: 'space-between', gap: 12 },

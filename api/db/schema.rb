@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_01_113305) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_01_124500) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -52,9 +52,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_01_113305) do
     t.decimal "target_price"
     t.string "tour_type"
     t.datetime "updated_at", null: false
+    t.bigint "user_id"
     t.index ["created_at"], name: "index_leads_on_created_at"
     t.index ["listing_id"], name: "index_leads_on_listing_id"
     t.index ["status"], name: "index_leads_on_status"
+    t.index ["user_id", "created_at"], name: "index_leads_on_user_id_and_created_at"
+    t.index ["user_id"], name: "index_leads_on_user_id"
   end
 
   create_table "listing_features", force: :cascade do |t|
@@ -116,7 +119,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_01_113305) do
     t.string "email"
     t.bigint "listing_id", null: false
     t.datetime "updated_at", null: false
+    t.bigint "user_id"
     t.index ["listing_id"], name: "index_saved_listings_on_listing_id"
+    t.index ["user_id", "listing_id"], name: "index_saved_listings_on_user_and_listing", unique: true, where: "(user_id IS NOT NULL)"
+    t.index ["user_id"], name: "index_saved_listings_on_user_id"
   end
 
   create_table "saved_searches", force: :cascade do |t|
@@ -162,10 +168,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_01_113305) do
   end
 
   add_foreign_key "leads", "listings"
+  add_foreign_key "leads", "users"
   add_foreign_key "listing_features", "features"
   add_foreign_key "listing_features", "listings"
   add_foreign_key "listing_photos", "listings"
   add_foreign_key "listings", "villages"
   add_foreign_key "saved_listings", "listings"
+  add_foreign_key "saved_listings", "users"
   add_foreign_key "users", "users", column: "invited_by_id"
 end

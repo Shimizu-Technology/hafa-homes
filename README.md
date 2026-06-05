@@ -81,6 +81,7 @@ The web app uses `VITE_API_URL`; the mobile app uses `EXPO_PUBLIC_API_URL`. Both
 - [Brokerage Platform Plan](docs/product/brokerage-platform-plan.md)
 - [August 1 Demo Plan](docs/product/august-1-demo-plan.md)
 - [Auth and Roles Plan](docs/product/auth-roles-plan.md)
+- [Consumer Account Plan](docs/product/consumer-account-plan.md)
 - [Native Mobile Plan](docs/product/native-mobile-plan.md)
 - [Local Intel Plan](docs/product/local-intel-plan.md)
 - [SSI Automation / Hafa Homes Meeting Notes](docs/meetings/2026-06-01-ssi-automation-hafa-homes.md)

@@ -4,7 +4,11 @@ Rails.application.routes.draw do
   namespace :api do
     namespace :v1 do
       resource :me, only: [:show], controller: :me
-      resources :listings, only: [:index, :show]
+      get "me/saved_listings", to: "saved_listings#index"
+      resources :listings, only: [:index, :show] do
+        post :save, on: :member, to: "saved_listings#create"
+        delete :save, on: :member, to: "saved_listings#destroy"
+      end
       resources :villages, only: [:index]
       resources :leads, only: [:index, :create]
       resources :saved_searches, only: [:create]
