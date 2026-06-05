@@ -1,10 +1,10 @@
 # Hafa Homes Brokerage Platform Plan
 
-_Last updated: 2026-06-01 after SSI Automation meeting with Mike Sakazaki and John Ilao._
+_Last updated: 2026-06-05 after broker feedback / Real Geeks research._
 
 ## Positioning
 
-Hafa Homes is now being built toward a broker-first Guam real estate software platform.
+Hafa Homes is now being built toward a broker-first Guam real estate software platform. Hafa Homes itself is the demo/reference product; the larger platform should support broker-branded websites, broker-branded apps, lead CRM, and future property-management workflows.
 
 Consumer-facing promise:
 
@@ -18,6 +18,8 @@ Broker-facing promise:
 
 Primary customer: **brokerages**, not individual agents.
 
+Competitive reference: **Real Geeks**. Broker feedback indicates many Guam brokers use/know Real Geeks, which means Hafa Homes must speak to the full website + app + CRM + lead quality bundle, not only mobile listing search.
+
 Why:
 
 - Brokers have more budget than individual agents.
@@ -28,9 +30,11 @@ Why:
 
 ## Package tiers
 
-### Tier 1 — Brokerage App / Search
+### Tier 1 — Brokerage Website/App / Search
 
 - Branded brokerage presence.
+- Broker-branded website/search surface.
+- Optional broker-branded mobile app from shared Expo codebase.
 - Listing search/filter/map.
 - Listing detail pages.
 - Agent/broker attribution.
@@ -48,6 +52,8 @@ Everything in Tier 1, plus:
 - Local Intel / neighborhood context.
 - Broker/agent lead inbox.
 - Lead routing and status tracking.
+- Lead notes/tasks/activity timeline.
+- Basic lead quality indicators.
 
 ### Tier 3 — Property Management / Tenant Portal
 
@@ -71,6 +77,7 @@ Build platform foundations now:
 - `Lead` belongs to listing and routes to brokerage/agent
 - user roles: consumer, agent, broker/admin, platform admin
 - brokerage branding/config
+- brokerage domain/app config
 - feed/source metadata per brokerage
 - subscription/package metadata eventually
 
@@ -103,4 +110,7 @@ By then, Hafa Homes should be able to show:
 ## Related meeting notes
 
 - `docs/meetings/2026-06-01-ssi-automation-hafa-homes.md`
+- `docs/meetings/2026-06-05-broker-feedback-realgeeks.md`
+- `docs/product/white-label-brokerage-platform-plan.md`
+- `docs/research/realgeeks-competitive-analysis.md`
 - Brain-Dump transcript: `work/shimizu-tech/SSI-Automation/1) 1st Meeting with Mike and John for SSI Automation.md`

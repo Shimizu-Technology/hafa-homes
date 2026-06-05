@@ -1,12 +1,14 @@
 # Hafa Homes August 1 Demo Plan
 
-_Last updated: 2026-06-01 after App Store submission._
+_Last updated: 2026-06-05 after broker feedback / Real Geeks research._
 
 ## Goal
 
 By **August 1, 2026**, Hafa Homes should be credible enough for Leon, Mike, and John to demo/sell to Guam brokers as:
 
-> A brokerage app + lead platform + future property-management portal for Guam real estate.
+> A Guam-first brokerage website + brokerage app + lead CRM + future property-management portal.
+
+Hafa Homes is the demo/reference product. The sales story should make clear that the same platform can power a broker's own branded website and app if that is what the broker wants.
 
 This does **not** require full MLS sync, payment processing, chat, or full tenant workflows by August 1. The goal is a polished, believable product and sales story that can support broker discovery and pilot conversations.
 
@@ -16,6 +18,7 @@ This does **not** require full MLS sync, payment processing, chat, or full tenan
 - TestFlight is already working.
 - Current app supports search, map, listing detail, saved homes, showing requests, mortgage calculator, and Local Intel.
 - Product strategy has shifted broker-first after the SSI Automation meeting with Mike Sakazaki and John Ilao.
+- 2026-06-05 broker feedback added Real Geeks as the key competitive reference and pushed the plan toward broker-branded websites/apps plus CRM.
 
 ## Strategic priorities
 
@@ -63,7 +66,18 @@ Add:
 - API returns brokerage/agent data.
 - Mobile listing detail shows broker/agent context better.
 
-### 3. Broker/admin lead inbox
+### 3. Broker-branded website/app story
+
+Show that Hafa Homes is not only one consumer app. It is the demo/reference implementation for broker-specific websites and broker-branded app builds.
+
+Add:
+
+- Brokerage branding/config concept.
+- Broker domain/app deployment story.
+- Website takeover pitch: homepage, search, listings, agent pages, lead forms.
+- Shared backend/codebase explanation so Mike/John can explain why this is scalable.
+
+### 4. Broker/admin lead inbox
 
 Add:
 
@@ -73,7 +87,7 @@ Add:
 - Listing, brokerage, agent, contact method, and message shown clearly.
 - Basic assignment/routing.
 
-### 4. Server-backed saved listings
+### 5. Server-backed saved listings
 
 Add after auth foundation:
 
@@ -82,7 +96,7 @@ Add after auth foundation:
 - Mobile save sync when logged in.
 - Keep anonymous local saves as fallback.
 
-### 5. Property-management preview
+### 6. Property-management preview
 
 For August, build a premium-tier demo surface only:
 
@@ -95,7 +109,7 @@ For August, build a premium-tier demo surface only:
 
 Do not build full payments or maintenance workflows yet.
 
-### 6. Broker pitch and package docs
+### 7. Broker pitch and package docs
 
 Mike and John need:
 
@@ -105,8 +119,10 @@ Mike and John need:
 - Setup fee/monthly subscription options.
 - MLS/Flexmls FAQ.
 - Broker demo script.
+- Real Geeks competitive positioning.
+- White-label brokerage website/app plan.
 
-### 7. MLS/Flexmls discovery
+### 8. MLS/Flexmls discovery
 
 By August 1, the team should know or have a credible answer for:
 
@@ -117,7 +133,7 @@ By August 1, the team should know or have a credible answer for:
 - What refresh cadence is required?
 - Can leads route to listing agent, selected agent, or broker?
 
-### 8. Android setup
+### 9. Android setup
 
 Secondary to broker platform work, but useful by August:
 
@@ -181,6 +197,8 @@ feature/auth-roles-foundation
 - Brokerages/agents are modeled in data.
 - Listings and leads show brokerage/agent attribution.
 - Broker lead inbox exists.
+- Broker-branded website/app strategy is documented and demoable.
 - Property-management premium tier can be demonstrated as a preview.
 - Pitch/pricing/package docs are ready for Mike and John.
+- Real Geeks competitive positioning is documented.
 - MLS/Flexmls access path is at least understood enough for broker conversations.

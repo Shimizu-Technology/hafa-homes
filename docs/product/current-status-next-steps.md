@@ -1,6 +1,6 @@
 # Hafa Homes Current Status and Next Steps
 
-_Last updated: 2026-06-01 after SSI Automation / Hafa Homes meeting with Mike Sakazaki and John Ilao._
+_Last updated: 2026-06-05 after broker feedback / Real Geeks research._
 
 ## Source context
 
@@ -14,6 +14,8 @@ Product direction comes from the Hafa Homes docs plus Leon/Mike discussion notes
 Mike's key signal: Guam brokerages already have websites/MLS integrations, so Hafa Homes should win by being the polished Guam-first app layer: better mobile UX, better lead capture, clearer agent/brokerage value, and a real App Store/TestFlight presence.
 
 The 2026-06-01 meeting with Mike and John sharpened the strategy: Hafa Homes should be sold broker-first as a brokerage app + lead platform + future property-management portal, with Mike/John helping on sales, relationships, pricing, packaging, and operator/project-management work.
+
+The 2026-06-05 broker feedback added Real Geeks as the key competitor and clarified that brokers may want Hafa Homes/Shimizu to take over their actual brokerage website too. The new direction is to keep Hafa Homes as the demo/reference product while building a white-label-capable brokerage website + app + CRM platform.
 
 ## Where we are now
 
@@ -32,7 +34,7 @@ The 2026-06-01 meeting with Mike and John sharpened the strategy: Hafa Homes sho
   - listing fetch from production Rails API
   - map tab with Mapbox WebView
   - listing detail screen
-  - local saved listings via AsyncStorage
+  - server-backed saved listings after sign-in, with migration from old local AsyncStorage saves
   - mortgage calculator gated to for-sale listings
   - agents/more placeholder surfaces
   - in-app showing request form wired to Rails leads
@@ -42,7 +44,6 @@ The 2026-06-01 meeting with Mike and John sharpened the strategy: Hafa Homes sho
 ### Known limitations
 
 - Listings are still seed/demo data, not authorized MLS/Flexmls data.
-- Saved listings are local-only; they should move to authenticated users when auth exists.
 - Brokerages/agents are not modeled yet, so lead routing and attribution are still too shallow for the broker-first sales motion.
 - Leads are captured, but there is not yet a broker/agent lead inbox or status workflow.
 - Property-management/tenant portal features are not built yet.
@@ -51,14 +52,16 @@ The 2026-06-01 meeting with Mike and John sharpened the strategy: Hafa Homes sho
 
 ## Recommended next product priorities
 
-### 1. Brokerage platform foundation
+### 1. Brokerage tenancy / white-label platform foundation
 
-Add brokerages, agents, attribution, and lead routing before going deeper on consumer-only account features.
+Add brokerages, agents, attribution, lead routing, and tenant/branding foundations before going deeper on consumer-only features.
 
 Recommended scope:
 
 - Brokerage model.
 - Agent model.
+- Brokerage membership model.
+- Brokerage branding/domain/app config.
 - Listings belong to brokerage and optionally listing agent.
 - Leads route to listing, brokerage, and optionally agent.
 - Brokerage/agent data exposed in API payloads.
@@ -73,41 +76,42 @@ Why it matters:
 - MLS access will likely be broker-authorized.
 - Pricing/package discussions require a credible broker-facing platform story.
 
-### 2. Authentication and accounts
+### 2. CRM / lead inbox foundation
 
-Add real user accounts before saved searches, alerts, broker/admin roles, and persistent lead history become core features.
+Build a focused real estate CRM before attempting to copy every Real Geeks feature.
 
 Recommended scope:
 
-- Email/password and/or magic-link sign in.
-- Apple Sign In for iOS App Store readiness and mobile trust.
-- Session/token auth shared by mobile and web.
-- User model connected to:
-  - saved listings
-  - saved searches
-  - showing requests/leads
-  - notification preferences
-- Secure mobile token storage using Expo SecureStore.
-- Rails API endpoints for current user, sign in/out, and saved listing/search sync.
+- Broker/agent lead inbox.
+- Lead statuses: new, contacted, showing scheduled, nurturing, closed, lost, spam/archived.
+- Lead assignment/routing.
+- Lead detail page.
+- Notes.
+- Tasks/reminders.
+- Basic activity timeline.
+- Source tracking.
+- CSV export.
+- Notification settings later.
 
 Why it matters:
 
-- Saved homes should survive device changes.
-- Saved searches and alerts need an owner.
-- Lead history and agent follow-up are more valuable if tied to a user.
-- App Store users expect account recovery and privacy controls once personal data is stored.
+- Broker value depends on lead conversion, not only search UI.
+- Real Geeks competes heavily on CRM, lead quality, and follow-up workflows.
+- Agents/brokers need accountability around who followed up and when.
 
-### 3. Lead / showing request flow
+### 3. Broker website takeover / branded site foundation
 
-The native showing request form now exists and posts to Rails. Next step is broker/agent operationalization.
+Plan for broker-specific websites powered by the same platform.
 
 Recommended scope:
 
-- Broker/agent lead inbox improvement on web.
-- Lead statuses: new, contacted, scheduled, closed, spam/archived.
-- Lead routing to brokerage and listing agent.
-- Email/SMS notification for new leads.
-- Internal notes and assignment later.
+- Brokerage homepage config.
+- Search/listings page scoped to brokerage.
+- Agent roster/profile pages.
+- Buyer/seller/renter/property-management pages.
+- Lead forms routed to brokerage.
+- Compliance/disclaimer blocks.
+- Tenant-aware domain/slug routing.
 
 ### 4. Map search polish
 
@@ -168,14 +172,14 @@ Add backend models and web admin surfaces for:
 
 ## Suggested immediate sprint
 
-1. Deploy latest main and submit a fresh TestFlight with map polish, leads, and Local Intel.
-2. Add brokerage and agent data models.
-3. Associate listings/leads with brokerage/agent.
-4. Add broker/agent demo seed data and API fields.
-5. Improve web/admin lead inbox around broker routing/status.
-6. Draft package/pricing/proposal docs for Mike/John.
-7. Sketch property-management premium-tier demo surface.
-8. Prepare App Store Connect metadata/screenshots so Mike/John can share more broadly.
+1. Merge/deploy the auth and server-backed saves foundation.
+2. Submit a fresh TestFlight build with Clerk auth, synced saves, and Apple/Google sign-in.
+3. Add brokerage, agent, membership, branding, and tenancy models.
+4. Associate listings/leads with brokerage/agent.
+5. Seed Hafa Homes demo brokerage plus broker/agent demo data.
+6. Improve web/admin lead inbox around broker routing/status.
+7. Draft package/pricing/proposal docs for Mike/John with Real Geeks positioning.
+8. Sketch broker website takeover and property-management premium-tier demo surfaces.
 
 ## App Store/TestFlight status
 
