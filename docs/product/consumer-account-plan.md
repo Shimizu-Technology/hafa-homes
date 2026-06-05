@@ -26,7 +26,9 @@ Mobile uses one shared Clerk sign-in/sign-up modal for:
 - More/account screen
 - post-inquiry account CTA
 
-Email sign-up collects first/last name so showing requests and future broker workflows have a real contact name. Google SSO uses Clerk's native SSO flow; on native mobile, provider buttons are custom UI wired to Clerk strategies rather than Clerk's web drop-in components automatically rendering every enabled provider.
+Email sign-up collects first/last name so showing requests and future broker workflows have a real contact name. Google SSO uses Clerk's native SSO flow. iOS includes native Sign in with Apple through Clerk Expo and Expo Apple Authentication, with `ios.usesAppleSignIn` enabled for EAS builds. On native mobile, provider buttons are custom UI wired to Clerk strategies rather than Clerk's web drop-in components automatically rendering every enabled provider.
+
+For Clerk Apple OAuth, custom credentials are not required for initial testing, but should be configured before a polished public production release if we want app-owned Apple OAuth/native credential behavior instead of Clerk-managed/shared OAuth behavior.
 
 This avoids fragmented auth UI and keeps Clerk behavior consistent.
 

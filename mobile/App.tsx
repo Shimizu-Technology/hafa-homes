@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
-import { ClerkLoaded, ClerkProvider, useAuth, useSignIn, useSignUp, useSSO, useUser } from '@clerk/clerk-expo'
+import { ClerkLoaded, ClerkProvider, useAuth, useSignIn, useSignInWithApple, useSignUp, useSSO, useUser } from '@clerk/clerk-expo'
 import { tokenCache } from '@clerk/clerk-expo/token-cache'
 import * as Linking from 'expo-linking'
 import { StatusBar } from 'expo-status-bar'
@@ -1015,6 +1015,7 @@ function AuthModal({ open, prompt, onClose }: { open: boolean; prompt: AuthPromp
   const { signIn, setActive: setSignInActive, isLoaded: signInLoaded } = useSignIn()
   const { signUp, setActive: setSignUpActive, isLoaded: signUpLoaded } = useSignUp()
   const { startSSOFlow } = useSSO()
+  const { startAppleAuthenticationFlow } = useSignInWithApple()
   const [mode, setMode] = useState<'sign-in' | 'sign-up'>('sign-in')
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
@@ -1062,6 +1063,39 @@ function AuthModal({ open, prompt, onClose }: { open: boolean; prompt: AuthPromp
       }
     } catch (authError: any) {
       setMessage(authError?.errors?.[0]?.longMessage || authError?.errors?.[0]?.message || 'Google sign-in failed. Please try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleAppleSignIn() {
+    setLoading(true)
+    setMessage(null)
+    try {
+      const { createdSessionId, setActive } = await startAppleAuthenticationFlow()
+
+      if (createdSessionId && setActive) {
+        await setActive({ session: createdSessionId })
+        onClose()
+      } else {
+        setMessage('Apple sign-in did not finish. Please try again.')
+      }
+    } catch (nativeAppleError: any) {
+      try {
+        const { createdSessionId, setActive } = await startSSOFlow({
+          strategy: 'oauth_apple',
+          redirectUrl: Linking.createURL('/oauth-native-callback'),
+        })
+
+        if (createdSessionId && setActive) {
+          await setActive({ session: createdSessionId })
+          onClose()
+        } else {
+          setMessage('Apple sign-in did not finish. Please try again.')
+        }
+      } catch (authError: any) {
+        setMessage(authError?.errors?.[0]?.longMessage || authError?.errors?.[0]?.message || nativeAppleError?.errors?.[0]?.message || 'Apple sign-in failed. Please try again.')
+      }
     } finally {
       setLoading(false)
     }
@@ -1161,6 +1195,12 @@ function AuthModal({ open, prompt, onClose }: { open: boolean; prompt: AuthPromp
 
             {!pendingVerification && (
               <>
+                {Platform.OS === 'ios' && (
+                  <Pressable style={[styles.socialCta, styles.appleCta]} onPress={handleAppleSignIn} disabled={loading}>
+                    <View style={styles.appleCtaMark}><Text style={styles.appleCtaMarkText}>A</Text></View>
+                    <Text style={styles.appleCtaText}>Continue with Apple</Text>
+                  </Pressable>
+                )}
                 <Pressable style={styles.socialCta} onPress={handleGoogleSignIn} disabled={loading}>
                   <View style={styles.socialCtaMark}><Text style={styles.socialCtaMarkText}>G</Text></View>
                   <Text style={styles.socialCtaText}>Continue with Google</Text>
@@ -1665,6 +1705,10 @@ const styles = StyleSheet.create({
   socialCtaMark: { alignItems: 'center', backgroundColor: colors.sand, borderRadius: 999, height: 28, justifyContent: 'center', width: 28 },
   socialCtaMarkText: { color: colors.green, fontSize: 14, fontWeight: '900' },
   socialCtaText: { color: colors.ink, fontSize: 15, fontWeight: '900' },
+  appleCta: { backgroundColor: colors.ink, borderColor: colors.ink },
+  appleCtaMark: { alignItems: 'center', backgroundColor: 'white', borderRadius: 999, height: 28, justifyContent: 'center', width: 28 },
+  appleCtaMarkText: { color: colors.ink, fontSize: 14, fontWeight: '900' },
+  appleCtaText: { color: 'white', fontSize: 15, fontWeight: '900' },
   authDividerRow: { alignItems: 'center', flexDirection: 'row', gap: 10, marginVertical: 2 },
   authDividerLine: { backgroundColor: '#eadfce', flex: 1, height: 1 },
   authDividerText: { color: colors.muted, fontSize: 11, fontWeight: '900', letterSpacing: 1, textTransform: 'uppercase' },

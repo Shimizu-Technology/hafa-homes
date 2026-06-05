@@ -9,6 +9,7 @@
     "scheme": "hafahomes",
     "ios": {
       "supportsTablet": false,
+      "usesAppleSignIn": true,
       "bundleIdentifier": "com.shimizutechnology.hafahomes",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false

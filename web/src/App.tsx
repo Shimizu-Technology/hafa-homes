@@ -1655,6 +1655,8 @@ function Shell({ children, compact = false, mobileBottomPadding = true }: { chil
 }
 
 function TopNav() {
+  const { isClerkEnabled } = useAuthContext()
+
   return (
     <nav className="flex items-center justify-between">
       <Brand light />
@@ -1664,10 +1666,14 @@ function TopNav() {
         <Link to="/saved">Saved</Link>
         <Link to="/admin/sync">MLS sync</Link>
         <Link to="/admin/leads">Leads</Link>
-        <SignedOut>
-          <SignInButton mode="modal"><button className="rounded-full border border-white/25 px-4 py-2 text-white">Sign in</button></SignInButton>
-        </SignedOut>
-        <SignedIn><UserButton /></SignedIn>
+        {isClerkEnabled && (
+          <>
+            <SignedOut>
+              <SignInButton mode="modal"><button className="rounded-full border border-white/25 px-4 py-2 text-white">Sign in</button></SignInButton>
+            </SignedOut>
+            <SignedIn><UserButton /></SignedIn>
+          </>
+        )}
       </div>
       <button className="rounded-full border border-white/25 p-2 md:hidden"><Menu size={18} /></button>
     </nav>
