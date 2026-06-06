@@ -54,6 +54,22 @@ class ApiFetchError extends Error {
   }
 }
 
+async function apiErrorMessage(response: Response, fallback: string) {
+  try {
+    const payload = await response.json() as { error?: unknown; errors?: unknown }
+    if (Array.isArray(payload.errors) && payload.errors.length > 0) return payload.errors.map((error) => String(error)).join(', ')
+    if (typeof payload.error === 'string' && payload.error.trim()) return payload.error
+  } catch {
+    // Fall back to the caller-provided message when the API response is not JSON.
+  }
+
+  return fallback
+}
+
+function displayErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error && error.message ? error.message : fallback
+}
+
 type Village = {
   id: number
   name: string
@@ -273,7 +289,7 @@ async function updateLead(id: number, payload: { status?: LeadStatus; assigned_a
     headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
     body: JSON.stringify({ lead: payload }),
   })
-  if (!response.ok) throw new Error('Unable to update lead')
+  if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to update lead'), response.status)
   return response.json()
 }
 
@@ -1505,6 +1521,7 @@ function LeadsPage() {
         </div>
         {isLoading && <StateCard>Loading leads...</StateCard>}
         {isError && <StateCard tone="error">Unable to load leads.</StateCard>}
+        {statusMutation.isError && <StateCard tone="error">{displayErrorMessage(statusMutation.error, 'Unable to update lead right now.')}</StateCard>}
         <div className="grid gap-4">
           {leads.map((lead) => (
             <article key={lead.id} className="rounded-[2rem] bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[#0f3d35]/10">
@@ -1557,6 +1574,7 @@ function LeadDetailPage() {
         <button onClick={() => navigate('/admin/leads')} className="mb-6 inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-bold text-[#304942]"><ArrowLeft size={16} /> Back to leads</button>
         {isLoading && <StateCard>Loading lead...</StateCard>}
         {isError && <StateCard tone="error">Unable to load this lead.</StateCard>}
+        {mutation.isError && <StateCard tone="error">{displayErrorMessage(mutation.error, 'Unable to update lead right now.')}</StateCard>}
         {lead && (
           <div className="grid gap-5 lg:grid-cols-[1.35fr_0.85fr]">
             <article className="rounded-[2rem] bg-white p-6 shadow-sm">
@@ -1608,7 +1626,7 @@ function LeadDetailPage() {
                     {assignableAgents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name} · {agent.brokerage?.name}</option>)}
                   </select>
                 </label>
-                {mutation.isError && <p className="mt-3 text-sm font-semibold text-[#ffd6d6]">Unable to update lead right now.</p>}
+                {mutation.isError && <p className="mt-3 text-sm font-semibold text-[#ffd6d6]">{displayErrorMessage(mutation.error, 'Unable to update lead right now.')}</p>}
               </div>
 
               {lead.listing && (
