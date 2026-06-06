@@ -13,6 +13,10 @@ class BrokerageMembership < ApplicationRecord
 
   scope :active, -> { where(status: "active") }
 
+  def active?
+    status == "active"
+  end
+
   def as_api_json
     {
       id: id,

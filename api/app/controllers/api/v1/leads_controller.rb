@@ -40,7 +40,7 @@ module Api
       end
 
       def update
-        apply_lead_update_params
+        return if apply_lead_update_params == false
 
         if @lead.save
           render json: {
@@ -97,12 +97,23 @@ module Api
 
         if permitted.key?(:assigned_agent_id)
           assigned_agent_id = permitted.delete(:assigned_agent_id)
-          @lead.assigned_agent = assigned_agent_id.present? ? assignable_agents_for(@lead).find(assigned_agent_id) : nil
-          @lead.brokerage ||= @lead.assigned_agent&.brokerage
+          if assigned_agent_id.present?
+            assigned_agent = assignable_agents_for(@lead).find_by(id: assigned_agent_id)
+            unless assigned_agent
+              render json: { errors: ["Assigned agent is not available for this lead"] }, status: :unprocessable_entity
+              return false
+            end
+
+            @lead.assigned_agent = assigned_agent
+            @lead.brokerage ||= assigned_agent.brokerage
+          else
+            @lead.assigned_agent = nil
+          end
         end
 
         @lead.assign_attributes(permitted)
-        @lead.last_contacted_at ||= Time.current if contact_status?(@lead.status)
+        @lead.last_contacted_at = Time.current if permitted.key?(:status) && contact_status?(@lead.status)
+        true
       end
 
       def contact_status?(status)

@@ -80,11 +80,19 @@ class User < ApplicationRecord
       is_agent: agent?,
       is_consumer: consumer?,
       is_staff: staff?,
-      brokerages: brokerage_memberships.active.includes(:brokerage).map(&:as_api_json)
+      brokerages: brokerage_memberships_for_api.map(&:as_api_json)
     }
   end
 
   private
+
+  def brokerage_memberships_for_api
+    if brokerage_memberships.loaded?
+      brokerage_memberships.select(&:active?)
+    else
+      brokerage_memberships.active.includes(:brokerage).to_a
+    end
+  end
 
   def set_defaults
     self.role ||= "consumer"
