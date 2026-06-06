@@ -15,6 +15,10 @@ class BackfillBrokerPlatformFoundation < ActiveRecord::Migration[8.1]
     self.table_name = "leads"
   end
 
+  class MigrationBrokerageMembership < ActiveRecord::Base
+    self.table_name = "brokerage_memberships"
+  end
+
   def up
     brokerage = MigrationBrokerage.find_or_create_by!(slug: "hafa-homes-demo") do |record|
       record.name = "Hafa Homes Demo Brokerage"
@@ -59,6 +63,7 @@ class BackfillBrokerPlatformFoundation < ActiveRecord::Migration[8.1]
 
     MigrationLead.where(brokerage_id: brokerage.id).update_all(brokerage_id: nil, assigned_agent_id: nil, updated_at: Time.current)
     MigrationListing.where(brokerage_id: brokerage.id).update_all(brokerage_id: nil, agent_id: nil, updated_at: Time.current)
+    MigrationBrokerageMembership.where(brokerage_id: brokerage.id).delete_all
     MigrationAgent.where(brokerage_id: brokerage.id).delete_all
     brokerage.delete
   end
