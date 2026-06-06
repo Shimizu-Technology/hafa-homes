@@ -18,13 +18,13 @@ module Api
 
       def create
         listing = Listing.active.find(listing_id_param)
-        record = save_record_for(listing)
+        record, created = save_record_for(listing)
 
         render json: {
           saved: true,
           listing_id: listing.id,
           listing: ListingSerializer.summary(record.listing).merge(saved_at: record.created_at)
-        }, status: :created
+        }, status: created ? :created : :ok
       end
 
       def destroy
@@ -43,9 +43,12 @@ module Api
       end
 
       def save_record_for(listing)
-        current_user.saved_listing_records.find_or_create_by!(listing: listing)
+        record = current_user.saved_listing_records.find_by(listing: listing)
+        return [record, false] if record
+
+        [current_user.saved_listing_records.create!(listing: listing), true]
       rescue ActiveRecord::RecordNotUnique
-        current_user.saved_listing_records.find_by!(listing: listing)
+        [current_user.saved_listing_records.find_by!(listing: listing), false]
       end
     end
   end

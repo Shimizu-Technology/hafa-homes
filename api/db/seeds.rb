@@ -9,7 +9,7 @@ Listing.delete_all
 Feature.delete_all
 Village.delete_all
 DataSyncRun.delete_all
-User.where(email: "shimizutechnology@gmail.com").delete_all
+User.where(email: "shimizutechnology@gmail.com").destroy_all
 
 User.create!(
   clerk_id: "pending_platform_admin",
