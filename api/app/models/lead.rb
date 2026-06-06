@@ -1,5 +1,6 @@
 class Lead < ApplicationRecord
   belongs_to :listing, optional: true
+  belongs_to :user, optional: true
 
   validates :lead_type, :name, :email, presence: true
 

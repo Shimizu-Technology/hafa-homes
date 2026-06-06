@@ -1,6 +1,12 @@
 module Api
   module V1
     class LeadsController < ApplicationController
+      include ClerkAuthenticatable
+
+      before_action :authenticate_user!, only: [:index]
+      before_action :require_staff!, only: [:index]
+      before_action :authenticate_user_optional, only: [:create]
+
       def index
         leads = Lead.includes(:listing).order(created_at: :desc).limit(100)
 
@@ -21,6 +27,7 @@ module Api
                 :message,
                 :status,
                 :listing_id,
+                :user_id,
                 :created_at
               ]
             ).merge(
@@ -39,9 +46,10 @@ module Api
 
       def create
         lead = Lead.new(lead_params)
+        lead.user = current_user if current_user
 
         if lead.save
-          render json: { lead: lead.as_json(only: [:id, :lead_type, :name, :email, :phone, :status, :listing_id]) }, status: :created
+          render json: { lead: lead.as_json(only: [:id, :lead_type, :name, :email, :phone, :status, :listing_id, :user_id]) }, status: :created
         else
           render json: { errors: lead.errors.full_messages }, status: :unprocessable_entity
         end

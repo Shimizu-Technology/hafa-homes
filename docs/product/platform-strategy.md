@@ -1,16 +1,20 @@
 # Hafa Homes Platform Strategy
 
-_Last updated: 2026-05-24 after Leon/Mike Hafa Homes discussion._
+_Last updated: 2026-06-05 after broker feedback / Real Geeks research._
 
 ## Current direction
 
-Hafa Homes is evolving from a proof-of-concept search demo into a potential Guam-wide real estate app/platform.
+Hafa Homes is evolving from a proof-of-concept search demo into a broker-first Guam real estate software platform.
 
 The working strategy is:
 
-> Hafa Homes is the consumer-facing Guam real estate app. Brokerages and agents subscribe to participate, connect or authorize their MLS/listing feed, publish their listings/agents, and receive leads through the platform.
+> Hafa Homes is the demo/reference Guam real estate app and the platform brand behind brokerage-specific websites, brokerage-specific apps, lead CRM, and future property-management workflows.
 
-This is closer to a Guam-first Locations LLC-style platform than a one-off website for a single brokerage.
+Brokerages can subscribe to Hafa Homes-powered software, authorize or connect their MLS/listing feed, publish their listings/agents, receive/reroute leads, and eventually manage rental/tenant workflows.
+
+The 2026-06-05 broker feedback shifted the architecture from “one Hafa Homes app that every broker subscribes into” toward a **white-label-capable brokerage platform**. Hafa Homes remains the demo and possible public marketplace layer, but individual brokerages may want their own branded site/app powered by the same backend and codebases.
+
+This is closer to a Guam-first Real Geeks alternative — brokerage website + brokerage app + lead CRM + property-management portal — than a one-off website for a single brokerage.
 
 ## Why this is valuable
 
@@ -27,6 +31,8 @@ Hafa Homes should compete on:
 - neighborhood guidance
 - mortgage/affordability guidance
 - analytics and admin workflows for agents/brokerages
+- broker-branded websites and apps from a shared platform
+- CRM/lead follow-up workflows
 
 The pitch is not just “we can show MLS listings.” The pitch is:
 
@@ -34,20 +40,25 @@ The pitch is not just “we can show MLS listings.” The pitch is:
 
 ## Business model hypothesis
 
-### Primary model: agent/brokerage subscription
+### Primary model: brokerage subscription
+
+Brokerages pay Hafa Homes for software, app presence, lead conversion, and operational tooling. Individual agents may benefit through their brokerage, but the first sales motion should target brokers rather than agent-by-agent subscriptions.
 
 Brokerages/agents pay Hafa Homes for software and distribution, not for the MLS data itself.
 
 Possible paid components:
 
 - brokerage subscription
-- per-agent seats
 - setup/onboarding fee
+- package tiers: search/app, lead engagement, property management
+- per-agent seats or included agent allowances
 - MLS/feed integration fee
 - featured agent/listing placement
 - lead inbox/CRM tools
 - analytics/reporting
 - native app packaging/support
+- property-management / tenant portal features
+- white-label brokerage website/app configuration
 
 ### What subscribers get
 
@@ -58,6 +69,7 @@ Possible paid components:
 - saved-search buyer/renter intent
 - brokerage/agent branding
 - analytics on listing views, saves, inquiries, and lead sources
+- broker-branded website/app support
 - optional website/app embed or landing page support
 
 ## MLS/Flexmls understanding
@@ -127,23 +139,33 @@ Native app selling points:
 
 ## Recommended next product direction
 
-Build toward a broker/agent marketplace while keeping the existing consumer demo polished.
+Build toward a broker-first platform while keeping the existing consumer demo polished.
 
 Next major product capabilities:
 
-1. Authentication/accounts for consumers, agents, brokerages, and admins
-2. Server-backed saved listings, saved searches, and alert preferences
-3. Agent and brokerage profiles
-4. Lead routing by listing/agent/brokerage
-5. Brokerage/agent admin dashboard
-6. MLS/Flexmls sync adapter skeleton
-7. Neighborhood intelligence on listing detail pages
-8. Mortgage calculator and affordability guide
-9. Native app TestFlight/App Store release process
-10. Map search polish: loading states, marker clustering/counts, and zoom-gated price pins
+1. Brokerage and agent data model
+2. Listing ownership/attribution by brokerage and optionally agent
+3. Lead routing by listing/agent/brokerage
+4. Brokerage/agent admin dashboard and lead inbox
+5. Authentication/accounts for consumers, agents, brokerages, and admins
+6. Server-backed saved listings, saved searches, and alert preferences
+7. MLS/Flexmls sync adapter skeleton once a broker authorizes access
+8. Property-management / tenant portal preview for premium package
+9. Neighborhood intelligence on listing detail pages
+10. Mortgage calculator and affordability guide
+11. Native app TestFlight/App Store release process
+12. Map search polish: loading states, marker clustering/counts, and zoom-gated price pins
+13. White-label brokerage website/app configuration
+14. CRM/lead activity foundation
 
 ## Meeting source
 
 Source notes/transcript:
 
 - `Brain-Dump/work/shimizu-tech/Michael Sazaki (BOH)/2) Talk with Mike about HafaHomes and Shimizu Technology - May 24, 2026.md`
+- `Brain-Dump/work/shimizu-tech/SSI-Automation/1) 1st Meeting with Mike and John for SSI Automation.md`
+- `docs/meetings/2026-06-01-ssi-automation-hafa-homes.md`
+- `docs/product/brokerage-platform-plan.md`
+- `docs/product/white-label-brokerage-platform-plan.md`
+- `docs/research/realgeeks-competitive-analysis.md`
+- `docs/meetings/2026-06-05-broker-feedback-realgeeks.md`
