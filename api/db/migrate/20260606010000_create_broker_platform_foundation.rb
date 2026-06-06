@@ -32,7 +32,7 @@ class CreateBrokerPlatformFoundation < ActiveRecord::Migration[8.1]
       t.string :status, null: false, default: "active"
       t.timestamps
     end
-    add_index :agents, [:brokerage_id, :email]
+    add_index :agents, [:brokerage_id, :email], unique: true, where: "email IS NOT NULL"
     add_index :agents, :status
 
     create_table :brokerage_memberships do |t|

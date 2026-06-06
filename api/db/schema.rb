@@ -26,7 +26,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_06_010100) do
     t.string "status", default: "active", null: false
     t.datetime "updated_at", null: false
     t.bigint "user_id"
-    t.index ["brokerage_id", "email"], name: "index_agents_on_brokerage_id_and_email"
+    t.index ["brokerage_id", "email"], name: "index_agents_on_brokerage_id_and_email", unique: true, where: "(email IS NOT NULL)"
     t.index ["brokerage_id"], name: "index_agents_on_brokerage_id"
     t.index ["status"], name: "index_agents_on_status"
     t.index ["user_id"], name: "index_agents_on_user_id"

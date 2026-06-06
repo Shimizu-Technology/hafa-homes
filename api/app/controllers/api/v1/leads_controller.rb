@@ -87,9 +87,10 @@ module Api
 
       def assignable_agents_for(lead)
         agents = assignable_agents_for_scope
-        return agents if lead.brokerage_id.blank? && current_user.platform_admin?
+        brokerage_id = lead.brokerage_id || lead.assigned_agent&.brokerage_id
+        return agents if brokerage_id.blank?
 
-        agents.where(brokerage_id: lead.brokerage_id)
+        agents.where(brokerage_id: brokerage_id)
       end
 
       def apply_lead_update_params

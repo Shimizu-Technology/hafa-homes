@@ -9,6 +9,7 @@ class Agent < ApplicationRecord
   normalizes :email, with: ->(email) { email.to_s.strip.downcase.presence }
 
   validates :name, presence: true
+  validates :email, uniqueness: { scope: :brokerage_id, case_sensitive: false }, allow_nil: true
   validates :status, inclusion: { in: STATUSES }
 
   before_validation :set_defaults
