@@ -23,7 +23,7 @@ class Lead < ApplicationRecord
   end
 
   def infer_routing_from_listing
-    return unless listing
+    return unless new_record? && listing
 
     self.brokerage ||= listing.brokerage
     self.assigned_agent ||= listing.agent
