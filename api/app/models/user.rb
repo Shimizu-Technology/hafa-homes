@@ -6,6 +6,9 @@ class User < ApplicationRecord
   has_many :saved_listing_records, class_name: "SavedListing", dependent: :destroy
   has_many :saved_listings, through: :saved_listing_records, source: :listing
   has_many :leads, dependent: :nullify
+  has_many :brokerage_memberships, dependent: :destroy
+  has_many :brokerages, through: :brokerage_memberships
+  has_many :agent_profiles, class_name: "Agent", dependent: :nullify
 
   normalizes :email, with: ->(email) { email.to_s.strip.downcase }
 
@@ -52,6 +55,14 @@ class User < ApplicationRecord
     [first_name, last_name].compact_blank.join(" ").presence || email.split("@").first
   end
 
+  def active_brokerage_ids
+    brokerage_memberships.active.pluck(:brokerage_id)
+  end
+
+  def active_agent_ids
+    agent_profiles.active.pluck(:id)
+  end
+
   def as_api_json
     {
       id: id,
@@ -68,7 +79,8 @@ class User < ApplicationRecord
       is_brokerage_admin: brokerage_admin?,
       is_agent: agent?,
       is_consumer: consumer?,
-      is_staff: staff?
+      is_staff: staff?,
+      brokerages: brokerage_memberships.active.includes(:brokerage).map(&:as_api_json)
     }
   end
 

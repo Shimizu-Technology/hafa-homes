@@ -1,5 +1,7 @@
 class Listing < ApplicationRecord
   belongs_to :village
+  belongs_to :brokerage, optional: true
+  belongs_to :agent, optional: true
   has_many :listing_photos, -> { order(:position) }, dependent: :destroy
   has_many :listing_features, dependent: :destroy
   has_many :features, through: :listing_features

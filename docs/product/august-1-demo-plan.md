@@ -184,9 +184,13 @@ Secondary to broker platform work, but useful by August:
 
 ## Recommended next branch
 
+Auth/roles are merged. The next recommended branch is:
+
 ```bash
-feature/auth-roles-foundation
+feature/broker-platform-foundation
 ```
+
+This combines brokerage tenancy with a thin first broker lead inbox/detail workflow.
 
 ## Definition of done for August 1
 

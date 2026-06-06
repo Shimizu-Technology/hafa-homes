@@ -10,9 +10,62 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_01_124500) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_06_010100) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
+
+  create_table "agents", force: :cascade do |t|
+    t.text "bio"
+    t.bigint "brokerage_id", null: false
+    t.datetime "created_at", null: false
+    t.string "email"
+    t.string "license_number"
+    t.string "name", null: false
+    t.string "phone"
+    t.string "photo_url"
+    t.string "status", default: "active", null: false
+    t.datetime "updated_at", null: false
+    t.bigint "user_id"
+    t.index ["brokerage_id", "email"], name: "index_agents_on_brokerage_id_and_email"
+    t.index ["brokerage_id"], name: "index_agents_on_brokerage_id"
+    t.index ["status"], name: "index_agents_on_status"
+    t.index ["user_id"], name: "index_agents_on_user_id"
+  end
+
+  create_table "brokerage_memberships", force: :cascade do |t|
+    t.bigint "brokerage_id", null: false
+    t.datetime "created_at", null: false
+    t.string "role", default: "agent", null: false
+    t.string "status", default: "active", null: false
+    t.datetime "updated_at", null: false
+    t.bigint "user_id", null: false
+    t.index ["brokerage_id", "user_id"], name: "index_brokerage_memberships_on_brokerage_and_user", unique: true
+    t.index ["brokerage_id"], name: "index_brokerage_memberships_on_brokerage_id"
+    t.index ["status"], name: "index_brokerage_memberships_on_status"
+    t.index ["user_id", "role"], name: "index_brokerage_memberships_on_user_id_and_role"
+    t.index ["user_id"], name: "index_brokerage_memberships_on_user_id"
+  end
+
+  create_table "brokerages", force: :cascade do |t|
+    t.string "app_display_name"
+    t.string "brand_accent_color"
+    t.string "brand_primary_color"
+    t.text "compliance_disclaimer"
+    t.datetime "created_at", null: false
+    t.string "logo_url"
+    t.string "name", null: false
+    t.string "phone"
+    t.string "primary_contact_email"
+    t.string "primary_contact_name"
+    t.jsonb "settings", default: {}, null: false
+    t.string "slug", null: false
+    t.string "status", default: "active", null: false
+    t.string "subscription_tier"
+    t.datetime "updated_at", null: false
+    t.string "website_url"
+    t.index ["slug"], name: "index_brokerages_on_slug", unique: true
+    t.index ["status"], name: "index_brokerages_on_status"
+  end
 
   create_table "data_sync_runs", force: :cascade do |t|
     t.datetime "created_at", null: false
@@ -38,8 +91,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_01_124500) do
   end
 
   create_table "leads", force: :cascade do |t|
+    t.bigint "assigned_agent_id"
+    t.bigint "brokerage_id"
     t.datetime "created_at", null: false
     t.string "email"
+    t.datetime "last_contacted_at"
+    t.string "lead_source", default: "hafa_homes", null: false
     t.string "lead_type"
     t.bigint "listing_id"
     t.text "message"
@@ -48,13 +105,20 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_01_124500) do
     t.string "preferred_contact_method"
     t.string "preferred_time"
     t.date "preferred_tour_date"
+    t.string "quality_status", default: "unknown", null: false
     t.string "status"
     t.decimal "target_price"
     t.string "tour_type"
     t.datetime "updated_at", null: false
     t.bigint "user_id"
+    t.index ["assigned_agent_id", "created_at"], name: "index_leads_on_assigned_agent_id_and_created_at"
+    t.index ["assigned_agent_id"], name: "index_leads_on_assigned_agent_id"
+    t.index ["brokerage_id", "created_at"], name: "index_leads_on_brokerage_id_and_created_at"
+    t.index ["brokerage_id"], name: "index_leads_on_brokerage_id"
     t.index ["created_at"], name: "index_leads_on_created_at"
+    t.index ["lead_source"], name: "index_leads_on_lead_source"
     t.index ["listing_id"], name: "index_leads_on_listing_id"
+    t.index ["quality_status"], name: "index_leads_on_quality_status"
     t.index ["status"], name: "index_leads_on_status"
     t.index ["user_id", "created_at"], name: "index_leads_on_user_id_and_created_at"
     t.index ["user_id"], name: "index_leads_on_user_id"
@@ -82,9 +146,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_01_124500) do
 
   create_table "listings", force: :cascade do |t|
     t.string "address"
+    t.bigint "agent_id"
     t.string "agent_name"
     t.decimal "baths"
     t.integer "beds"
+    t.bigint "brokerage_id"
     t.string "brokerage_name"
     t.datetime "created_at", null: false
     t.text "description"
@@ -104,7 +170,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_01_124500) do
     t.datetime "updated_at", null: false
     t.bigint "village_id", null: false
     t.integer "year_built"
+    t.index ["agent_id"], name: "index_listings_on_agent_id"
     t.index ["beds"], name: "index_listings_on_beds"
+    t.index ["brokerage_id"], name: "index_listings_on_brokerage_id"
     t.index ["latitude", "longitude"], name: "index_listings_on_latitude_and_longitude"
     t.index ["listing_kind"], name: "index_listings_on_listing_kind"
     t.index ["price"], name: "index_listings_on_price"
@@ -167,11 +235,19 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_01_124500) do
     t.index ["slug"], name: "index_villages_on_slug", unique: true
   end
 
+  add_foreign_key "agents", "brokerages"
+  add_foreign_key "agents", "users"
+  add_foreign_key "brokerage_memberships", "brokerages"
+  add_foreign_key "brokerage_memberships", "users"
+  add_foreign_key "leads", "agents", column: "assigned_agent_id"
+  add_foreign_key "leads", "brokerages"
   add_foreign_key "leads", "listings"
   add_foreign_key "leads", "users"
   add_foreign_key "listing_features", "features"
   add_foreign_key "listing_features", "listings"
   add_foreign_key "listing_photos", "listings"
+  add_foreign_key "listings", "agents"
+  add_foreign_key "listings", "brokerages"
   add_foreign_key "listings", "villages"
   add_foreign_key "saved_listings", "listings"
   add_foreign_key "saved_listings", "users"

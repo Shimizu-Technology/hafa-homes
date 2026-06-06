@@ -6,18 +6,57 @@ SavedListing.delete_all
 SavedSearch.delete_all
 Lead.delete_all
 Listing.delete_all
+BrokerageMembership.delete_all
+Agent.delete_all
+Brokerage.delete_all
 Feature.delete_all
 Village.delete_all
 DataSyncRun.delete_all
 User.where(email: "shimizutechnology@gmail.com").destroy_all
 
-User.create!(
+platform_admin = User.create!(
   clerk_id: "pending_platform_admin",
   email: "shimizutechnology@gmail.com",
   role: "platform_admin",
   invitation_status: "pending",
   invited_at: Time.current
 )
+
+hafa_brokerage = Brokerage.create!(
+  name: "Hafa Homes Demo Brokerage",
+  slug: "hafa-homes-demo",
+  status: "active",
+  subscription_tier: "demo",
+  primary_contact_name: "Hafa Homes Team",
+  primary_contact_email: "hello@hafahomes.com",
+  phone: "(671) 555-0199",
+  website_url: "https://hafahomes.netlify.app",
+  brand_primary_color: "#0f3d35",
+  brand_accent_color: "#17a9df",
+  app_display_name: "Hafa Homes",
+  compliance_disclaimer: "Demo brokerage attribution for product development. Replace with authorized brokerage and MLS attribution before production MLS use."
+)
+
+BrokerageMembership.create!(brokerage: hafa_brokerage, user: platform_admin, role: "brokerage_admin", status: "active")
+
+sample_agents = [
+  Agent.create!(
+    brokerage: hafa_brokerage,
+    name: "Mia Santos",
+    email: "mia@hafahomes.com",
+    phone: "(671) 555-0123",
+    license_number: "Demo-001",
+    bio: "Demo buyer and relocation specialist for broker-platform workflows."
+  ),
+  Agent.create!(
+    brokerage: hafa_brokerage,
+    name: "Daniel Cruz",
+    email: "daniel@hafahomes.com",
+    phone: "(671) 555-0145",
+    license_number: "Demo-002",
+    bio: "Demo rental and property-management specialist for broker-platform workflows."
+  )
+]
 
 local_intel = {
   "tamuning" => {
@@ -631,12 +670,15 @@ listings_data = [
 
 listings_data.each_with_index do |data, index|
   feature_slugs = data.delete(:feature_slugs)
+  assigned_agent = sample_agents[index % sample_agents.length]
   listing = Listing.create!(
     data.merge(
+      brokerage: hafa_brokerage,
+      agent: assigned_agent,
       source: "public_market_snapshot",
       status: "active",
-      agent_name: "Contact listing brokerage",
-      brokerage_name: "Public Guam market snapshot",
+      agent_name: assigned_agent.name,
+      brokerage_name: hafa_brokerage.name,
       published_at: index.days.ago,
       source_updated_at: Time.current
     )
@@ -663,4 +705,4 @@ DataSyncRun.create!(
   notes: "Seeded from publicly visible Guam listing facts for demo only. Photos are generic stock placeholders; replace with authorized MLS/IDX/API media before production use."
 )
 
-puts "Seeded #{Village.count} villages, #{Feature.count} features, #{Listing.count} listings."
+puts "Seeded #{Village.count} villages, #{Feature.count} features, #{Listing.count} listings, #{Brokerage.count} brokerages, #{Agent.count} agents."

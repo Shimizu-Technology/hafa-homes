@@ -295,9 +295,9 @@ This is more important than UI. The Rails API must enforce scoping.
 
 ## Suggested implementation phases
 
-### Phase 0 — current auth branch
+### Phase 0 — auth/accounts foundation
 
-Already in progress / ready to merge:
+Completed in PR #7:
 
 - Clerk auth across API/web/mobile.
 - User model and roles.
@@ -305,15 +305,15 @@ Already in progress / ready to merge:
 - Lead/user association when signed in.
 - Protected admin route foundation.
 
-### Phase 1 — brokerage tenancy foundation
+### Phase 1 — broker platform foundation
 
 Recommended next feature branch:
 
 ```bash
-feature/brokerage-tenancy-foundation
+feature/broker-platform-foundation
 ```
 
-Scope:
+Scope combines tenancy plus a thin first CRM layer:
 
 - Brokerage model.
 - Agent model.
@@ -323,28 +323,11 @@ Scope:
 - Seed Hafa Homes demo brokerage and at least one sample broker/agent.
 - Update APIs to include brokerage/agent attribution.
 - Enforce role/tenant authorization on admin endpoints.
+- Basic lead inbox/detail.
+- Lead status and assigned-agent updates.
 - Document tenant scoping rules.
 
-### Phase 2 — broker CRM lead inbox
-
-Recommended branch:
-
-```bash
-feature/broker-lead-inbox
-```
-
-Scope:
-
-- lead inbox by brokerage
-- statuses: new, contacted, showing scheduled, nurturing, closed, lost, spam/archived
-- lead detail page
-- assign/reassign to agent
-- notes
-- tasks/reminders
-- basic activity timeline
-- source and listing interest shown clearly
-
-### Phase 3 — broker website takeover foundation
+### Phase 2 — broker branding / website foundation
 
 Recommended branch:
 
@@ -364,7 +347,7 @@ Scope:
 
 Note: for SEO-heavy public sites, evaluate moving broker websites to Next.js/Astro later. Keep the current Vite web app for dashboard/admin and demo until the need is proven.
 
-### Phase 4 — broker-branded app builds
+### Phase 3 — broker-branded app builds
 
 Scope:
 
@@ -375,7 +358,7 @@ Scope:
 - app-store metadata template
 - support process for updates
 
-### Phase 5 — lead quality and automations
+### Phase 4 — CRM expansion, lead quality, and automations
 
 Scope:
 
@@ -387,7 +370,7 @@ Scope:
 - saved-search/listing activity scoring
 - simple drip workflows later
 
-### Phase 6 — property management / rental premium tier
+### Phase 5 — property management / rental premium tier
 
 Scope:
 

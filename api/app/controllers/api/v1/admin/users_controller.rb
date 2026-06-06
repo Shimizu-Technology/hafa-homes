@@ -11,7 +11,7 @@ module Api
         before_action :require_platform_admin!
 
         def index
-          users = User.order(:role, :email).limit(requested_limit)
+          users = User.includes(brokerage_memberships: :brokerage).order(:role, :email).limit(requested_limit)
           render json: { users: users.map(&:as_api_json) }
         end
 

@@ -3,59 +3,111 @@ module Api
     class LeadsController < ApplicationController
       include ClerkAuthenticatable
 
-      before_action :authenticate_user!, only: [:index]
-      before_action :require_staff!, only: [:index]
+      before_action :authenticate_user!, only: [:index, :show, :update]
+      before_action :require_staff!, only: [:index, :show, :update]
       before_action :authenticate_user_optional, only: [:create]
+      before_action :set_lead, only: [:show, :update]
 
       def index
-        leads = Lead.includes(:listing).order(created_at: :desc).limit(100)
+        leads = lead_scope.order(created_at: :desc).limit(100)
 
         render json: {
-          leads: leads.map do |lead|
-            lead.as_json(
-              only: [
-                :id,
-                :lead_type,
-                :name,
-                :email,
-                :phone,
-                :preferred_contact_method,
-                :preferred_time,
-                :preferred_tour_date,
-                :tour_type,
-                :target_price,
-                :message,
-                :status,
-                :listing_id,
-                :user_id,
-                :created_at
-              ]
-            ).merge(
-              target_price: lead.target_price&.to_f,
-              listing: lead.listing ? {
-                id: lead.listing.id,
-                title: lead.listing.title,
-                price: lead.listing.price.to_f,
-                listing_kind: lead.listing.listing_kind,
-                village: lead.listing.village.name
-              } : nil
-            )
-          end
+          leads: leads.map { |lead| LeadSerializer.summary(lead) },
+          assignable_agents: assignable_agents_for_scope.map(&:as_api_json)
+        }
+      end
+
+      def show
+        render json: {
+          lead: LeadSerializer.detail(@lead),
+          assignable_agents: assignable_agents_for(@lead).map(&:as_api_json)
         }
       end
 
       def create
-        lead = Lead.new(lead_params)
+        permitted = lead_params
+        lead = Lead.new(permitted.except(:listing_id))
+        lead.listing = active_listing_from_params(permitted)
+        return if performed?
+
         lead.user = current_user if current_user
 
         if lead.save
-          render json: { lead: lead.as_json(only: [:id, :lead_type, :name, :email, :phone, :status, :listing_id, :user_id]) }, status: :created
+          render json: { lead: LeadSerializer.summary(lead) }, status: :created
         else
           render json: { errors: lead.errors.full_messages }, status: :unprocessable_entity
         end
       end
 
+      def update
+        apply_lead_update_params
+
+        if @lead.save
+          render json: {
+            lead: LeadSerializer.detail(@lead),
+            assignable_agents: assignable_agents_for(@lead).map(&:as_api_json)
+          }
+        else
+          render json: { errors: @lead.errors.full_messages }, status: :unprocessable_entity
+        end
+      end
+
       private
+
+      def set_lead
+        @lead = lead_scope.find(params[:id])
+      end
+
+      def lead_scope
+        base = Lead
+          .includes(:brokerage, :assigned_agent, listing: [:village, :brokerage, :agent])
+
+        return base if current_user.platform_admin?
+
+        brokerage_ids = authorized_brokerage_ids
+        agent_ids = authorized_agent_ids
+        return base.none if brokerage_ids.empty? && agent_ids.empty?
+
+        base.where(brokerage_id: brokerage_ids).or(base.where(assigned_agent_id: agent_ids))
+      end
+
+      def authorized_brokerage_ids
+        @authorized_brokerage_ids ||= current_user.active_brokerage_ids
+      end
+
+      def authorized_agent_ids
+        @authorized_agent_ids ||= current_user.active_agent_ids
+      end
+
+      def assignable_agents_for_scope
+        return Agent.includes(:brokerage).active.order(:name) if current_user.platform_admin?
+
+        Agent.includes(:brokerage).active.where(brokerage_id: authorized_brokerage_ids).order(:name)
+      end
+
+      def assignable_agents_for(lead)
+        agents = assignable_agents_for_scope
+        return agents if lead.brokerage_id.blank? && current_user.platform_admin?
+
+        agents.where(brokerage_id: lead.brokerage_id)
+      end
+
+      def apply_lead_update_params
+        permitted = lead_update_params
+
+        if permitted.key?(:assigned_agent_id)
+          assigned_agent_id = permitted.delete(:assigned_agent_id)
+          @lead.assigned_agent = assigned_agent_id.present? ? assignable_agents_for(@lead).find(assigned_agent_id) : nil
+          @lead.brokerage ||= @lead.assigned_agent&.brokerage
+        end
+
+        @lead.assign_attributes(permitted)
+        @lead.last_contacted_at ||= Time.current if contact_status?(@lead.status)
+      end
+
+      def contact_status?(status)
+        %w[contacted showing_scheduled nurturing closed lost].include?(status)
+      end
 
       def lead_params
         params.require(:lead).permit(
@@ -71,6 +123,18 @@ module Api
           :message,
           :listing_id
         )
+      end
+
+      def active_listing_from_params(permitted)
+        return nil if permitted[:listing_id].blank?
+
+        Listing.active.find_by(id: permitted[:listing_id]).tap do |listing|
+          render json: { errors: ["Listing not found"] }, status: :unprocessable_entity unless listing
+        end
+      end
+
+      def lead_update_params
+        params.require(:lead).permit(:status, :assigned_agent_id)
       end
     end
   end
