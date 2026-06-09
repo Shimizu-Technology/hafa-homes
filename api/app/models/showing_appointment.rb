@@ -9,6 +9,7 @@ class ShowingAppointment < ApplicationRecord
   belongs_to :brokerage, optional: true
   belongs_to :agent, optional: true
   belongs_to :created_by, class_name: "User", optional: true
+  has_many :notification_deliveries, dependent: :destroy
 
   validates :status, inclusion: { in: STATUSES }
   validates :tour_type, inclusion: { in: TOUR_TYPES }
@@ -18,6 +19,7 @@ class ShowingAppointment < ApplicationRecord
   before_validation :set_defaults
   before_validation :infer_context_from_lead
   after_save :sync_lead_from_schedule
+  after_commit :queue_schedule_notifications, on: [:create, :update]
 
   scope :upcoming, -> { where("scheduled_starts_at IS NULL OR scheduled_starts_at >= ?", Time.current).order(Arel.sql("scheduled_starts_at ASC NULLS LAST"), created_at: :desc) }
 
@@ -58,8 +60,31 @@ class ShowingAppointment < ApplicationRecord
     if scheduled_starts_at.present? && %w[proposed confirmed].include?(status)
       updates[:status] = "showing_scheduled"
       updates[:last_contacted_at] = Time.current
+    elsif %w[cancelled no_show].include?(status) && lead.status == "showing_scheduled" && no_other_active_scheduled_showings?
+      updates[:status] = "contacted"
+      updates[:last_contacted_at] = Time.current
     end
 
     lead.update!(updates) if updates.any?
+  end
+
+  def no_other_active_scheduled_showings?
+    active_showings = lead.showing_appointments.where(status: %w[proposed confirmed]).where.not(scheduled_starts_at: nil)
+    active_showings = active_showings.where.not(id: id) if id.present?
+    !active_showings.exists?
+  end
+
+  def queue_schedule_notifications
+    return unless schedule_notification_relevant?
+
+    LeadNotificationService.queue_showing_update(self)
+  end
+
+  def schedule_notification_relevant?
+    return false unless lead
+    return false unless scheduled_starts_at.present? || %w[cancelled no_show].include?(status)
+    return true if previous_changes.key?("id")
+
+    %w[status scheduled_starts_at scheduled_ends_at location agent_id consumer_notes].any? { |attribute| previous_changes.key?(attribute) }
   end
 end

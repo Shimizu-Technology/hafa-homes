@@ -35,12 +35,13 @@ module Api
 
         def detail(lead)
           summary(lead).merge(
-            showing_appointments: showing_appointments_for(lead).map { |showing| showing_json(showing) }
+            showing_appointments: showing_appointments_for(lead).map { |showing| showing_json(showing) },
+            notification_deliveries: notification_deliveries_for(lead).map { |delivery| Api::V1::NotificationDeliverySerializer.summary(delivery) }
           )
         end
 
         def consumer(lead)
-          detail(lead).except(:quality_status, :lead_source, :last_contacted_at).merge(
+          detail(lead).except(:quality_status, :lead_source, :last_contacted_at, :notification_deliveries).merge(
             message: lead.message,
             showing_appointments: showing_appointments_for(lead).map { |showing| Api::V1::ShowingAppointmentSerializer.consumer(showing) },
             latest_showing_appointment: Api::V1::ShowingAppointmentSerializer.consumer(latest_showing(lead))
@@ -110,6 +111,10 @@ module Api
           else
             lead.showing_appointments.includes(:listing, :brokerage, :agent, :created_by).order(Arel.sql("scheduled_starts_at DESC NULLS LAST"), created_at: :desc)
           end
+        end
+
+        def notification_deliveries_for(lead)
+          lead.notification_deliveries.recent_first.limit(10)
         end
 
         def consumer_status_label(status)

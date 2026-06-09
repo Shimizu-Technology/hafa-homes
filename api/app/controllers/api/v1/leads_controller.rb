@@ -4,10 +4,10 @@ module Api
       include ClerkAuthenticatable
       include StaffLeadScoping
 
-      before_action :authenticate_user!, only: [:index, :show, :update]
-      before_action :require_staff!, only: [:index, :show, :update]
+      before_action :authenticate_user!, only: [:index, :show, :update, :send_notification]
+      before_action :require_staff!, only: [:index, :show, :update, :send_notification]
       before_action :authenticate_user_optional, only: [:create]
-      before_action :set_lead, only: [:show, :update]
+      before_action :set_lead, only: [:show, :update, :send_notification]
 
       def index
         leads = staff_lead_scope.order(created_at: :desc).limit(100)
@@ -50,6 +50,27 @@ module Api
           }
         else
           render json: { errors: @lead.errors.full_messages }, status: :unprocessable_entity
+        end
+      end
+
+      def send_notification
+        permitted = notification_params
+        unless NotificationDelivery::CHANNELS.include?(permitted[:channel]) && NotificationDelivery::RECIPIENT_ROLES.include?(permitted[:recipient_role])
+          return render json: { errors: ["Notification recipient or channel is invalid"] }, status: :unprocessable_entity
+        end
+
+        delivery = LeadNotificationService.queue_manual(
+          @lead,
+          channel: permitted[:channel],
+          recipient_role: permitted[:recipient_role],
+          event_name: permitted[:event_name].presence || "manual_update",
+          sent_by: current_user
+        )
+
+        if delivery
+          render json: { notification_delivery: NotificationDeliverySerializer.summary(delivery) }, status: :accepted
+        else
+          render json: { errors: ["No #{permitted[:recipient_role]} #{permitted[:channel]} recipient is available for this lead"] }, status: :unprocessable_entity
         end
       end
 
@@ -113,6 +134,13 @@ module Api
 
       def lead_update_params
         params.require(:lead).permit(:status, :assigned_agent_id)
+      end
+
+      def notification_params
+        params.require(:notification).permit(:channel, :recipient_role, :event_name).tap do |permitted|
+          permitted[:channel] = permitted[:channel].presence || "email"
+          permitted[:recipient_role] = permitted[:recipient_role].presence || "consumer"
+        end
       end
     end
   end

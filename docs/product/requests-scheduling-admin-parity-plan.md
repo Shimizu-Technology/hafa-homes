@@ -47,11 +47,24 @@ Staff endpoints:
 - `POST /api/v1/showing_appointments`
 - `PATCH /api/v1/showing_appointments/:id`
 
-Confirmed/proposed dated showings advance the lead to `showing_scheduled`.
+Confirmed/proposed dated showings advance the lead to `showing_scheduled`. If the only active scheduled showing is later cancelled or marked no-show, the lead returns to `contacted` so consumer request history does not keep showing stale “Showing scheduled” status.
+
+### Notifications
+
+Added a safe notification foundation for request and showing workflows:
+
+- `NotificationDelivery` stores email/SMS delivery attempts for leads/showings.
+- Resend is the email provider.
+- ClickSend is the SMS provider.
+- Automatic request/showing notifications are queued, but external sending is gated by `EMAIL_NOTIFICATIONS_ENABLED` and `LIVE_SMS_ENABLED`.
+- Admins can resend/queue customer email, customer text, and agent email from lead detail.
+- Lead detail shows recent delivery status/history.
+
+This follows the starter-app Resend/ClickSend pattern: important sends should be visible and resendable from the dashboard, while live SMS/email remains opt-in via environment config.
 
 ### Web admin console
 
-The admin surface now has an admin-specific shell/sidebar instead of relying on public navigation.
+The admin surface now has an admin-specific collapsible shell/sidebar instead of relying on public navigation.
 
 Routes:
 
@@ -107,7 +120,7 @@ Listing detail now aligns more closely across web and mobile:
 
 ## Still future / follow-up
 
-- email/SMS notifications for scheduled showings
+- Resend webhook status updates and ClickSend delivery receipt sync
 - admin lead notes/tasks/activity timeline
 - invite/resend invite flows through Clerk
 - duplicate lead detection and lead quality scoring

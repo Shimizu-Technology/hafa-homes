@@ -46,7 +46,7 @@ The 2026-06-05 broker feedback added Real Geeks as the key competitor and clarif
 - Listings are still seed/demo data, not authorized MLS/Flexmls data.
 - Brokerage/agent tenancy foundation is merged through PR #8.
 - Broker lead inbox/detail, lead status, and assigned-agent updates are implemented on web admin.
-- `feature/requests-scheduling-admin-parity` adds consumer request history, showing appointments, admin dashboard/users/showings, stricter role scoping, and web/mobile listing-detail parity.
+- `feature/requests-scheduling-admin-parity` adds consumer request history, showing appointments, admin dashboard/users/showings, stricter role scoping, web/mobile listing-detail parity, a collapsible admin sidebar, role-filtered user management, and a safe Resend/ClickSend notification foundation.
 - Property-management/tenant portal features are not built yet.
 - Latest main should be deployed and submitted to TestFlight after the Local Intel merge.
 - App Store public release metadata/screenshots/privacy answers still need to be completed in App Store Connect.
@@ -93,6 +93,7 @@ Recommended scope:
 - Source tracking.
 - CSV export.
 - Notification settings later.
+- Delivery webhook/receipt sync for Resend and ClickSend after the initial gated notification foundation.
 
 Why it matters:
 
