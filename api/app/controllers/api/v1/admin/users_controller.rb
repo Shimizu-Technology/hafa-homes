@@ -56,7 +56,12 @@ module Api
           @user.agent_profiles.update_all(user_id: nil)
           return if agent_id.blank?
 
-          agent = Agent.find(agent_id)
+          agent = Agent.find_by(id: agent_id)
+          unless agent
+            @user.errors.add(:base, "Agent #{agent_id} not found")
+            raise ActiveRecord::RecordInvalid, @user
+          end
+
           agent.user = @user
           agent.save!
         end

@@ -3,13 +3,14 @@ module Api
     module Admin
       class DashboardController < ApplicationController
         include ClerkAuthenticatable
+        include StaffLeadScoping
 
         before_action :authenticate_user!
         before_action :require_staff!
 
         def show
-          scoped_leads = lead_scope
-          upcoming_showings = showing_scope.where(status: %w[proposed confirmed]).where("scheduled_starts_at IS NULL OR scheduled_starts_at >= ?", Time.current)
+          scoped_leads = staff_lead_scope
+          upcoming_showings = staff_showing_appointment_scope.where(status: %w[proposed confirmed]).where("scheduled_starts_at IS NULL OR scheduled_starts_at >= ?", Time.current)
           stale_cutoff = 24.hours.ago
 
           render json: {
@@ -25,26 +26,6 @@ module Api
           }
         end
 
-        private
-
-        def lead_scope
-          base = Lead.includes(:brokerage, :assigned_agent, { showing_appointments: [:listing, :brokerage, :agent, :created_by] }, listing: [:village, :brokerage, :agent])
-          return base if current_user.platform_admin?
-
-          brokerage_admin_ids = current_user.active_brokerage_admin_ids
-          agent_ids = current_user.active_agent_ids
-          return base.none if brokerage_admin_ids.empty? && agent_ids.empty?
-
-          scoped = nil
-          scoped = base.where(brokerage_id: brokerage_admin_ids) if brokerage_admin_ids.any?
-          agent_scope = base.where(assigned_agent_id: agent_ids) if agent_ids.any?
-          scoped = scoped ? scoped.or(agent_scope) : agent_scope if agent_scope
-          scoped || base.none
-        end
-
-        def showing_scope
-          ShowingAppointment.where(lead_id: lead_scope.select(:id))
-        end
       end
     end
   end
