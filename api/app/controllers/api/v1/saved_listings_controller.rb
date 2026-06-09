@@ -17,7 +17,12 @@ module Api
       end
 
       def create
-        listing = Listing.active.find(listing_id_param)
+        listing = Listing.active.find_by(id: listing_id_param)
+        unless listing
+          render json: { errors: ["Listing not found"] }, status: :not_found
+          return
+        end
+
         record, created = save_record_for(listing)
 
         render json: {
