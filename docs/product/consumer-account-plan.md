@@ -73,8 +73,8 @@ Implemented on `feature/requests-scheduling-admin-parity` after PR #8.
 
 UX:
 
-- Web: `/account/requests`
-- Mobile: `More → My requests`
+- Web: `/account/requests` with `/requests` as a friendly alias
+- Mobile: dedicated bottom-tab `Requests` screen
 - Consumer-safe statuses such as request received, agent follow-up started, showing scheduled, still searching, and request closed.
 - Listing context for each inquiry.
 - Agent/broker contact context once assigned.

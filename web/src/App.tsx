@@ -576,6 +576,7 @@ function App() {
         <Route path="/military" element={<MilitaryPage />} />
         <Route path="/saved" element={<SavedPage />} />
         <Route path="/account/requests" element={<RequestsPage />} />
+        <Route path="/requests" element={<RequestsPage />} />
         <Route path="/privacy" element={<PrivacyPage />} />
         <Route path="/admin" element={<RequireStaff><AdminDashboardPage /></RequireStaff>} />
         <Route path="/admin/sync" element={<RequireStaff><SyncPage /></RequireStaff>} />
@@ -583,8 +584,27 @@ function App() {
         <Route path="/admin/leads/:id" element={<RequireStaff><LeadDetailPage /></RequireStaff>} />
         <Route path="/admin/showings" element={<RequireStaff><AdminShowingsPage /></RequireStaff>} />
         <Route path="/admin/users" element={<RequireStaff><AdminUsersPage /></RequireStaff>} />
+        <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </>
+  )
+}
+
+function NotFoundPage() {
+  return (
+    <Shell compact>
+      <section className="mx-auto max-w-3xl px-5 py-12">
+        <div className="rounded-[2rem] bg-white p-8 text-center shadow-sm">
+          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#0f705e]">Page not found</p>
+          <h1 className="mt-3 text-3xl font-semibold tracking-[-0.05em]">We could not find that Hafa Homes page.</h1>
+          <p className="mt-3 text-[#66746f]">Use the links below to continue your search or review your account activity.</p>
+          <div className="mt-6 flex flex-wrap justify-center gap-3">
+            <Link to="/" className="rounded-full bg-[#0f3d35] px-5 py-3 text-sm font-bold text-white">Search homes</Link>
+            <Link to="/account/requests" className="rounded-full border border-[#d7ded9] px-5 py-3 text-sm font-bold text-[#0f3d35]">My requests</Link>
+          </div>
+        </div>
+      </section>
+    </Shell>
   )
 }
 

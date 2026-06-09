@@ -23,7 +23,7 @@ import {
   View,
 } from 'react-native'
 
-type TabKey = 'search' | 'map' | 'saved' | 'agents' | 'more'
+type TabKey = 'search' | 'map' | 'saved' | 'requests' | 'more'
 type ListingKind = 'sale' | 'rent'
 
 type Feature = {
@@ -152,7 +152,7 @@ const tabs: Array<{ key: TabKey; label: string; icon: string }> = [
   { key: 'search', label: 'Search', icon: '⌂' },
   { key: 'map', label: 'Map', icon: '⌖' },
   { key: 'saved', label: 'Saved', icon: '♡' },
-  { key: 'agents', label: 'Agents', icon: '◎' },
+  { key: 'requests', label: 'Requests', icon: '◎' },
   { key: 'more', label: 'More', icon: '☰' },
 ]
 
@@ -638,7 +638,11 @@ function AppContent({ auth }: { auth: AppAuth }) {
               ? <CenteredState label="Loading saved homes..." loading />
               : <SavedScreen listings={savedListings} onOpen={setSelectedListing} onToggleSaved={toggleSaved} />
         )}
-        {activeTab === 'agents' && <AgentsScreen listings={listings} />}
+        {activeTab === 'requests' && (
+          !auth.isSignedIn
+            ? <RequestsSignInScreen clerkEnabled={auth.clerkEnabled} onOpenAuth={() => openAuthPrompt({ title: 'Sign in to view your requests', copy: 'Signed-in showing requests and price alerts can show status, agent, and scheduled appointment details.' })} />
+            : <RequestsScreen auth={auth} />
+        )}
         {activeTab === 'more' && <MoreScreen auth={auth} onOpenAuth={openAuthPrompt} />}
       </View>
 
@@ -1005,30 +1009,6 @@ function SavedScreen({ listings, onOpen, onToggleSaved }: { listings: Listing[];
   )
 }
 
-function AgentsScreen({ listings }: { listings: Listing[] }) {
-  const agentNames = Array.from(new Set(listings.map((listing) => listing.agent_name).filter((name): name is string => Boolean(name))))
-
-  return (
-    <ScrollView contentContainerStyle={styles.listContent}>
-      <View style={styles.screenIntro}>
-        <Text style={styles.kicker}>Local experts</Text>
-        <Text style={styles.screenTitle}>Agents and brokerages</Text>
-        <Text style={styles.screenCopy}>Connect with Guam real estate professionals for showings, questions, financing guidance, and neighborhood advice.</Text>
-      </View>
-      {(agentNames.length ? agentNames : ['Listing Agent', 'Relocation Specialist', 'Rental Advisor']).slice(0, 6).map((agent, index) => (
-        <View key={agent} style={styles.agentCard}>
-          <View style={styles.agentAvatar}><Text style={styles.agentInitial}>{agent.charAt(0)}</Text></View>
-          <View style={styles.agentInfo}>
-            <Text style={styles.agentName}>{agent}</Text>
-            <Text style={styles.agentMeta}>{index % 2 === 0 ? 'Brokerage partner' : 'Hafa Homes network'}</Text>
-          </View>
-          <Text style={styles.agentCta}>Contact</Text>
-        </View>
-      ))}
-    </ScrollView>
-  )
-}
-
 function MoreScreen({ auth, onOpenAuth }: { auth: AppAuth; onOpenAuth: (prompt?: AuthPrompt) => void }) {
   return (
     <ScrollView contentContainerStyle={styles.listContent}>
@@ -1038,8 +1018,7 @@ function MoreScreen({ auth, onOpenAuth }: { auth: AppAuth; onOpenAuth: (prompt?:
         <Text style={styles.screenCopy}>Plan your search with local guidance for neighborhoods, schools, financing, saved homes, and relocation needs.</Text>
       </View>
       {auth.clerkEnabled ? <AccountCard auth={auth} onOpenAuth={onOpenAuth} /> : <AuthUnavailableCard />}
-      {auth.isSignedIn && <MyRequestsSection auth={auth} />}
-      {['Mortgage calculator', 'Neighborhood guide', 'School and park nearby info', 'Saved search alerts', 'Military relocation tools'].map((item) => (
+      {['Mortgage calculator', 'Neighborhood guide', 'School and park nearby info', 'Saved search alerts', 'Agent and brokerage contacts', 'Military relocation tools'].map((item) => (
         <View key={item} style={styles.featureRow}>
           <Text style={styles.featureBullet}>✓</Text>
           <Text style={styles.featureText}>{item}</Text>
@@ -1054,7 +1033,25 @@ function formatRequestDate(value?: string) {
   return new Date(value).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
 }
 
-function MyRequestsSection({ auth }: { auth: AppAuth }) {
+function RequestsSignInScreen({ clerkEnabled, onOpenAuth }: { clerkEnabled: boolean; onOpenAuth: () => void }) {
+  return (
+    <ScrollView contentContainerStyle={styles.listContent}>
+      <View style={styles.screenIntro}>
+        <Text style={styles.kicker}>My requests</Text>
+        <Text style={styles.screenTitle}>Track showings and price alerts</Text>
+        <Text style={styles.screenCopy}>Signed-in requests show status, assigned agent, brokerage contact details, and confirmed appointment information.</Text>
+      </View>
+      <View style={styles.accountCard}>
+        <Text style={styles.accountKicker}>Account required</Text>
+        <Text style={styles.accountTitle}>{clerkEnabled ? 'Sign in to view requests' : 'Sign-in coming online'}</Text>
+        <Text style={styles.accountCopy}>{clerkEnabled ? 'Showing requests stay public, but request history is tied to your Hafa Homes account.' : 'Clerk must be configured before request history can sync.'}</Text>
+        {clerkEnabled && <Pressable style={styles.primaryCta} onPress={onOpenAuth}><Text style={styles.primaryCtaText}>Sign in or create account</Text></Pressable>}
+      </View>
+    </ScrollView>
+  )
+}
+
+function RequestsScreen({ auth }: { auth: AppAuth }) {
   const [requests, setRequests] = useState<ConsumerLead[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -1080,29 +1077,51 @@ function MyRequestsSection({ auth }: { auth: AppAuth }) {
   }, [auth.getToken])
 
   return (
-    <View style={styles.accountCard}>
-      <Text style={styles.accountKicker}>My requests</Text>
-      <Text style={styles.accountTitle}>Showing requests and price alerts</Text>
-      <Text style={styles.accountCopy}>Signed-in requests show status, assigned agent, and confirmed appointment details when the brokerage schedules a showing.</Text>
-      {loading && <ActivityIndicator color={colors.green} />}
-      {error && <Text style={styles.requestError}>{error}</Text>}
-      {!loading && requests.length === 0 && <Text style={styles.accountCopy}>No requests yet. Request a showing or add a price alert from a listing.</Text>}
-      {requests.slice(0, 5).map((request) => (
-        <View key={request.id} style={styles.requestHistoryCard}>
-          <Text style={styles.requestHistoryStatus}>{request.consumer_status_label || request.status.replace(/_/g, ' ')}</Text>
-          <Text style={styles.requestHistoryTitle}>{request.listing?.title || request.lead_type.replace(/_/g, ' ')}</Text>
-          <Text style={styles.requestHistoryMeta}>Submitted {formatRequestDate(request.created_at)}</Text>
-          <Text style={styles.requestHistoryMeta}>Agent: {request.assigned_agent?.name || 'Pending assignment'}</Text>
-          {request.latest_showing_appointment && (
-            <View style={styles.showingSummaryCard}>
-              <Text style={styles.requestHistoryStatus}>Showing appointment</Text>
-              <Text style={styles.requestHistoryMeta}>{formatRequestDate(request.latest_showing_appointment.scheduled_starts_at)} · {request.latest_showing_appointment.status.replace(/_/g, ' ')}</Text>
-              {request.latest_showing_appointment.location && <Text style={styles.requestHistoryMeta}>{request.latest_showing_appointment.location}</Text>}
-              {request.latest_showing_appointment.consumer_notes && <Text style={styles.requestHistoryMeta}>{request.latest_showing_appointment.consumer_notes}</Text>}
-            </View>
-          )}
+    <FlatList
+      data={requests}
+      keyExtractor={(request) => String(request.id)}
+      contentContainerStyle={styles.listContent}
+      ListHeaderComponent={(
+        <View style={styles.screenIntro}>
+          <Text style={styles.kicker}>My requests</Text>
+          <Text style={styles.screenTitle}>Showing requests and price alerts</Text>
+          <Text style={styles.screenCopy}>See status, agent, brokerage, and appointment details for every signed-in request.</Text>
         </View>
-      ))}
+      )}
+      ListEmptyComponent={loading ? <CenteredState label="Loading your requests..." loading /> : <CenteredState label="No requests yet. Request a showing or add a price alert from any listing." />}
+      renderItem={({ item }) => <RequestHistoryCard request={item} />}
+      ListFooterComponent={error ? <Text style={styles.requestError}>{error}</Text> : null}
+    />
+  )
+}
+
+function RequestHistoryCard({ request }: { request: ConsumerLead }) {
+  const showing = request.latest_showing_appointment
+  return (
+    <View style={styles.requestHistoryCard}>
+      {request.listing?.primary_photo_url && <Image source={{ uri: request.listing.primary_photo_url }} style={styles.requestHistoryImage} />}
+      <View style={styles.requestHistoryBody}>
+        <Text style={styles.requestHistoryStatus}>{request.consumer_status_label || request.status.replace(/_/g, ' ')}</Text>
+        <Text style={styles.requestHistoryTitle}>{request.listing?.title || request.lead_type.replace(/_/g, ' ')}</Text>
+        <Text style={styles.requestHistoryMeta}>Submitted {formatRequestDate(request.created_at)}</Text>
+        <View style={styles.showingSummaryCard}>
+          <Text style={styles.requestHistoryStatus}>Agent and brokerage</Text>
+          <Text style={styles.requestHistoryMeta}>Agent: {request.assigned_agent?.name || 'Pending assignment'}</Text>
+          {request.assigned_agent?.phone && <Text style={styles.requestHistoryMeta}>Agent phone: {request.assigned_agent.phone}</Text>}
+          {request.assigned_agent?.email && <Text style={styles.requestHistoryMeta}>Agent email: {request.assigned_agent.email}</Text>}
+          <Text style={styles.requestHistoryMeta}>Brokerage: {request.brokerage?.name || 'Hafa Homes'}</Text>
+          {request.brokerage?.phone && <Text style={styles.requestHistoryMeta}>Brokerage phone: {request.brokerage.phone}</Text>}
+        </View>
+        {showing && (
+          <View style={styles.showingSummaryCard}>
+            <Text style={styles.requestHistoryStatus}>Showing appointment</Text>
+            <Text style={styles.requestHistoryMeta}>{formatRequestDate(showing.scheduled_starts_at)} · {showing.status.replace(/_/g, ' ')} · {showing.tour_type.replace(/_/g, ' ')}</Text>
+            {showing.location && <Text style={styles.requestHistoryMeta}>{showing.location}</Text>}
+            {showing.consumer_notes && <Text style={styles.requestHistoryMeta}>{showing.consumer_notes}</Text>}
+          </View>
+        )}
+        {request.message && <Text style={styles.requestHistoryMessage}>{request.message}</Text>}
+      </View>
     </View>
   )
 }
@@ -2076,9 +2095,12 @@ const styles = StyleSheet.create({
   contactSegmentTextActive: { color: colors.green },
   requestError: { color: '#a33b2f', fontSize: 13, fontWeight: '800', lineHeight: 19, marginTop: 12 },
   requestSuccess: { paddingVertical: 20 },
-  requestHistoryCard: { backgroundColor: colors.sand, borderRadius: 20, marginTop: 12, padding: 14 },
+  requestHistoryCard: { backgroundColor: 'white', borderRadius: 26, marginTop: 12, overflow: 'hidden', shadowColor: colors.green, shadowOpacity: 0.08, shadowRadius: 18, shadowOffset: { width: 0, height: 8 } },
+  requestHistoryImage: { backgroundColor: '#dbe8df', height: 170, width: '100%' },
+  requestHistoryBody: { padding: 16 },
   requestHistoryStatus: { color: colors.green2, fontSize: 11, fontWeight: '900', letterSpacing: 1.6, textTransform: 'uppercase' },
-  requestHistoryTitle: { color: colors.ink, fontSize: 16, fontWeight: '900', letterSpacing: -0.3, marginTop: 5 },
+  requestHistoryTitle: { color: colors.ink, fontSize: 20, fontWeight: '900', letterSpacing: -0.4, marginTop: 5 },
   requestHistoryMeta: { color: colors.muted, fontSize: 13, fontWeight: '700', lineHeight: 20, marginTop: 4 },
-  showingSummaryCard: { backgroundColor: 'white', borderRadius: 16, marginTop: 10, padding: 12 },
+  requestHistoryMessage: { color: colors.muted, fontSize: 13, fontWeight: '700', lineHeight: 20, marginTop: 12 },
+  showingSummaryCard: { backgroundColor: colors.sand, borderRadius: 16, marginTop: 10, padding: 12 },
 })

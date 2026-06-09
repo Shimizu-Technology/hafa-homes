@@ -20,8 +20,8 @@ This plan extends the broker platform foundation beyond lead capture into the en
 Signed-in consumers can now see their own requests through:
 
 - API: `GET /api/v1/me/leads`
-- Web: `/account/requests`
-- Mobile: `More → My requests`
+- Web: `/account/requests` with `/requests` as a friendly alias
+- Mobile: dedicated bottom-tab `Requests` screen
 
 Consumer request payloads use consumer-safe status labels and include listing context, assigned agent/brokerage, and appointment details when available. Internal CRM notes are not exposed to consumers.
 
