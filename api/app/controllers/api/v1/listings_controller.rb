@@ -2,7 +2,7 @@ module Api
   module V1
     class ListingsController < ApplicationController
       def index
-        listings = Listing.includes(:village, :listing_photos, :features).active
+        listings = Listing.includes(:village, :listing_photos, :features, :brokerage, :agent).active
         listings = listings.for_kind(params[:kind])
         listings = listings.in_village(params[:village])
         listings = listings.property_type(params[:property_type])
@@ -18,7 +18,7 @@ module Api
       end
 
       def show
-        listing = Listing.includes(:village, :listing_photos, :features).find(params[:id])
+        listing = Listing.includes(:village, :listing_photos, :features, :brokerage, :agent).find(params[:id])
         render json: { listing: ListingSerializer.detail(listing) }
       end
 

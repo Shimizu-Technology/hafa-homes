@@ -85,8 +85,12 @@ module ClerkAuthenticatable
     end
 
     create_public_user!(clerk_id:, email:, first_name:, last_name:)
-  rescue ActiveRecord::RecordNotUnique
-    User.find_by(clerk_id: clerk_id) || User.find_by("LOWER(email) = ?", email.to_s.downcase)
+  rescue ActiveRecord::RecordNotUnique, ActiveRecord::RecordInvalid => e
+    existing_user = User.find_by(clerk_id: clerk_id) || User.find_by("LOWER(email) = ?", email.to_s.downcase)
+    return existing_user if existing_user && user_uniqueness_conflict?(e)
+
+    Rails.logger.warn("[ClerkAuth] Unable to create local user for Clerk user #{clerk_id}: #{e.message}")
+    nil
   end
 
   def accept_invited_user(user, clerk_id:, first_name:, last_name:)
@@ -101,6 +105,13 @@ module ClerkAuthenticatable
     user
   rescue ActiveRecord::RecordNotUnique
     User.find_by(clerk_id: clerk_id) || user.reload
+  end
+
+  def user_uniqueness_conflict?(error)
+    return true if error.is_a?(ActiveRecord::RecordNotUnique)
+    return false unless error.is_a?(ActiveRecord::RecordInvalid) && error.record.is_a?(User)
+
+    error.record.errors.details.slice(:clerk_id, :email).values.flatten.any? { |detail| detail[:error] == :taken }
   end
 
   def create_public_user!(clerk_id:, email:, first_name:, last_name:)

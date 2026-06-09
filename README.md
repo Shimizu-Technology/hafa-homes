@@ -80,6 +80,7 @@ The web app uses `VITE_API_URL`; the mobile app uses `EXPO_PUBLIC_API_URL`. Both
 - [Platform Strategy](docs/product/platform-strategy.md)
 - [Brokerage Platform Plan](docs/product/brokerage-platform-plan.md)
 - [White-Label Brokerage Platform Plan](docs/product/white-label-brokerage-platform-plan.md)
+- [Broker Platform Implementation Plan](docs/product/broker-platform-implementation-plan.md)
 - [August 1 Demo Plan](docs/product/august-1-demo-plan.md)
 - [Auth and Roles Plan](docs/product/auth-roles-plan.md)
 - [Consumer Account Plan](docs/product/consumer-account-plan.md)

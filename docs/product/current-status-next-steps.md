@@ -172,14 +172,25 @@ Add backend models and web admin surfaces for:
 
 ## Suggested immediate sprint
 
-1. Merge/deploy the auth and server-backed saves foundation.
-2. Submit a fresh TestFlight build with Clerk auth, synced saves, and Apple/Google sign-in.
-3. Add brokerage, agent, membership, branding, and tenancy models.
-4. Associate listings/leads with brokerage/agent.
-5. Seed Hafa Homes demo brokerage plus broker/agent demo data.
-6. Improve web/admin lead inbox around broker routing/status.
-7. Draft package/pricing/proposal docs for Mike/John with Real Geeks positioning.
-8. Sketch broker website takeover and property-management premium-tier demo surfaces.
+Auth/roles and server-backed saves are now merged in PR #7. The next coding sprint should be **Broker Platform Foundation**.
+
+Recommended branch:
+
+```bash
+feature/broker-platform-foundation
+```
+
+Scope:
+
+1. Add brokerage, agent, and brokerage membership models.
+2. Associate listings/leads with brokerage/agent.
+3. Seed Hafa Homes demo brokerage plus broker/agent demo data.
+4. Enforce role/tenant scoping for admin lead access.
+5. Improve web/admin lead inbox around broker routing/status.
+6. Add lead detail and basic status/assigned-agent updates.
+7. Keep broker website takeover, full CRM automation, and property-management preview for later PRs.
+
+See `docs/product/broker-platform-implementation-plan.md` for the full PR sequence.
 
 ## App Store/TestFlight status
 

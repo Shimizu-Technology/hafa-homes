@@ -10,7 +10,7 @@ Rails.application.routes.draw do
         delete :save, on: :member, to: "saved_listings#destroy"
       end
       resources :villages, only: [:index]
-      resources :leads, only: [:index, :create]
+      resources :leads, only: [:index, :show, :create, :update]
       resources :saved_searches, only: [:create]
       resources :data_sync_runs, only: [:index]
 

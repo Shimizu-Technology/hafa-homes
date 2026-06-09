@@ -106,6 +106,16 @@ const FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1600047509807-ba8f99d2
 const LEGACY_SAVED_LISTING_IDS_KEY = 'hafaHomes:savedListingIds'
 const LEGACY_SAVED_LISTINGS_KEY = 'hafaHomes:savedListings'
 
+class ApiRequestError extends Error {
+  status: number
+
+  constructor(message: string, status: number) {
+    super(message)
+    this.name = 'ApiRequestError'
+    this.status = status
+  }
+}
+
 const tabs: Array<{ key: TabKey; label: string; icon: string }> = [
   { key: 'search', label: 'Search', icon: '⌂' },
   { key: 'map', label: 'Map', icon: '⌖' },
@@ -140,9 +150,21 @@ async function fetchListings(kind: ListingKind): Promise<Listing[]> {
   return json.listings ?? []
 }
 
+async function apiErrorMessage(response: Response, fallback: string) {
+  try {
+    const payload = await response.json() as { error?: unknown; errors?: unknown }
+    if (Array.isArray(payload.errors) && payload.errors.length > 0) return payload.errors.map((error) => String(error)).join(', ')
+    if (typeof payload.error === 'string' && payload.error.trim()) return payload.error
+  } catch {
+    // Fall back to the caller-provided message when the API response is not JSON.
+  }
+
+  return fallback
+}
+
 async function fetchListing(listingId: number): Promise<Listing> {
   const response = await fetch(`${API_URL}/api/v1/listings/${listingId}`)
-  if (!response.ok) throw new Error('Unable to load listing')
+  if (!response.ok) throw new ApiRequestError(await apiErrorMessage(response, 'Unable to load listing'), response.status)
   const json = await response.json()
   return json.listing
 }
@@ -172,7 +194,7 @@ async function saveListingForUser(listingId: number, getToken: GetAuthToken): Pr
     method: 'POST',
     headers: await authHeaders(getToken),
   })
-  if (!response.ok) throw new Error('Unable to save home')
+  if (!response.ok) throw new ApiRequestError(await apiErrorMessage(response, 'Unable to save home'), response.status)
   return response.json()
 }
 
@@ -181,7 +203,7 @@ async function removeSavedListingForUser(listingId: number, getToken: GetAuthTok
     method: 'DELETE',
     headers: await authHeaders(getToken),
   })
-  if (!response.ok) throw new Error('Unable to remove saved home')
+  if (!response.ok) throw new ApiRequestError(await apiErrorMessage(response, 'Unable to remove saved home'), response.status)
   return response.json()
 }
 
@@ -200,7 +222,7 @@ async function createLead(payload: {
     body: JSON.stringify({ lead: payload }),
   })
 
-  if (!response.ok) throw new Error('Unable to send request')
+  if (!response.ok) throw new ApiRequestError(await apiErrorMessage(response, 'Unable to send request'), response.status)
   return response.json()
 }
 
@@ -406,7 +428,10 @@ function AppContent({ auth }: { auth: AppAuth }) {
           })
         }
 
-        if (results.every((result) => result.status === 'fulfilled')) {
+        const migrationComplete = results.every((result) => (
+          result.status === 'fulfilled' || (result.reason instanceof ApiRequestError && result.reason.status === 404)
+        ))
+        if (migrationComplete) {
           await AsyncStorage.multiRemove([LEGACY_SAVED_LISTING_IDS_KEY, LEGACY_SAVED_LISTINGS_KEY])
         }
       } catch (migrationError) {
@@ -449,7 +474,7 @@ function AppContent({ auth }: { auth: AppAuth }) {
     } catch (saveError) {
       console.warn('Unable to save Hafa Homes listing', saveError)
       setSavedListingIds((current) => current.filter((id) => id !== listingId))
-      Alert.alert('Unable to save home', 'Please try again in a moment.')
+      Alert.alert('Unable to save home', saveError instanceof Error ? saveError.message : 'Please try again in a moment.')
     }
   }
 
@@ -463,7 +488,7 @@ function AppContent({ auth }: { auth: AppAuth }) {
     } catch (saveError) {
       console.warn('Unable to remove Hafa Homes saved listing', saveError)
       setSavedListingIds((current) => current.includes(listingId) ? current : [...current, listingId])
-      Alert.alert('Unable to update saved homes', 'Please try again in a moment.')
+      Alert.alert('Unable to update saved homes', saveError instanceof Error ? saveError.message : 'Please try again in a moment.')
     }
   }
 
@@ -1340,11 +1365,13 @@ function ListingDetailScreen({ listing, saved, auth, onBack, onOpenAuth, onToggl
   const [imageUri, setImageUri] = useState(listing.photos?.[0]?.url || listing.primary_photo_url || FALLBACK_IMAGE)
   const [showMortgageCalculator, setShowMortgageCalculator] = useState(false)
   const [showRequestForm, setShowRequestForm] = useState(false)
+  const [detailError, setDetailError] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
     setDetailListing(listing)
     setImageUri(listing.photos?.[0]?.url || listing.primary_photo_url || FALLBACK_IMAGE)
+    setDetailError(null)
 
     if (listing.village.local_intel && Object.keys(listing.village.local_intel).length > 0) return undefined
 
@@ -1352,7 +1379,10 @@ function ListingDetailScreen({ listing, saved, auth, onBack, onOpenAuth, onToggl
       .then((result) => {
         if (!cancelled) setDetailListing(result)
       })
-      .catch((detailError) => console.warn('Unable to load Hafa Homes listing detail', detailError))
+      .catch((listingDetailError) => {
+        console.warn('Unable to load Hafa Homes listing detail', listingDetailError)
+        if (!cancelled) setDetailError(listingDetailError instanceof Error ? listingDetailError.message : 'Unable to refresh this listing')
+      })
 
     return () => {
       cancelled = true
@@ -1365,7 +1395,7 @@ function ListingDetailScreen({ listing, saved, auth, onBack, onOpenAuth, onToggl
       <ScrollView style={styles.detailScroll} contentContainerStyle={styles.detailContent}>
         <View style={styles.detailHeader}>
           <Pressable onPress={onBack} style={styles.backButton}><Text style={styles.backButtonText}>← Back</Text></Pressable>
-          <Pressable onPress={onToggleSaved} style={[styles.detailSaveButton, saved && styles.saveButtonActive]}><Text style={[styles.saveText, saved && styles.saveTextActive]}>{saved ? '♥' : '♡'}</Text></Pressable>
+          <Pressable disabled={Boolean(detailError)} onPress={onToggleSaved} style={[styles.detailSaveButton, saved && styles.saveButtonActive, detailError && styles.ctaDisabled]}><Text style={[styles.saveText, saved && styles.saveTextActive]}>{saved ? '♥' : '♡'}</Text></Pressable>
         </View>
         <Image source={{ uri: imageUri }} onError={() => setImageUri(FALLBACK_IMAGE)} style={styles.detailImage} />
         <View style={styles.detailPanel}>
@@ -1375,6 +1405,7 @@ function ListingDetailScreen({ listing, saved, auth, onBack, onOpenAuth, onToggl
           <Text style={styles.detailStats}>{detailListing.beds} beds · {detailListing.baths} baths · {detailListing.square_feet?.toLocaleString() ?? '—'} sqft</Text>
           <Text style={styles.sectionTitle}>Local details</Text>
           <Text style={styles.detailCopy}>{detailListing.description || 'Explore this Guam listing, request a showing, save it for later, or ask an agent for next steps.'}</Text>
+          {detailError && <Text style={styles.requestError}>This listing could not be refreshed from the API. Go back to search and reload listings before saving or requesting a showing. Error: {detailError}</Text>}
           <LocalIntelSection listing={detailListing} />
           <Text style={styles.sectionTitle}>Agent</Text>
           <View style={styles.agentCard}>
@@ -1384,7 +1415,7 @@ function ListingDetailScreen({ listing, saved, auth, onBack, onOpenAuth, onToggl
               <Text style={styles.agentMeta}>{detailListing.brokerage_name || 'Brokerage partner'}</Text>
             </View>
           </View>
-          <Pressable style={styles.primaryCta} onPress={() => setShowRequestForm(true)}>
+          <Pressable disabled={Boolean(detailError)} style={[styles.primaryCta, detailError && styles.ctaDisabled]} onPress={() => setShowRequestForm(true)}>
             <Text style={styles.primaryCtaText}>Request a showing</Text>
           </Pressable>
           {detailListing.listing_kind === 'sale' && (
@@ -1493,7 +1524,7 @@ function ShowingRequestSheet({ listing, auth, open, onOpenAuth, onClose }: { lis
       setSubmitted(true)
     } catch (submitError) {
       console.warn('Unable to submit showing request', submitError)
-      setError('We could not send the request yet. Please try again in a moment.')
+      setError(submitError instanceof Error ? submitError.message : 'We could not send the request yet. Please try again in a moment.')
     } finally {
       setSubmitting(false)
     }

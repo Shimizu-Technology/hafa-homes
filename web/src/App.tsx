@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
-import { Link, Route, Routes, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { Link, Navigate, Route, Routes, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { SignedIn, SignedOut, SignInButton, UserButton } from '@clerk/clerk-react'
 import { Brand } from './components/Brand'
 import { PostHogPageView, captureAnalyticsEvent } from './providers/PostHogProvider'
@@ -9,8 +9,10 @@ import {
   Bath,
   BedDouble,
   Bell,
+  Building2,
   CheckCircle2,
   ChevronRight,
+  ClipboardList,
   Compass,
   DatabaseZap,
   Heart,
@@ -30,6 +32,7 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   TrendingUp,
+  UserRound,
   Waves,
   X,
 } from 'lucide-react'
@@ -51,6 +54,22 @@ class ApiFetchError extends Error {
   }
 }
 
+async function apiErrorMessage(response: Response, fallback: string) {
+  try {
+    const payload = await response.json() as { error?: unknown; errors?: unknown }
+    if (Array.isArray(payload.errors) && payload.errors.length > 0) return payload.errors.map((error) => String(error)).join(', ')
+    if (typeof payload.error === 'string' && payload.error.trim()) return payload.error
+  } catch {
+    // Fall back to the caller-provided message when the API response is not JSON.
+  }
+
+  return fallback
+}
+
+function displayErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error && error.message ? error.message : fallback
+}
+
 type Village = {
   id: number
   name: string
@@ -67,6 +86,29 @@ type Feature = {
   name: string
   slug: string
   category: string
+}
+
+type Brokerage = {
+  id: number
+  name: string
+  slug: string
+  status?: string
+  phone?: string
+  website_url?: string
+  app_display_name?: string
+  compliance_disclaimer?: string
+}
+
+type Agent = {
+  id: number
+  brokerage_id?: number
+  name: string
+  email?: string
+  phone?: string
+  license_number?: string
+  photo_url?: string
+  status?: string
+  brokerage?: Brokerage
 }
 
 type Listing = {
@@ -90,6 +132,8 @@ type Listing = {
   description?: string
   agent_name?: string
   brokerage_name?: string
+  brokerage?: Brokerage | null
+  agent?: Agent | null
   primary_photo_url: string
   photos?: { id: number; url: string; position: number; alt_text: string }[]
   features: Feature[]
@@ -112,21 +156,37 @@ type SyncRun = {
 }
 type SyncRunsResponse = { data_sync_runs: SyncRun[] }
 
+type LeadStatus = 'new' | 'contacted' | 'showing_scheduled' | 'nurturing' | 'closed' | 'lost' | 'spam' | 'archived'
+
 type Lead = {
   id: number
   lead_type: string
   name: string
   email: string
-  phone: string
-  preferred_contact_method: string
-  message: string
-  status: string
+  phone?: string
+  preferred_contact_method?: string
+  preferred_time?: string
+  preferred_tour_date?: string
+  tour_type?: string
+  target_price?: number
+  message?: string
+  status: LeadStatus
+  quality_status?: string
+  lead_source?: string
+  last_contacted_at?: string
   listing_id?: number
+  user_id?: number
+  brokerage_id?: number
+  assigned_agent_id?: number
   created_at: string
-  listing?: { id: number; title: string; price: number; listing_kind: 'sale' | 'rent'; village: string } | null
+  updated_at?: string
+  listing?: { id: number; title: string; address?: string; price: number; listing_kind: 'sale' | 'rent'; property_type?: string; village: string; brokerage?: Brokerage | null; agent?: Agent | null } | null
+  brokerage?: Brokerage | null
+  assigned_agent?: Agent | null
 }
 
-type LeadsResponse = { leads: Lead[] }
+type LeadsResponse = { leads: Lead[]; assignable_agents: Agent[] }
+type LeadResponse = { lead: Lead; assignable_agents: Agent[] }
 
 type CurrentUser = {
   id: number
@@ -135,6 +195,7 @@ type CurrentUser = {
   role: 'platform_admin' | 'brokerage_admin' | 'agent' | 'consumer'
   is_staff: boolean
   is_platform_admin: boolean
+  brokerages?: { role: string; status: string; brokerage?: Brokerage }[]
 }
 
 type MeResponse = { user: CurrentUser }
@@ -216,6 +277,22 @@ async function fetchLeads(): Promise<LeadsResponse> {
   return response.json()
 }
 
+async function fetchLead(id: string): Promise<LeadResponse> {
+  const response = await fetch(`${API_URL}/api/v1/leads/${id}`, { headers: await authHeaders() })
+  if (!response.ok) throw new Error('Unable to load lead')
+  return response.json()
+}
+
+async function updateLead(id: number, payload: { status?: LeadStatus; assigned_agent_id?: number | null }): Promise<LeadResponse> {
+  const response = await fetch(`${API_URL}/api/v1/leads/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+    body: JSON.stringify({ lead: payload }),
+  })
+  if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to update lead'), response.status)
+  return response.json()
+}
+
 async function saveSearch(payload: { name: string; email: string; alert_frequency: string; filters: Record<string, string> }) {
   const response = await fetch(`${API_URL}/api/v1/saved_searches`, {
     method: 'POST',
@@ -234,6 +311,22 @@ async function createLead(payload: LeadPayload) {
   })
   if (!response.ok) throw new Error('Unable to submit lead')
   return response.json()
+}
+
+const leadStatuses: Array<{ value: LeadStatus; label: string }> = [
+  { value: 'new', label: 'New' },
+  { value: 'contacted', label: 'Contacted' },
+  { value: 'showing_scheduled', label: 'Showing scheduled' },
+  { value: 'nurturing', label: 'Nurturing' },
+  { value: 'closed', label: 'Closed' },
+  { value: 'lost', label: 'Lost' },
+  { value: 'spam', label: 'Spam' },
+  { value: 'archived', label: 'Archived' },
+]
+
+function formatDateTime(value?: string) {
+  if (!value) return 'Not recorded'
+  return new Date(value).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
 }
 
 function currency(value: number, kind: string) {
@@ -355,8 +448,10 @@ function App() {
         <Route path="/military" element={<MilitaryPage />} />
         <Route path="/saved" element={<SavedPage />} />
         <Route path="/privacy" element={<PrivacyPage />} />
+        <Route path="/admin" element={<Navigate to="/admin/leads" replace />} />
         <Route path="/admin/sync" element={<RequireStaff><SyncPage /></RequireStaff>} />
         <Route path="/admin/leads" element={<RequireStaff><LeadsPage /></RequireStaff>} />
+        <Route path="/admin/leads/:id" element={<RequireStaff><LeadDetailPage /></RequireStaff>} />
       </Routes>
     </>
   )
@@ -1405,36 +1500,166 @@ function SaveSearchModal({ open, onClose, filters }: { open: boolean; onClose: (
 }
 
 function LeadsPage() {
-  const { data, isLoading, isError } = useQuery({ queryKey: ['leads'], queryFn: fetchLeads })
+  const { data, isLoading, isError, refetch } = useQuery({ queryKey: ['leads'], queryFn: fetchLeads })
+  const statusMutation = useMutation({
+    mutationFn: ({ id, status }: { id: number; status: LeadStatus }) => updateLead(id, { status }),
+    onSuccess: () => refetch(),
+  })
+  const leads = data?.leads ?? []
+  const openLeads = leads.filter((lead) => ['new', 'contacted', 'showing_scheduled', 'nurturing'].includes(lead.status)).length
+  const newLeads = leads.filter((lead) => lead.status === 'new').length
+  const scheduledLeads = leads.filter((lead) => lead.status === 'showing_scheduled').length
+
   return (
     <Shell compact>
-      <ContentHeader kicker="Lead inbox" title="Showing requests and buyer/renter interest in one place." description="Review new inquiries, contact preferences, and the listing each person asked about." />
+      <ContentHeader kicker="Broker CRM" title="Lead inbox for broker follow-up." description="Track who asked, what listing they care about, which brokerage owns the relationship, and what needs to happen next." />
       <section className="mx-auto max-w-6xl px-5 pb-10">
+        <div className="mb-5 grid gap-3 md:grid-cols-3">
+          <div className="rounded-[1.75rem] bg-[#0f3d35] p-5 text-white"><p className="text-xs font-bold uppercase tracking-[0.18em] text-white/55">Open leads</p><p className="mt-2 text-4xl font-semibold tracking-[-0.06em]">{openLeads}</p></div>
+          <div className="rounded-[1.75rem] bg-white p-5"><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#7b8a84]">New</p><p className="mt-2 text-4xl font-semibold tracking-[-0.06em]">{newLeads}</p></div>
+          <div className="rounded-[1.75rem] bg-white p-5"><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#7b8a84]">Showings</p><p className="mt-2 text-4xl font-semibold tracking-[-0.06em]">{scheduledLeads}</p></div>
+        </div>
         {isLoading && <StateCard>Loading leads...</StateCard>}
         {isError && <StateCard tone="error">Unable to load leads.</StateCard>}
+        {statusMutation.isError && <StateCard tone="error">{displayErrorMessage(statusMutation.error, 'Unable to update lead right now.')}</StateCard>}
         <div className="grid gap-4">
-          {data?.leads.map((lead) => (
-            <article key={lead.id} className="rounded-[2rem] bg-white p-5 shadow-sm">
+          {leads.map((lead) => (
+            <article key={lead.id} className="rounded-[2rem] bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[#0f3d35]/10">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
                   <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#0f705e]">{lead.lead_type.replaceAll('_', ' ')}</p>
-                  <h2 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">{lead.name}</h2>
+                  <Link to={`/admin/leads/${lead.id}`} className="mt-2 block text-2xl font-semibold tracking-[-0.04em] hover:text-[#0f705e]">{lead.name}</Link>
                   <div className="mt-2 flex flex-wrap gap-3 text-sm font-semibold text-[#53645f]">
                     <span className="inline-flex items-center gap-1"><Mail size={15} /> {lead.email}</span>
                     {lead.phone && <span className="inline-flex items-center gap-1"><Phone size={15} /> {lead.phone}</span>}
                   </div>
                 </div>
-                <span className="rounded-full bg-[#e9f5ef] px-3 py-1 text-xs font-bold uppercase tracking-wide text-[#0f705e]">{lead.status}</span>
+                <LeadStatusSelect
+                  value={lead.status}
+                  onChange={(status) => statusMutation.mutate({ id: lead.id, status })}
+                  disabled={statusMutation.isPending}
+                />
+              </div>
+              <div className="mt-4 grid gap-3 md:grid-cols-3">
+                <LeadMeta icon={<Building2 size={16} />} label="Brokerage" value={lead.brokerage?.name ?? 'Unassigned brokerage'} />
+                <LeadMeta icon={<UserRound size={16} />} label="Assigned agent" value={lead.assigned_agent?.name ?? 'Needs assignment'} />
+                <LeadMeta icon={<ClipboardList size={16} />} label="Created" value={formatDateTime(lead.created_at)} />
               </div>
               {lead.listing && <p className="mt-4 rounded-2xl bg-[#f6f1e8] p-3 text-sm font-semibold text-[#304942]">Interested in {lead.listing.title} · {lead.listing.village} · {currency(lead.listing.price, lead.listing.listing_kind)}</p>}
-              {lead.message && <p className="mt-4 text-sm leading-6 text-[#66746f]">{lead.message}</p>}
+              {lead.message && <p className="mt-4 line-clamp-2 text-sm leading-6 text-[#66746f]">{lead.message}</p>}
+              <div className="mt-4 flex justify-end"><Link to={`/admin/leads/${lead.id}`} className="inline-flex items-center gap-2 rounded-full bg-[#0f3d35] px-4 py-2 text-sm font-bold text-white">Open lead <ChevronRight size={16} /></Link></div>
             </article>
           ))}
-          {data?.leads.length === 0 && <StateCard>No leads yet. New tour requests and price alerts will appear here.</StateCard>}
+          {leads.length === 0 && !isLoading && <StateCard>No leads yet. New tour requests and price alerts will appear here.</StateCard>}
         </div>
       </section>
     </Shell>
   )
+}
+
+function LeadDetailPage() {
+  const { id } = useParams()
+  const navigate = useNavigate()
+  const { data, isLoading, isError, refetch } = useQuery({ queryKey: ['lead', id], queryFn: () => fetchLead(id || ''), enabled: Boolean(id) })
+  const mutation = useMutation({
+    mutationFn: (payload: { status?: LeadStatus; assigned_agent_id?: number | null }) => updateLead(data!.lead.id, payload),
+    onSuccess: () => refetch(),
+  })
+  const lead = data?.lead
+  const assignableAgents = data?.assignable_agents ?? []
+
+  return (
+    <Shell compact>
+      <section className="mx-auto max-w-6xl px-5 py-10">
+        <button onClick={() => navigate('/admin/leads')} className="mb-6 inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-bold text-[#304942]"><ArrowLeft size={16} /> Back to leads</button>
+        {isLoading && <StateCard>Loading lead...</StateCard>}
+        {isError && <StateCard tone="error">Unable to load this lead.</StateCard>}
+        {mutation.isError && <StateCard tone="error">{displayErrorMessage(mutation.error, 'Unable to update lead right now.')}</StateCard>}
+        {lead && (
+          <div className="grid gap-5 lg:grid-cols-[1.35fr_0.85fr]">
+            <article className="rounded-[2rem] bg-white p-6 shadow-sm">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#0f705e]">Lead detail</p>
+                  <h1 className="mt-3 text-4xl font-semibold tracking-[-0.06em] md:text-5xl">{lead.name}</h1>
+                  <p className="mt-3 text-sm font-semibold text-[#66746f]">Created {formatDateTime(lead.created_at)} · Source {lead.lead_source?.replaceAll('_', ' ') ?? 'Hafa Homes'}</p>
+                </div>
+                <LeadStatusSelect value={lead.status} onChange={(status) => mutation.mutate({ status })} disabled={mutation.isPending} />
+              </div>
+
+              <div className="mt-6 grid gap-3 md:grid-cols-2">
+                <LeadMeta icon={<Mail size={16} />} label="Email" value={lead.email} />
+                <LeadMeta icon={<Phone size={16} />} label="Phone" value={lead.phone || 'Not provided'} />
+                <LeadMeta icon={<MessageSquare size={16} />} label="Preferred contact" value={lead.preferred_contact_method || 'Not provided'} />
+                <LeadMeta icon={<ClipboardList size={16} />} label="Lead type" value={lead.lead_type.replaceAll('_', ' ')} />
+              </div>
+
+              {lead.message && (
+                <div className="mt-6 rounded-[1.5rem] bg-[#f6f1e8] p-5">
+                  <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#7b8a84]">Message</p>
+                  <p className="mt-3 text-sm leading-7 text-[#304942]">{lead.message}</p>
+                </div>
+              )}
+
+              <div className="mt-6 grid gap-3 md:grid-cols-3">
+                <LeadMeta icon={<ClipboardList size={16} />} label="Tour" value={lead.tour_type?.replaceAll('_', ' ') || 'Not requested'} />
+                <LeadMeta icon={<ClipboardList size={16} />} label="Preferred date" value={lead.preferred_tour_date || 'Not provided'} />
+                <LeadMeta icon={<ClipboardList size={16} />} label="Preferred time" value={lead.preferred_time || 'Not provided'} />
+              </div>
+            </article>
+
+            <aside className="space-y-5">
+              <div className="rounded-[2rem] bg-[#0f3d35] p-6 text-white shadow-xl shadow-[#0f3d35]/15">
+                <Building2 className="text-[#bdebdc]" />
+                <p className="mt-5 text-xs font-bold uppercase tracking-[0.2em] text-white/55">Brokerage routing</p>
+                <h2 className="mt-2 text-3xl font-semibold tracking-[-0.05em]">{lead.brokerage?.name ?? 'Unassigned brokerage'}</h2>
+                <p className="mt-3 text-sm leading-6 text-white/70">Assigned agent: {lead.assigned_agent?.name ?? 'Not assigned yet'}</p>
+                <label className="mt-5 grid gap-2 text-sm font-semibold text-white/80">
+                  Assign agent
+                  <select
+                    value={lead.assigned_agent_id ?? ''}
+                    onChange={(event) => mutation.mutate({ assigned_agent_id: event.target.value ? Number(event.target.value) : null })}
+                    disabled={mutation.isPending || !assignableAgents.length}
+                    className="min-h-12 rounded-2xl border border-white/15 bg-white px-4 text-[#17211f]"
+                  >
+                    <option value="">Unassigned</option>
+                    {assignableAgents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name} · {agent.brokerage?.name}</option>)}
+                  </select>
+                </label>
+                {mutation.isError && <p className="mt-3 text-sm font-semibold text-[#ffd6d6]">{displayErrorMessage(mutation.error, 'Unable to update lead right now.')}</p>}
+              </div>
+
+              {lead.listing && (
+                <div className="rounded-[2rem] bg-white p-6 shadow-sm">
+                  <Home className="text-[#0f705e]" />
+                  <p className="mt-5 text-xs font-bold uppercase tracking-[0.2em] text-[#7b8a84]">Listing interest</p>
+                  <h2 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">{lead.listing.title}</h2>
+                  <p className="mt-2 text-sm font-semibold text-[#66746f]">{lead.listing.village} · {currency(lead.listing.price, lead.listing.listing_kind)}</p>
+                  {lead.listing.address && <p className="mt-3 text-sm leading-6 text-[#304942]">{lead.listing.address}</p>}
+                  <Link to={`/listings/${lead.listing.id}`} className="mt-5 inline-flex items-center gap-2 rounded-full bg-[#f6f1e8] px-4 py-2 text-sm font-bold text-[#304942]">View listing <ChevronRight size={16} /></Link>
+                </div>
+              )}
+            </aside>
+          </div>
+        )}
+      </section>
+    </Shell>
+  )
+}
+
+function LeadStatusSelect({ value, onChange, disabled }: { value: LeadStatus; onChange: (value: LeadStatus) => void; disabled?: boolean }) {
+  return (
+    <label className="grid gap-2 text-xs font-bold uppercase tracking-[0.16em] text-[#7b8a84]">
+      Status
+      <select value={value} onChange={(event) => onChange(event.target.value as LeadStatus)} disabled={disabled} className="min-h-11 rounded-full border border-[#dce5df] bg-white px-4 text-sm font-bold normal-case tracking-normal text-[#0f3d35] disabled:opacity-60">
+        {leadStatuses.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
+      </select>
+    </label>
+  )
+}
+
+function LeadMeta({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+  return <div className="rounded-2xl bg-[#f6f1e8] p-4"><div className="flex items-center gap-2 text-[#0f705e]">{icon}<p className="text-xs font-bold uppercase tracking-[0.16em]">{label}</p></div><p className="mt-2 text-sm font-semibold text-[#304942]">{value}</p></div>
 }
 
 function MobileMenuDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
