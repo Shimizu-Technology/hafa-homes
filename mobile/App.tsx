@@ -106,6 +106,16 @@ const FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1600047509807-ba8f99d2
 const LEGACY_SAVED_LISTING_IDS_KEY = 'hafaHomes:savedListingIds'
 const LEGACY_SAVED_LISTINGS_KEY = 'hafaHomes:savedListings'
 
+class ApiRequestError extends Error {
+  status: number
+
+  constructor(message: string, status: number) {
+    super(message)
+    this.name = 'ApiRequestError'
+    this.status = status
+  }
+}
+
 const tabs: Array<{ key: TabKey; label: string; icon: string }> = [
   { key: 'search', label: 'Search', icon: '⌂' },
   { key: 'map', label: 'Map', icon: '⌖' },
@@ -154,7 +164,7 @@ async function apiErrorMessage(response: Response, fallback: string) {
 
 async function fetchListing(listingId: number): Promise<Listing> {
   const response = await fetch(`${API_URL}/api/v1/listings/${listingId}`)
-  if (!response.ok) throw new Error(await apiErrorMessage(response, 'Unable to load listing'))
+  if (!response.ok) throw new ApiRequestError(await apiErrorMessage(response, 'Unable to load listing'), response.status)
   const json = await response.json()
   return json.listing
 }
@@ -184,7 +194,7 @@ async function saveListingForUser(listingId: number, getToken: GetAuthToken): Pr
     method: 'POST',
     headers: await authHeaders(getToken),
   })
-  if (!response.ok) throw new Error(await apiErrorMessage(response, 'Unable to save home'))
+  if (!response.ok) throw new ApiRequestError(await apiErrorMessage(response, 'Unable to save home'), response.status)
   return response.json()
 }
 
@@ -193,7 +203,7 @@ async function removeSavedListingForUser(listingId: number, getToken: GetAuthTok
     method: 'DELETE',
     headers: await authHeaders(getToken),
   })
-  if (!response.ok) throw new Error(await apiErrorMessage(response, 'Unable to remove saved home'))
+  if (!response.ok) throw new ApiRequestError(await apiErrorMessage(response, 'Unable to remove saved home'), response.status)
   return response.json()
 }
 
@@ -212,7 +222,7 @@ async function createLead(payload: {
     body: JSON.stringify({ lead: payload }),
   })
 
-  if (!response.ok) throw new Error(await apiErrorMessage(response, 'Unable to send request'))
+  if (!response.ok) throw new ApiRequestError(await apiErrorMessage(response, 'Unable to send request'), response.status)
   return response.json()
 }
 
@@ -418,7 +428,10 @@ function AppContent({ auth }: { auth: AppAuth }) {
           })
         }
 
-        if (results.every((result) => result.status === 'fulfilled')) {
+        const migrationComplete = results.every((result) => (
+          result.status === 'fulfilled' || (result.reason instanceof ApiRequestError && result.reason.status === 404)
+        ))
+        if (migrationComplete) {
           await AsyncStorage.multiRemove([LEGACY_SAVED_LISTING_IDS_KEY, LEGACY_SAVED_LISTINGS_KEY])
         }
       } catch (migrationError) {
