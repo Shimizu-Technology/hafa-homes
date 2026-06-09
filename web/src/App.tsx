@@ -181,6 +181,8 @@ type NotificationDelivery = {
   recipient_role: 'consumer' | 'agent'
   recipient: string
   event_name: string
+  subject?: string
+  body_preview?: string
   status: 'queued' | 'sent' | 'skipped' | 'failed'
   error_message?: string
   queued_at?: string
@@ -391,7 +393,7 @@ async function updateLead(id: number, payload: { status?: LeadStatus; assigned_a
   return response.json()
 }
 
-async function sendLeadNotification(id: number, payload: { channel: 'email' | 'sms'; recipient_role: 'consumer' | 'agent'; event_name?: string }): Promise<{ notification_delivery: NotificationDelivery }> {
+async function sendLeadNotification(id: number, payload: { channel: 'email' | 'sms'; recipient_role: 'consumer' | 'agent'; event_name?: string; subject?: string; title?: string; body?: string }): Promise<{ notification_delivery: NotificationDelivery }> {
   const response = await fetch(`${API_URL}/api/v1/leads/${id}/notifications`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
@@ -2151,7 +2153,7 @@ function LeadDetailPage() {
     onSuccess: () => refetch(),
   })
   const notificationMutation = useMutation({
-    mutationFn: (payload: { channel: 'email' | 'sms'; recipient_role: 'consumer' | 'agent'; event_name?: string }) => sendLeadNotification(Number(id), payload),
+    mutationFn: (payload: { channel: 'email' | 'sms'; recipient_role: 'consumer' | 'agent'; event_name?: string; subject?: string; title?: string; body?: string }) => sendLeadNotification(Number(id), payload),
     onSuccess: () => refetch(),
   })
   const lead = data?.lead
@@ -2248,7 +2250,7 @@ type ShowingMutation = {
 }
 
 type NotificationMutation = {
-  mutate: (payload: { channel: 'email' | 'sms'; recipient_role: 'consumer' | 'agent'; event_name?: string }) => void
+  mutate: (payload: { channel: 'email' | 'sms'; recipient_role: 'consumer' | 'agent'; event_name?: string; subject?: string; title?: string; body?: string }) => void
   isPending: boolean
   isError: boolean
   error: unknown
@@ -2256,42 +2258,75 @@ type NotificationMutation = {
 
 function LeadNotificationPanel({ lead, mutation }: { lead: Lead; mutation: NotificationMutation }) {
   const deliveries = lead.notification_deliveries ?? []
+  const [sendMode, setSendMode] = useState<'consumer_email' | 'consumer_sms' | 'agent_email'>('consumer_email')
   const hasCustomerPhone = Boolean(lead.phone)
   const hasAgentEmail = Boolean(lead.assigned_agent?.email)
+  const isEmail = sendMode !== 'consumer_sms'
+  const selectedModeUnavailable = sendMode === 'consumer_sms' ? !hasCustomerPhone : sendMode === 'agent_email' ? !hasAgentEmail : false
+
+  function defaultSubject() {
+    if (sendMode === 'agent_email') return `Update on ${lead.name}`
+    return `Update from Hafa Homes${lead.listing?.title ? ` about ${lead.listing.title}` : ''}`
+  }
+
+  function defaultTitle() {
+    return sendMode === 'agent_email' ? 'Lead update' : 'Your Hafa Homes request'
+  }
+
+  function defaultBody() {
+    if (sendMode === 'agent_email') return `Please follow up with ${lead.name} about ${lead.listing?.title ?? 'this Hafa Homes request'}.`
+    return lead.latest_showing_appointment
+      ? `Hi ${lead.name}, your showing details have been updated. Please check your Hafa Homes requests page for the latest appointment information.`
+      : `Hi ${lead.name}, here is an update on your Hafa Homes request.`
+  }
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const form = new FormData(event.currentTarget)
+    const mode = String(form.get('send_mode') || sendMode)
+    const channel = mode === 'consumer_sms' ? 'sms' : 'email'
+    const recipient_role = mode === 'agent_email' ? 'agent' : 'consumer'
+    mutation.mutate({
+      channel,
+      recipient_role,
+      event_name: 'manual_update',
+      subject: String(form.get('subject') || '').trim(),
+      title: String(form.get('title') || '').trim(),
+      body: String(form.get('body') || '').trim(),
+    })
+  }
 
   return (
     <div className="rounded-[2rem] bg-white p-6 shadow-sm">
       <Bell className="text-[#0f705e]" />
       <p className="mt-5 text-xs font-bold uppercase tracking-[0.2em] text-[#7b8a84]">Notifications</p>
       <h2 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">Send an update</h2>
-      <p className="mt-2 text-sm leading-6 text-[#66746f]">Queue email or text updates without leaving the lead.</p>
-      <div className="mt-5 grid gap-2">
-        <button
-          type="button"
-          disabled={mutation.isPending}
-          onClick={() => mutation.mutate({ channel: 'email', recipient_role: 'consumer', event_name: 'manual_update' })}
-          className="min-h-11 rounded-2xl bg-[#0f3d35] px-4 text-sm font-bold text-white disabled:opacity-60"
-        >
-          Email customer
+      <p className="mt-2 text-sm leading-6 text-[#66746f]">Write the message before sending. Email/SMS delivery stays gated by production notification settings.</p>
+      <form onSubmit={handleSubmit} className="mt-5 grid gap-3">
+        <label className="grid gap-2 text-sm font-semibold text-[#304942]">
+          Send to
+          <select name="send_mode" value={sendMode} onChange={(event) => setSendMode(event.target.value as typeof sendMode)} className="min-h-12 w-full rounded-2xl border border-[#dce5df] px-4">
+            <option value="consumer_email">Customer email · {lead.email}</option>
+            <option value="consumer_sms" disabled={!hasCustomerPhone}>Customer text{lead.phone ? ` · ${lead.phone}` : ' · no phone on file'}</option>
+            <option value="agent_email" disabled={!hasAgentEmail}>Agent email{lead.assigned_agent?.email ? ` · ${lead.assigned_agent.email}` : ' · no agent email'}</option>
+          </select>
+        </label>
+        {isEmail && (
+          <>
+            <Input key={`subject-${sendMode}`} name="subject" label="Subject" defaultValue={defaultSubject()} required />
+            <Input key={`title-${sendMode}`} name="title" label="Email heading" defaultValue={defaultTitle()} />
+          </>
+        )}
+        <label className="grid gap-2 text-sm font-semibold text-[#304942]">
+          {isEmail ? 'Message' : 'Text message'}
+          <textarea key={`body-${sendMode}`} name="body" rows={isEmail ? 5 : 4} required defaultValue={defaultBody()} maxLength={sendMode === 'consumer_sms' ? 320 : undefined} className="rounded-2xl border border-[#dce5df] px-4 py-3" />
+        </label>
+        {sendMode === 'consumer_sms' && <p className="text-xs font-semibold text-[#66746f]">Texts send to Guam numbers in +1671 format when ClickSend live sending is enabled.</p>}
+        {mutation.isError && <p className="text-sm font-semibold text-red-700">{displayErrorMessage(mutation.error, 'Unable to queue notification right now.')}</p>}
+        <button disabled={mutation.isPending || selectedModeUnavailable} className="min-h-12 rounded-2xl bg-[#0f3d35] px-4 text-sm font-bold text-white disabled:opacity-50">
+          {mutation.isPending ? 'Queueing...' : isEmail ? 'Queue email' : 'Queue text'}
         </button>
-        <button
-          type="button"
-          disabled={mutation.isPending || !hasCustomerPhone}
-          onClick={() => mutation.mutate({ channel: 'sms', recipient_role: 'consumer', event_name: 'manual_update' })}
-          className="min-h-11 rounded-2xl border border-[#dce5df] px-4 text-sm font-bold text-[#0f3d35] disabled:opacity-45"
-        >
-          Text customer
-        </button>
-        <button
-          type="button"
-          disabled={mutation.isPending || !hasAgentEmail}
-          onClick={() => mutation.mutate({ channel: 'email', recipient_role: 'agent', event_name: 'manual_update' })}
-          className="min-h-11 rounded-2xl border border-[#dce5df] px-4 text-sm font-bold text-[#0f3d35] disabled:opacity-45"
-        >
-          Email agent
-        </button>
-      </div>
-      {mutation.isError && <p className="mt-3 text-sm font-semibold text-red-700">{displayErrorMessage(mutation.error, 'Unable to queue notification right now.')}</p>}
+      </form>
       <div className="mt-5 border-t border-[#edf0ec] pt-4">
         <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#7b8a84]">Recent sends</p>
         <div className="mt-3 grid gap-2">
@@ -2302,6 +2337,8 @@ function LeadNotificationPanel({ lead, mutation }: { lead: Lead; mutation: Notif
                 <span className="rounded-full bg-white px-2 py-1 text-xs font-bold text-[#0f705e]">{delivery.status}</span>
               </div>
               <p className="mt-1 text-xs font-semibold text-[#66746f]">{delivery.recipient} · {formatDateTime(delivery.sent_at || delivery.failed_at || delivery.queued_at || delivery.created_at)}</p>
+              {delivery.subject && <p className="mt-2 text-xs font-bold text-[#304942]">{delivery.subject}</p>}
+              {delivery.body_preview && <p className="mt-1 text-xs leading-5 text-[#66746f]">{delivery.body_preview}</p>}
               {delivery.error_message && <p className="mt-1 text-xs font-semibold text-[#8a4b0f]">{delivery.error_message}</p>}
             </div>
           ))}
@@ -2658,7 +2695,7 @@ function PriceTrackerModal({ listing, open, onClose }: { listing: Listing; open:
               <Input name="target_price" label="Target price" inputMode="numeric" placeholder="450000" required />
               <Input name="email" label="Email for alerts" type="email" required />
               <Input name="name" label="Name" defaultValue="Hafa Homes user" />
-              <Input name="phone" label="Phone optional" />
+              <Input name="phone" label="Phone optional" defaultValue="+1671" inputMode="tel" />
             </div>
             {mutation.isError && <p className="mt-3 text-sm font-semibold text-red-700">Unable to save tracker right now.</p>}
             <div className="mt-5 grid grid-cols-2 gap-3">
@@ -2745,7 +2782,7 @@ function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean
             <div className="mt-4 grid gap-3 md:mt-5">
               <Input name="name" label="Name" required />
               <Input name="email" label="Email" type="email" required />
-              <Input name="phone" label="Phone" />
+              <Input name="phone" label="Phone" defaultValue="+1671" inputMode="tel" />
               <label className="grid gap-2 text-sm font-semibold text-[#304942]">
                 Preferred contact
                 <select name="preferred_contact_method" className="min-h-12 rounded-2xl border border-[#dce5df] px-4">

@@ -16,6 +16,7 @@ class Lead < ApplicationRecord
   validates :quality_status, inclusion: { in: QUALITY_STATUSES }
 
   before_validation :set_defaults
+  before_validation :normalize_phone_number
   before_validation :infer_routing_from_listing
 
   private
@@ -24,6 +25,16 @@ class Lead < ApplicationRecord
     self.status ||= "new"
     self.quality_status ||= "unknown"
     self.lead_source ||= "hafa_homes"
+  end
+
+  def normalize_phone_number
+    digits = phone.to_s.gsub(/\D/, "")
+    if digits.blank? || %w[671 1671].include?(digits)
+      self.phone = nil
+      return
+    end
+
+    self.phone = ClicksendClient.normalize_phone(phone).presence || phone.to_s.strip
   end
 
   def infer_routing_from_listing

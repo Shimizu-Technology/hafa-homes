@@ -17,16 +17,26 @@ class LeadNotificationService
       lead = showing.lead
       deliveries = []
       deliveries << queue_delivery(lead: lead, showing_appointment: showing, channel: "email", recipient_role: "consumer", recipient: lead.email, event_name: "showing_update")
+      deliveries << queue_delivery(lead: lead, showing_appointment: showing, channel: "sms", recipient_role: "consumer", recipient: lead.phone, event_name: "showing_update")
       deliveries << queue_delivery(lead: lead, showing_appointment: showing, channel: "email", recipient_role: "agent", recipient: showing.agent&.email || lead.assigned_agent&.email, event_name: "showing_update")
-      if lead.preferred_contact_method == "text"
-        deliveries << queue_delivery(lead: lead, showing_appointment: showing, channel: "sms", recipient_role: "consumer", recipient: lead.phone, event_name: "showing_update")
-      end
       deliveries.compact
     end
 
-    def queue_manual(lead, channel:, recipient_role:, event_name: "manual_update", sent_by: nil)
+    def queue_manual(lead, channel:, recipient_role:, event_name: "manual_update", sent_by: nil, subject: nil, title: nil, body: nil)
       recipient = recipient_for(lead, channel: channel, recipient_role: recipient_role)
-      queue_delivery(lead: lead, channel: channel, recipient_role: recipient_role, recipient: recipient, event_name: event_name, sent_by: sent_by)
+      queue_delivery(
+        lead: lead,
+        channel: channel,
+        recipient_role: recipient_role,
+        recipient: recipient,
+        event_name: event_name,
+        sent_by: sent_by,
+        metadata: {
+          subject: subject.presence,
+          title: title.presence,
+          body: body.presence
+        }.compact
+      )
     end
 
     def deliver!(delivery)
@@ -50,8 +60,9 @@ class LeadNotificationService
 
     private
 
-    def queue_delivery(lead:, channel:, recipient_role:, recipient:, event_name:, showing_appointment: nil, sent_by: nil)
-      return nil if recipient.blank?
+    def queue_delivery(lead:, channel:, recipient_role:, recipient:, event_name:, showing_appointment: nil, sent_by: nil, metadata: {})
+      normalized_recipient = normalize_recipient(channel, recipient)
+      return nil if normalized_recipient.blank?
 
       delivery = NotificationDelivery.create!(
         lead: lead,
@@ -60,14 +71,14 @@ class LeadNotificationService
         channel: channel,
         provider: channel == "email" ? "resend" : "clicksend",
         recipient_role: recipient_role,
-        recipient: recipient,
+        recipient: normalized_recipient,
         event_name: event_name,
         queued_at: Time.current,
         metadata: {
           lead_status: lead.status,
           listing_id: lead.listing_id,
           showing_status: showing_appointment&.status
-        }.compact
+        }.merge(metadata).compact
       )
       NotificationDeliveryJob.perform_later(delivery.id)
       delivery
@@ -81,6 +92,12 @@ class LeadNotificationService
         agent = lead.assigned_agent
         channel == "sms" ? agent&.phone : agent&.email
       end
+    end
+
+    def normalize_recipient(channel, recipient)
+      return recipient.to_s.strip if channel == "email"
+
+      ClicksendClient.normalize_phone(recipient)
     end
 
     def deliver_email!(delivery)
@@ -112,6 +129,9 @@ class LeadNotificationService
     end
 
     def email_subject(delivery)
+      custom_subject = delivery.metadata["subject"].presence
+      return custom_subject if custom_subject
+
       lead = delivery.lead
       listing_title = lead&.listing&.title || "your Hafa Homes request"
 
@@ -151,7 +171,7 @@ class LeadNotificationService
                     <tr>
                       <td style="padding:30px 30px 0 30px;">
                         <p style="margin:0;color:#0f705e;font-size:11px;letter-spacing:0.2em;text-transform:uppercase;font-weight:800;">#{h(BRAND_NAME)}</p>
-                        <h1 style="margin:12px 0 0 0;color:#17211f;font-size:26px;line-height:1.2;font-weight:800;">#{h(email_subject(delivery))}</h1>
+                        <h1 style="margin:12px 0 0 0;color:#17211f;font-size:26px;line-height:1.2;font-weight:800;">#{h(email_title(delivery))}</h1>
                       </td>
                     </tr>
                     <tr>
@@ -183,7 +203,14 @@ class LeadNotificationService
       HTML
     end
 
+    def email_title(delivery)
+      delivery.metadata["title"].presence || email_subject(delivery)
+    end
+
     def email_body_copy(delivery, showing)
+      custom_body = delivery.metadata["body"].presence
+      return custom_body if custom_body
+
       case delivery.event_name
       when "request_received"
         "Your request has been received. A brokerage or agent will follow up with the next step."
@@ -224,7 +251,7 @@ class LeadNotificationService
             <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color:#f6f1e8;border-radius:18px;">
               <tr><td style="padding:18px;">
                 <p style="margin:0 0 8px 0;color:#0f705e;font-size:11px;letter-spacing:0.18em;text-transform:uppercase;font-weight:800;">Showing details</p>
-                <p style="margin:0;color:#17211f;font-size:16px;line-height:1.6;font-weight:800;">#{h(format_time(showing.scheduled_starts_at))}</p>
+                <p style="margin:0;color:#17211f;font-size:16px;line-height:1.6;font-weight:800;">#{h(format_time(showing.scheduled_starts_at, timezone: showing.timezone))}</p>
                 <p style="margin:6px 0 0 0;color:#53645f;font-size:14px;line-height:1.6;">#{h(showing.status.to_s.humanize)} · #{h(showing.tour_type.to_s.humanize)}</p>
                 #{showing.location.present? ? "<p style=\"margin:6px 0 0 0;color:#53645f;font-size:14px;line-height:1.6;\">#{h(showing.location)}</p>" : ""}
                 #{showing.consumer_notes.present? ? "<p style=\"margin:10px 0 0 0;color:#304942;font-size:14px;line-height:1.6;\">#{h(showing.consumer_notes)}</p>" : ""}
@@ -252,18 +279,22 @@ class LeadNotificationService
       showing = delivery.showing_appointment
       listing = lead&.listing&.title || "your Hafa Homes request"
 
+      custom_body = delivery.metadata["body"].presence
+      return custom_body if custom_body
+
       case delivery.event_name
       when "showing_update"
-        "Hafa Homes: #{showing&.status.to_s.humanize} showing for #{listing}. #{format_time(showing&.scheduled_starts_at)}. View details: #{frontend_url}/account/requests"
+        "Hafa Homes: #{showing&.status.to_s.humanize} showing for #{listing}. #{format_time(showing&.scheduled_starts_at, timezone: showing&.timezone)}. View details: #{frontend_url}/account/requests"
       else
         "Hafa Homes: update for #{listing}. View details: #{frontend_url}/account/requests"
       end
     end
 
-    def format_time(value)
+    def format_time(value, timezone: "Pacific/Guam")
       return "Time to be confirmed" if value.blank?
 
-      value.in_time_zone("Pacific/Guam").strftime("%b %-d at %-I:%M %p")
+      zone = ActiveSupport::TimeZone[timezone.presence || "Pacific/Guam"] || ActiveSupport::TimeZone["Pacific/Guam"]
+      value.in_time_zone(zone).strftime("%b %-d at %-I:%M %p")
     end
 
     def from_email

@@ -41,7 +41,7 @@ module Api
         end
 
         def consumer(lead)
-          detail(lead).except(:quality_status, :lead_source, :last_contacted_at, :notification_deliveries).merge(
+          summary(lead).except(:quality_status, :lead_source, :last_contacted_at).merge(
             message: lead.message,
             showing_appointments: showing_appointments_for(lead).map { |showing| Api::V1::ShowingAppointmentSerializer.consumer(showing) },
             latest_showing_appointment: Api::V1::ShowingAppointmentSerializer.consumer(latest_showing(lead))

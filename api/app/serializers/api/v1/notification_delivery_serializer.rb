@@ -10,6 +10,8 @@ module Api
             recipient_role: delivery.recipient_role,
             recipient: recipient_display(delivery),
             event_name: delivery.event_name,
+            subject: delivery.metadata["subject"],
+            body_preview: delivery.metadata["body"].to_s.truncate(120),
             status: delivery.status,
             error_message: delivery.error_message,
             queued_at: delivery.queued_at,

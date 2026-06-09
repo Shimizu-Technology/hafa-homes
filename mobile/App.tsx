@@ -1667,7 +1667,7 @@ function LocalIntelList({ title, items, note }: { title: string; items?: string[
 function ShowingRequestSheet({ listing, auth, open, onOpenAuth, onClose }: { listing: Listing; auth: AppAuth; open: boolean; onOpenAuth: (prompt?: AuthPrompt) => void; onClose: () => void }) {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
-  const [phone, setPhone] = useState('')
+  const [phone, setPhone] = useState('+1671')
   const [preferredContact, setPreferredContact] = useState('phone')
   const [preferredTime, setPreferredTime] = useState('morning')
   const [tourType, setTourType] = useState('in_person')
@@ -1752,7 +1752,7 @@ function ShowingRequestSheet({ listing, auth, open, onOpenAuth, onClose }: { lis
               <View style={styles.requestFieldGroup}>
                 <RequestInput label="Name" value={name} onChangeText={setName} placeholder="Your name" />
                 <RequestInput label="Email" value={email} onChangeText={setEmail} placeholder="you@example.com" keyboardType="email-address" autoCapitalize="none" />
-                <RequestInput label="Phone" value={phone} onChangeText={setPhone} placeholder="(671) 555-0123" keyboardType="phone-pad" />
+                <RequestInput label="Phone" value={phone} onChangeText={setPhone} placeholder="+1671" keyboardType="phone-pad" />
                 <Text style={styles.requestLabel}>Preferred contact</Text>
                 <View style={styles.contactSegmentRow}>
                   {['phone', 'text', 'email'].map((option) => (
@@ -1795,7 +1795,7 @@ function ShowingRequestSheet({ listing, auth, open, onOpenAuth, onClose }: { lis
 function PriceAlertSheet({ listing, auth, open, onClose }: { listing: Listing; auth: AppAuth; open: boolean; onClose: () => void }) {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
-  const [phone, setPhone] = useState('')
+  const [phone, setPhone] = useState('+1671')
   const [targetPrice, setTargetPrice] = useState(String(Math.round(listing.price * 0.97)))
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
@@ -1872,7 +1872,7 @@ function PriceAlertSheet({ listing, auth, open, onClose }: { listing: Listing; a
                 <RequestInput label="Target price" value={targetPrice} onChangeText={setTargetPrice} placeholder="750000" keyboardType="number-pad" />
                 <RequestInput label="Email" value={email} onChangeText={setEmail} placeholder="you@example.com" keyboardType="email-address" autoCapitalize="none" />
                 <RequestInput label="Name" value={name} onChangeText={setName} placeholder="Your name" />
-                <RequestInput label="Phone optional" value={phone} onChangeText={setPhone} placeholder="(671) 555-0123" keyboardType="phone-pad" />
+                <RequestInput label="Phone optional" value={phone} onChangeText={setPhone} placeholder="+1671" keyboardType="phone-pad" />
               </View>
               {error && <Text style={styles.requestError}>{error}</Text>}
               <Pressable disabled={submitting} style={[styles.primaryCta, submitting && styles.ctaDisabled]} onPress={handleSubmit}>

@@ -57,8 +57,10 @@ Added a safe notification foundation for request and showing workflows:
 - Resend is the email provider.
 - ClickSend is the SMS provider.
 - Automatic request/showing notifications are queued, but external sending is gated by `EMAIL_NOTIFICATIONS_ENABLED` and `LIVE_SMS_ENABLED`.
-- Admins can resend/queue customer email, customer text, and agent email from lead detail.
-- Lead detail shows recent delivery status/history.
+- Scheduling or updating a showing queues customer email and customer SMS when those contact methods exist, plus agent email when an assigned agent has an email.
+- Admins can compose and queue customer email, customer text, and agent email from lead detail, including custom email subject/heading/body or SMS body.
+- Lead detail shows recent delivery status/history and custom message previews.
+- Phone inputs default toward Guam `+1671` formatting; Rails normalizes Guam phone numbers before SMS delivery.
 
 This follows the starter-app Resend/ClickSend pattern: important sends should be visible and resendable from the dashboard, while live SMS/email remains opt-in via environment config.
 
