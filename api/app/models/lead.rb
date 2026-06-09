@@ -6,6 +6,7 @@ class Lead < ApplicationRecord
   belongs_to :user, optional: true
   belongs_to :brokerage, optional: true
   belongs_to :assigned_agent, class_name: "Agent", optional: true, inverse_of: :assigned_leads
+  has_many :showing_appointments, dependent: :destroy
 
   validates :lead_type, :name, :email, presence: true
   validates :status, inclusion: { in: STATUSES }

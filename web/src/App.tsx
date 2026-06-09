@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
-import { Link, Navigate, Route, Routes, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { Link, Route, Routes, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { SignedIn, SignedOut, SignInButton, UserButton } from '@clerk/clerk-react'
 import { Brand } from './components/Brand'
 import { PostHogPageView, captureAnalyticsEvent } from './providers/PostHogProvider'
@@ -13,6 +13,7 @@ import {
   CheckCircle2,
   ChevronRight,
   ClipboardList,
+  Clock3,
   Compass,
   DatabaseZap,
   Heart,
@@ -33,6 +34,7 @@ import {
   SlidersHorizontal,
   TrendingUp,
   UserRound,
+  UsersRound,
   Waves,
   X,
 } from 'lucide-react'
@@ -70,6 +72,16 @@ function displayErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback
 }
 
+type LocalIntel = {
+  summary?: string
+  lifestyle_tags?: string[]
+  schools_note?: string
+  nearby_schools?: string[]
+  parks_and_recreation?: string[]
+  daily_life?: string[]
+  commute_notes?: string[]
+}
+
 type Village = {
   id: number
   name: string
@@ -78,6 +90,7 @@ type Village = {
   description?: string
   latitude?: number
   longitude?: number
+  local_intel?: LocalIntel
   active_listings_count?: number
 }
 
@@ -157,6 +170,28 @@ type SyncRun = {
 type SyncRunsResponse = { data_sync_runs: SyncRun[] }
 
 type LeadStatus = 'new' | 'contacted' | 'showing_scheduled' | 'nurturing' | 'closed' | 'lost' | 'spam' | 'archived'
+type ShowingStatus = 'proposed' | 'confirmed' | 'completed' | 'cancelled' | 'no_show'
+
+type ShowingAppointment = {
+  id: number
+  lead_id: number
+  listing_id?: number
+  brokerage_id?: number
+  agent_id?: number | null
+  scheduled_starts_at?: string
+  scheduled_ends_at?: string
+  timezone: string
+  tour_type: 'in_person' | 'virtual'
+  status: ShowingStatus
+  location?: string
+  consumer_notes?: string
+  internal_notes?: string
+  created_at: string
+  updated_at?: string
+  listing?: { id: number; title: string; address?: string; price?: number; listing_kind?: 'sale' | 'rent'; village?: string; primary_photo_url?: string } | null
+  brokerage?: Brokerage | null
+  agent?: Agent | null
+}
 
 type Lead = {
   id: number
@@ -180,13 +215,23 @@ type Lead = {
   assigned_agent_id?: number
   created_at: string
   updated_at?: string
-  listing?: { id: number; title: string; address?: string; price: number; listing_kind: 'sale' | 'rent'; property_type?: string; village: string; brokerage?: Brokerage | null; agent?: Agent | null } | null
+  consumer_status_label?: string
+  latest_showing_appointment?: ShowingAppointment | null
+  showing_appointments?: ShowingAppointment[]
+  listing?: { id: number; title: string; address?: string; price: number; listing_kind: 'sale' | 'rent'; property_type?: string; village: string; primary_photo_url?: string; brokerage?: Brokerage | null; agent?: Agent | null } | null
   brokerage?: Brokerage | null
   assigned_agent?: Agent | null
 }
 
 type LeadsResponse = { leads: Lead[]; assignable_agents: Agent[] }
 type LeadResponse = { lead: Lead; assignable_agents: Agent[] }
+type MyLeadsResponse = { leads: Lead[] }
+type ShowingAppointmentsResponse = { showing_appointments: ShowingAppointment[] }
+type AdminDashboardResponse = {
+  metrics: { total_open_leads: number; new_leads: number; unassigned_leads: number; upcoming_showings: number; overdue_followups: number }
+  recent_leads: Lead[]
+  upcoming_showing_appointments: ShowingAppointment[]
+}
 
 type CurrentUser = {
   id: number
@@ -197,6 +242,17 @@ type CurrentUser = {
   is_platform_admin: boolean
   brokerages?: { role: string; status: string; brokerage?: Brokerage }[]
 }
+
+type AdminUser = CurrentUser & {
+  first_name?: string
+  last_name?: string
+  invitation_status?: string
+  agent_profiles?: Agent[]
+}
+
+type AdminUsersResponse = { users: AdminUser[]; brokerages: Brokerage[]; agents: Agent[] }
+type SavedListingsResponse = { listing_ids: number[]; listings: Listing[] }
+type SaveListingResponse = { listing: Listing; listing_id: number; saved: boolean }
 
 type MeResponse = { user: CurrentUser }
 
@@ -283,6 +339,30 @@ async function fetchLead(id: string): Promise<LeadResponse> {
   return response.json()
 }
 
+async function fetchMyLeads(): Promise<MyLeadsResponse> {
+  const response = await fetch(`${API_URL}/api/v1/me/leads`, { headers: await authHeaders() })
+  if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to load your requests'), response.status)
+  return response.json()
+}
+
+async function fetchAdminDashboard(): Promise<AdminDashboardResponse> {
+  const response = await fetch(`${API_URL}/api/v1/admin/dashboard`, { headers: await authHeaders() })
+  if (!response.ok) throw new Error('Unable to load admin dashboard')
+  return response.json()
+}
+
+async function fetchShowingAppointments(): Promise<ShowingAppointmentsResponse> {
+  const response = await fetch(`${API_URL}/api/v1/showing_appointments`, { headers: await authHeaders() })
+  if (!response.ok) throw new Error('Unable to load showing schedule')
+  return response.json()
+}
+
+async function fetchAdminUsers(): Promise<AdminUsersResponse> {
+  const response = await fetch(`${API_URL}/api/v1/admin/users`, { headers: await authHeaders() })
+  if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to load users'), response.status)
+  return response.json()
+}
+
 async function updateLead(id: number, payload: { status?: LeadStatus; assigned_agent_id?: number | null }): Promise<LeadResponse> {
   const response = await fetch(`${API_URL}/api/v1/leads/${id}`, {
     method: 'PATCH',
@@ -290,6 +370,54 @@ async function updateLead(id: number, payload: { status?: LeadStatus; assigned_a
     body: JSON.stringify({ lead: payload }),
   })
   if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to update lead'), response.status)
+  return response.json()
+}
+
+async function createShowingAppointment(payload: Partial<ShowingAppointment> & { lead_id: number }): Promise<{ showing_appointment: ShowingAppointment; lead: Lead }> {
+  const response = await fetch(`${API_URL}/api/v1/showing_appointments`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+    body: JSON.stringify({ showing_appointment: payload }),
+  })
+  if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to schedule showing'), response.status)
+  return response.json()
+}
+
+async function updateShowingAppointment(id: number, payload: Partial<ShowingAppointment>): Promise<{ showing_appointment: ShowingAppointment; lead: Lead }> {
+  const response = await fetch(`${API_URL}/api/v1/showing_appointments/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+    body: JSON.stringify({ showing_appointment: payload }),
+  })
+  if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to update showing'), response.status)
+  return response.json()
+}
+
+async function updateAdminUser(id: number, payload: Record<string, unknown>): Promise<{ user: AdminUser }> {
+  const response = await fetch(`${API_URL}/api/v1/admin/users/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+    body: JSON.stringify({ user: payload }),
+  })
+  if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to update user'), response.status)
+  return response.json()
+}
+
+async function fetchSavedListings(): Promise<SavedListingsResponse> {
+  const response = await fetch(`${API_URL}/api/v1/me/saved_listings`, { headers: await authHeaders() })
+  if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to load saved homes'), response.status)
+  return response.json()
+}
+
+async function saveListingForUser(listingId: number): Promise<SaveListingResponse> {
+  const response = await fetch(`${API_URL}/api/v1/listings/${listingId}/save`, { method: 'POST', headers: await authHeaders() })
+  if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to save home'), response.status)
+  return response.json()
+}
+
+async function removeSavedListingForUser(listingId: number): Promise<{ listing_id: number; saved: boolean }> {
+  const response = await fetch(`${API_URL}/api/v1/listings/${listingId}/save`, { method: 'DELETE', headers: await authHeaders() })
+  if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to remove saved home'), response.status)
   return response.json()
 }
 
@@ -309,7 +437,7 @@ async function createLead(payload: LeadPayload) {
     headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
     body: JSON.stringify({ lead: payload }),
   })
-  if (!response.ok) throw new Error('Unable to submit lead')
+  if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to submit lead'), response.status)
   return response.json()
 }
 
@@ -447,11 +575,14 @@ function App() {
         <Route path="/villages/:slug" element={<VillageDetailPage />} />
         <Route path="/military" element={<MilitaryPage />} />
         <Route path="/saved" element={<SavedPage />} />
+        <Route path="/account/requests" element={<RequestsPage />} />
         <Route path="/privacy" element={<PrivacyPage />} />
-        <Route path="/admin" element={<Navigate to="/admin/leads" replace />} />
+        <Route path="/admin" element={<RequireStaff><AdminDashboardPage /></RequireStaff>} />
         <Route path="/admin/sync" element={<RequireStaff><SyncPage /></RequireStaff>} />
         <Route path="/admin/leads" element={<RequireStaff><LeadsPage /></RequireStaff>} />
         <Route path="/admin/leads/:id" element={<RequireStaff><LeadDetailPage /></RequireStaff>} />
+        <Route path="/admin/showings" element={<RequireStaff><AdminShowingsPage /></RequireStaff>} />
+        <Route path="/admin/users" element={<RequireStaff><AdminUsersPage /></RequireStaff>} />
       </Routes>
     </>
   )
@@ -664,7 +795,7 @@ function SearchPage() {
                     setViewMode(nextViewMode)
                     captureAnalyticsEvent('search_view_changed', { view_mode: nextViewMode, surface: 'desktop_toolbar' })
                   }} className="inline-flex items-center gap-2 rounded-full border border-[#d7ded9] bg-white px-4 py-2 text-sm font-semibold"><Map size={16} /> {viewMode === 'list' ? 'Map view' : 'List view'}</button>
-                  <Link to="/admin/sync" className="inline-flex items-center gap-2 rounded-full border border-[#d7ded9] bg-white px-4 py-2 text-sm font-semibold"><DatabaseZap size={16} /> MLS sync</Link>
+                  <Link to="/account/requests" className="inline-flex items-center gap-2 rounded-full border border-[#d7ded9] bg-white px-4 py-2 text-sm font-semibold"><MessageSquare size={16} /> My requests</Link>
                 </div>
               }
             />
@@ -733,7 +864,7 @@ function MobileAppSearchHeader({
         <div className="mt-3 grid grid-cols-[1fr_auto] gap-2">
           <div className="flex min-h-11 items-center gap-2 rounded-2xl bg-white px-3 text-[#53645f]">
             <Search size={17} />
-            <span className="text-sm font-semibold">Address, village, or MLS</span>
+            <span className="text-sm font-semibold">Address, village, or listing ID</span>
           </div>
           <button className="rounded-2xl bg-[#e99f3e] px-4 text-sm font-bold text-[#25170b]">Save</button>
         </div>
@@ -910,7 +1041,30 @@ function HeroHeader({ kind, onKindChange }: { kind: 'sale' | 'rent'; onKindChang
 }
 
 function ListingCard({ listing }: { listing: Listing }) {
-  const [saved, setSaved] = useState(false)
+  const { isClerkEnabled, isSignedIn, userId } = useAuthContext()
+  const { data: savedData, refetch: refetchSaved } = useQuery({ queryKey: ['saved-listings', userId], queryFn: fetchSavedListings, enabled: isClerkEnabled && isSignedIn })
+  const [optimisticSaved, setOptimisticSaved] = useState(false)
+  const isSaved = savedData?.listing_ids?.includes(listing.id) ?? optimisticSaved
+  const saveMutation = useMutation({
+    mutationFn: () => isSaved ? removeSavedListingForUser(listing.id) : saveListingForUser(listing.id),
+    onMutate: () => setOptimisticSaved((current) => !current),
+    onSuccess: () => refetchSaved(),
+    onError: () => setOptimisticSaved((current) => !current),
+  })
+
+  const heartButton = (
+    <button
+      onClick={isSignedIn ? () => {
+        const nextSaved = !isSaved
+        captureAnalyticsEvent('listing_saved_toggled', { listing_id: listing.id, saved: nextSaved, source: 'listing_card' })
+        saveMutation.mutate()
+      } : undefined}
+      className={`rounded-full border p-2 ${isSaved ? 'border-[#0f3d35] bg-[#e9f5ef] text-[#0f3d35]' : 'border-[#d7ded9] text-[#53645f]'}`}
+      aria-label={isSaved ? 'Saved listing' : 'Save listing'}
+    >
+      <Heart size={17} fill={isSaved ? '#0f3d35' : 'none'} />
+    </button>
+  )
 
   return (
     <article className="group overflow-hidden rounded-[1.7rem] border border-black/5 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[#0f3d35]/10 md:grid md:grid-cols-[240px_1fr]">
@@ -930,17 +1084,7 @@ function ListingCard({ listing }: { listing: Listing }) {
         <FeaturePills features={listing.features.slice(0, 4)} />
         <div className="mt-5 flex items-center justify-between">
           <Link to={`/listings/${listing.id}`} onClick={() => captureAnalyticsEvent('listing_opened', { listing_id: listing.id, source: 'listing_card' })} className="inline-flex items-center gap-2 text-sm font-bold text-[#0f3d35]">View details <ChevronRight size={16} /></Link>
-          <button
-            onClick={() => {
-              const nextSaved = !saved
-              setSaved(nextSaved)
-              captureAnalyticsEvent('listing_saved_toggled', { listing_id: listing.id, saved: nextSaved, source: 'listing_card' })
-            }}
-            className={`rounded-full border p-2 ${saved ? 'border-[#0f3d35] bg-[#e9f5ef] text-[#0f3d35]' : 'border-[#d7ded9] text-[#53645f]'}`}
-            aria-label={saved ? 'Saved listing' : 'Save listing'}
-          >
-            <Heart size={17} fill={saved ? '#0f3d35' : 'none'} />
-          </button>
+          {isSignedIn ? heartButton : <SignInButton mode="modal">{heartButton}</SignInButton>}
         </div>
       </div>
     </article>
@@ -951,11 +1095,20 @@ function ListingDetailPage() {
   const { id = '' } = useParams()
   const [leadOpen, setLeadOpen] = useState(false)
   const [priceTrackerOpen, setPriceTrackerOpen] = useState(false)
-  const [saved, setSaved] = useState(false)
+  const { isClerkEnabled, isSignedIn, userId } = useAuthContext()
+  const [localSaved, setLocalSaved] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [photoIndex, setPhotoIndex] = useState(0)
   const { data, isLoading, isError } = useQuery({ queryKey: ['listing', id], queryFn: () => fetchListing(id), enabled: Boolean(id) })
+  const { data: savedData, refetch: refetchSaved } = useQuery({ queryKey: ['saved-listings', userId], queryFn: fetchSavedListings, enabled: isClerkEnabled && isSignedIn })
   const listing = data?.listing
+  const saved = listing ? (savedData?.listing_ids?.includes(listing.id) ?? localSaved) : false
+  const saveMutation = useMutation({
+    mutationFn: () => listing && saved ? removeSavedListingForUser(listing.id) : listing ? saveListingForUser(listing.id) : Promise.reject(new Error('No listing loaded')),
+    onMutate: () => setLocalSaved((current) => !current),
+    onSuccess: () => refetchSaved(),
+    onError: () => setLocalSaved((current) => !current),
+  })
   const photos = listing?.photos?.length ? listing.photos : listing ? [{ id: 0, url: listing.primary_photo_url, position: 1, alt_text: listing.title }] : []
 
   async function shareListing() {
@@ -985,7 +1138,7 @@ function ListingDetailPage() {
                 <button onClick={() => {
                   setLeadOpen(true)
                   captureAnalyticsEvent('lead_modal_opened', { listing_id: listing.id, source: 'mobile_header' })
-                }} className="min-h-12 rounded-2xl bg-[#e99f3e] px-5 text-sm font-bold text-[#25170b] hover:bg-[#f2ad4e] active:scale-[0.98]">Schedule tour</button>
+                }} className="min-h-12 rounded-2xl bg-[#e99f3e] px-5 text-sm font-bold text-[#25170b] hover:bg-[#f2ad4e] active:scale-[0.98]">Request</button>
                 <button onClick={() => setMenuOpen(true)} className="grid h-12 w-12 place-items-center rounded-full bg-white/10 hover:bg-white/15 active:scale-[0.98]"><Menu size={20} /></button>
               </div>
             </div>
@@ -1034,6 +1187,9 @@ function ListingDetailPage() {
 
                   <p className="mt-7 max-w-3xl text-base leading-8 text-[#3d4d48]">{listing.description}</p>
                   <FeaturePills features={listing.features} />
+                  {listing.listing_kind === 'sale' && <WebMortgageCalculator listing={listing} />}
+                  <LocalIntelPanel listing={listing} />
+                  {listing.brokerage?.compliance_disclaimer && <p className="mt-6 rounded-2xl bg-[#f6f1e8] p-4 text-xs font-semibold leading-6 text-[#66746f]">{listing.brokerage.compliance_disclaimer}</p>}
                 </div>
               </div>
 
@@ -1045,13 +1201,18 @@ function ListingDetailPage() {
                   <button onClick={() => {
                     setLeadOpen(true)
                     captureAnalyticsEvent('lead_modal_opened', { listing_id: listing.id, source: 'desktop_aside' })
-                  }} className="mt-5 w-full rounded-2xl bg-[#0f3d35] px-4 py-3 text-sm font-bold text-white">Schedule Tour</button>
+                  }} className="mt-5 w-full rounded-2xl bg-[#0f3d35] px-4 py-3 text-sm font-bold text-white">Request a showing</button>
                   <button onClick={() => {
                     setPriceTrackerOpen(true)
                     captureAnalyticsEvent('price_tracker_opened', { listing_id: listing.id, source: 'desktop_aside' })
-                  }} className="mt-3 w-full rounded-2xl border border-[#d7ded9] px-4 py-3 text-sm font-bold text-[#0f3d35]">Add price tracker</button>
+                  }} className="mt-3 w-full rounded-2xl border border-[#d7ded9] px-4 py-3 text-sm font-bold text-[#0f3d35]">Add price alert</button>
+                  {isSignedIn ? (
+                    <button onClick={() => saveMutation.mutate()} className="mt-3 w-full rounded-2xl border border-[#d7ded9] px-4 py-3 text-sm font-bold text-[#0f3d35]">{saved ? 'Remove saved home' : 'Save home'}</button>
+                  ) : (
+                    <SignInButton mode="modal"><button className="mt-3 w-full rounded-2xl border border-[#d7ded9] px-4 py-3 text-sm font-bold text-[#0f3d35]">Sign in to save</button></SignInButton>
+                  )}
                   <dl className="mt-6 space-y-3 text-sm">
-                    <InfoRow label="MLS ID" value={listing.external_id || `HH-${listing.id}`} />
+                    <InfoRow label="Listing ID" value={listing.external_id || `HH-${listing.id}`} />
                     <InfoRow label="Agent" value={listing.agent_name || 'Hafa Homes Team'} />
                     <InfoRow label="Brokerage" value={listing.brokerage_name || 'Hafa Homes'} />
                   </dl>
@@ -1066,10 +1227,14 @@ function ListingDetailPage() {
               setPriceTrackerOpen(true)
               captureAnalyticsEvent('price_tracker_opened', { listing_id: listing.id, source: 'mobile_action_bar' })
             }} className="flex min-h-16 flex-col items-center justify-center gap-1"><TrendingUp size={23} /> Price alert</button>
-            <button onClick={() => {
-              setSaved((value) => !value)
-              captureAnalyticsEvent('listing_saved_toggled', { listing_id: listing.id, saved: !saved })
-            }} className="flex min-h-16 flex-col items-center justify-center gap-1"><Heart size={25} fill={saved ? '#0f3d35' : 'none'} /> {saved ? 'Saved' : 'Save'}</button>
+            {isSignedIn ? (
+              <button onClick={() => {
+                captureAnalyticsEvent('listing_saved_toggled', { listing_id: listing.id, saved: !saved })
+                saveMutation.mutate()
+              }} className="flex min-h-16 flex-col items-center justify-center gap-1"><Heart size={25} fill={saved ? '#0f3d35' : 'none'} /> {saved ? 'Saved' : 'Save'}</button>
+            ) : (
+              <SignInButton mode="modal"><button className="flex min-h-16 flex-col items-center justify-center gap-1"><Heart size={25} /> Save</button></SignInButton>
+            )}
           </nav>
 
           <MobileMenuDrawer open={menuOpen} onClose={() => setMenuOpen(false)} />
@@ -1087,6 +1252,69 @@ function DetailStat({ icon, value, label }: { icon: React.ReactNode; value: stri
       <div className="mx-auto grid h-9 w-9 place-items-center text-[#0f3d35] [&_svg]:h-7 [&_svg]:w-7">{icon}</div>
       <p className="mt-2 text-lg font-extrabold leading-none tracking-[-0.03em]">{value}</p>
       <p className="mt-1 text-xs font-bold text-[#53645f]">{label}</p>
+    </div>
+  )
+}
+
+function WebMortgageCalculator({ listing }: { listing: Listing }) {
+  const [downPaymentPercent, setDownPaymentPercent] = useState('10')
+  const [interestRate, setInterestRate] = useState('6.75')
+  const [loanTermYears, setLoanTermYears] = useState('30')
+  const downPayment = listing.price * (Number(downPaymentPercent || 0) / 100)
+  const loanAmount = Math.max(listing.price - downPayment, 0)
+  const monthlyRate = Number(interestRate || 0) / 100 / 12
+  const payments = Number(loanTermYears || 30) * 12
+  const principalAndInterest = monthlyRate > 0 ? loanAmount * (monthlyRate * ((1 + monthlyRate) ** payments)) / (((1 + monthlyRate) ** payments) - 1) : loanAmount / Math.max(payments, 1)
+
+  return (
+    <div className="mt-6 rounded-[1.5rem] bg-[#e9f5ef] p-5">
+      <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#0f705e]">Mortgage estimate</p>
+      <h2 className="mt-2 text-3xl font-semibold tracking-[-0.05em]">{currency(principalAndInterest || 0, 'sale')}/mo</h2>
+      <div className="mt-4 grid gap-3 md:grid-cols-3">
+        <Input label="Down payment %" value={downPaymentPercent} onChange={(event) => setDownPaymentPercent(event.target.value)} inputMode="decimal" />
+        <Input label="Interest rate %" value={interestRate} onChange={(event) => setInterestRate(event.target.value)} inputMode="decimal" />
+        <Input label="Loan term years" value={loanTermYears} onChange={(event) => setLoanTermYears(event.target.value)} inputMode="numeric" />
+      </div>
+      <p className="mt-3 text-xs font-semibold leading-5 text-[#66746f]">Estimate only. Taxes, insurance, HOA dues, lender fees, and Guam-specific costs should be verified with professionals.</p>
+    </div>
+  )
+}
+
+function LocalIntelPanel({ listing }: { listing: Listing }) {
+  const intel = listing.village.local_intel
+  if (!intel || Object.keys(intel).length === 0) return null
+
+  return (
+    <div className="mt-6 rounded-[1.75rem] border border-[#cfe4da] bg-[#e9f5ef] p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#0f705e]">Local intel</p>
+          <h2 className="mt-2 text-3xl font-semibold tracking-[-0.05em]">Around {listing.village.name}</h2>
+        </div>
+        {listing.village.region && <span className="rounded-full bg-white px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] text-[#0f3d35]">{listing.village.region}</span>}
+      </div>
+      {intel.summary && <p className="mt-4 text-base font-semibold leading-7 text-[#53645f]">{intel.summary}</p>}
+      {Boolean(intel.lifestyle_tags?.length) && <div className="mt-4 flex flex-wrap gap-2">{intel.lifestyle_tags?.slice(0, 5).map((tag) => <span key={tag} className="rounded-full bg-white px-3 py-1 text-xs font-bold text-[#0f705e]">{tag}</span>)}</div>}
+      <div className="mt-5 grid gap-3 md:grid-cols-2">
+        <LocalIntelGroup title="Nearby schools" items={intel.nearby_schools} note={intel.schools_note} />
+        <LocalIntelGroup title="Parks and recreation" items={intel.parks_and_recreation} />
+        <LocalIntelGroup title="Daily life" items={intel.daily_life} />
+        <LocalIntelGroup title="Commute notes" items={intel.commute_notes} />
+      </div>
+      <p className="mt-4 text-xs font-semibold leading-5 text-[#66746f]">School assignments, access, and commute times should be verified before making housing decisions.</p>
+    </div>
+  )
+}
+
+function LocalIntelGroup({ title, items, note }: { title: string; items?: string[]; note?: string }) {
+  if (!items?.length && !note) return null
+  return (
+    <div className="rounded-2xl bg-white p-4">
+      <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#0f705e]">{title}</p>
+      <ul className="mt-3 grid gap-2 text-sm font-semibold leading-6 text-[#304942]">
+        {items?.slice(0, 5).map((item) => <li key={item}>• {item}</li>)}
+      </ul>
+      {note && <p className="mt-3 text-sm leading-6 text-[#66746f]">{note}</p>}
     </div>
   )
 }
@@ -1157,15 +1385,111 @@ function MilitaryPage() {
 }
 
 function SavedPage() {
+  const { isClerkEnabled, isSignedIn, isLoading, userId } = useAuthContext()
+  const { data, isLoading: savesLoading, refetch } = useQuery({ queryKey: ['saved-listings', userId], queryFn: fetchSavedListings, enabled: isClerkEnabled && isSignedIn })
+  const removeMutation = useMutation({ mutationFn: removeSavedListingForUser, onSuccess: () => refetch() })
+
+  if (isLoading) return <Shell compact><StateCard>Checking account...</StateCard></Shell>
+
+  if (!isSignedIn) {
+    return (
+      <Shell compact>
+        <ContentHeader kicker="Saved homes" title="Sign in to see your saved Guam homes." description="Favorites sync across web and mobile once they are tied to your Hafa Homes account." />
+        <section className="mx-auto max-w-3xl px-5 pb-10"><div className="rounded-[2rem] bg-white p-8 text-center shadow-sm"><SignInButton mode="modal"><button className="rounded-full bg-[#0f3d35] px-6 py-3 text-sm font-bold text-white">Sign in or create account</button></SignInButton></div></section>
+      </Shell>
+    )
+  }
+
+  const savedListings = data?.listings ?? []
+
   return (
     <Shell compact>
-      <ContentHeader kicker="Saved homes" title="Keep track of the Guam homes and rentals you want to revisit." description="Save favorites, compare neighborhoods, and set alerts for price changes or new listings that match your search." />
-      <section className="mx-auto grid max-w-5xl gap-5 px-5 pb-10 md:grid-cols-3">
-        <ConceptCard icon={<Heart />} title="Favorites" description="Save listings and compare homes or rentals across villages." />
-        <ConceptCard icon={<Bell />} title="Listing alerts" description="Get notified when matching homes hit the market or prices change." />
-        <ConceptCard icon={<MessageSquare />} title="Tour requests" description="Reach out when you are ready to ask questions or schedule a showing." />
+      <ContentHeader kicker="Saved homes" title="Your synced Guam shortlist." description="These homes are server-backed and shared between the web and native app for your account." />
+      <section className="mx-auto max-w-6xl px-5 pb-10">
+        {savesLoading && <StateCard>Loading saved homes...</StateCard>}
+        <div className="grid gap-4 md:grid-cols-2">
+          {savedListings.map((listing) => (
+            <article key={listing.id} className="overflow-hidden rounded-[2rem] bg-white shadow-sm md:grid md:grid-cols-[220px_1fr]">
+              <Link to={`/listings/${listing.id}`}><img src={listing.primary_photo_url || FALLBACK_LISTING_IMAGE} alt="" className="h-52 w-full object-cover md:h-full" /></Link>
+              <div className="p-5">
+                <p className="text-2xl font-bold tracking-[-0.04em]">{currency(listing.price, listing.listing_kind)}</p>
+                <Link to={`/listings/${listing.id}`} className="mt-1 block text-xl font-semibold tracking-[-0.04em] text-[#17211f] hover:text-[#0f705e]">{listing.title}</Link>
+                <p className="mt-2 text-sm font-semibold text-[#66746f]">{listing.village.name} · {listing.address}</p>
+                <div className="mt-5 flex flex-wrap gap-3">
+                  <Link to={`/listings/${listing.id}`} className="rounded-full bg-[#0f3d35] px-4 py-2 text-sm font-bold text-white">View details</Link>
+                  <button onClick={() => removeMutation.mutate(listing.id)} className="rounded-full border border-[#d7ded9] px-4 py-2 text-sm font-bold text-[#0f3d35]">Remove</button>
+                </div>
+              </div>
+            </article>
+          ))}
+        </div>
+        {savedListings.length === 0 && !savesLoading && <StateCard>No saved homes yet. Tap the heart on a listing to build your shortlist.</StateCard>}
       </section>
     </Shell>
+  )
+}
+
+function RequestsPage() {
+  const { isClerkEnabled, isSignedIn, isLoading, userId } = useAuthContext()
+  const { data, isLoading: requestsLoading, isError } = useQuery({ queryKey: ['my-leads', userId], queryFn: fetchMyLeads, enabled: isClerkEnabled && isSignedIn })
+
+  if (isLoading) return <Shell compact><StateCard>Checking account...</StateCard></Shell>
+
+  if (!isSignedIn) {
+    return (
+      <Shell compact>
+        <ContentHeader kicker="My requests" title="Sign in to view your showing requests." description="Signed-in requests can show status, assigned agent, and scheduled appointment details." />
+        <section className="mx-auto max-w-3xl px-5 pb-10"><div className="rounded-[2rem] bg-white p-8 text-center shadow-sm"><SignInButton mode="modal"><button className="rounded-full bg-[#0f3d35] px-6 py-3 text-sm font-bold text-white">Sign in or create account</button></SignInButton></div></section>
+      </Shell>
+    )
+  }
+
+  const requests = data?.leads ?? []
+
+  return (
+    <Shell compact>
+      <ContentHeader kicker="My requests" title="Your showing requests and price alerts." description="Track what you submitted, who is assigned, and when confirmed showings are scheduled." />
+      <section className="mx-auto max-w-6xl px-5 pb-10">
+        {requestsLoading && <StateCard>Loading requests...</StateCard>}
+        {isError && <StateCard tone="error">Unable to load your requests.</StateCard>}
+        <div className="grid gap-4">
+          {requests.map((lead) => <ConsumerRequestCard key={lead.id} lead={lead} />)}
+        </div>
+        {requests.length === 0 && !requestsLoading && <StateCard>No requests yet. Request a showing or save a price alert from any listing.</StateCard>}
+      </section>
+    </Shell>
+  )
+}
+
+function ConsumerRequestCard({ lead }: { lead: Lead }) {
+  const showing = lead.latest_showing_appointment
+  return (
+    <article className="overflow-hidden rounded-[2rem] bg-white shadow-sm md:grid md:grid-cols-[240px_1fr]">
+      {lead.listing?.primary_photo_url && <Link to={`/listings/${lead.listing.id}`}><img src={lead.listing.primary_photo_url} alt="" className="h-56 w-full object-cover md:h-full" /></Link>}
+      <div className="p-5">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#0f705e]">{lead.lead_type.replaceAll('_', ' ')}</p>
+            <h2 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">{lead.listing?.title ?? 'Hafa Homes request'}</h2>
+            <p className="mt-2 text-sm font-semibold text-[#66746f]">Submitted {formatDateTime(lead.created_at)}</p>
+          </div>
+          <span className="rounded-full bg-[#e9f5ef] px-4 py-2 text-sm font-bold text-[#0f705e]">{lead.consumer_status_label ?? lead.status.replaceAll('_', ' ')}</span>
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-3">
+          <LeadMeta icon={<UserRound size={16} />} label="Agent" value={lead.assigned_agent?.name ?? 'Pending assignment'} />
+          <LeadMeta icon={<Building2 size={16} />} label="Brokerage" value={lead.brokerage?.name ?? 'Hafa Homes'} />
+          <LeadMeta icon={<MessageSquare size={16} />} label="Preferred contact" value={lead.preferred_contact_method || 'Not provided'} />
+        </div>
+        {showing && (
+          <div className="mt-4 rounded-2xl bg-[#f6f1e8] p-4">
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#0f705e]">Showing appointment</p>
+            <p className="mt-2 text-sm font-semibold text-[#304942]">{formatDateTime(showing.scheduled_starts_at)} · {showing.status.replaceAll('_', ' ')} · {showing.tour_type.replaceAll('_', ' ')}</p>
+            {showing.location && <p className="mt-2 text-sm text-[#66746f]">{showing.location}</p>}
+            {showing.consumer_notes && <p className="mt-2 text-sm text-[#66746f]">{showing.consumer_notes}</p>}
+          </div>
+        )}
+      </div>
+    </article>
   )
 }
 
@@ -1194,8 +1518,7 @@ function PrivacyPage() {
 function SyncPage() {
   const { data, isLoading } = useQuery({ queryKey: ['sync-runs'], queryFn: fetchSyncRuns })
   return (
-    <Shell compact>
-      <ContentHeader kicker="MLS readiness" title="A visible sync layer for future authorized MLS integration." description="The app is structured so RETS, RESO, IDX APIs, CSVs, or brokerage feeds can normalize into Hafa Homes listings." />
+    <AdminShell kicker="MLS readiness" title="A visible sync layer for future authorized MLS integration." description="The app is structured so RETS, RESO, IDX APIs, CSVs, or brokerage feeds can normalize into Hafa Homes listings.">
       <section className="mx-auto max-w-5xl px-5 pb-10">
         <div className="rounded-[2rem] bg-[#101f1c] p-6 text-white shadow-2xl shadow-[#0f3d35]/20">
           <div className="flex items-center justify-between gap-4 border-b border-white/10 pb-5">
@@ -1225,7 +1548,7 @@ function SyncPage() {
           </div>
         </div>
       </section>
-    </Shell>
+    </AdminShell>
   )
 }
 
@@ -1499,6 +1822,122 @@ function SaveSearchModal({ open, onClose, filters }: { open: boolean; onClose: (
   )
 }
 
+function AdminShell({ children, title, kicker, description }: { children: React.ReactNode; title: string; kicker: string; description?: string }) {
+  const navItems = [
+    { label: 'Dashboard', href: '/admin', icon: <Home size={18} /> },
+    { label: 'Leads', href: '/admin/leads', icon: <ClipboardList size={18} /> },
+    { label: 'Showings', href: '/admin/showings', icon: <Clock3 size={18} /> },
+    { label: 'Users & roles', href: '/admin/users', icon: <UsersRound size={18} /> },
+    { label: 'MLS sync', href: '/admin/sync', icon: <DatabaseZap size={18} /> },
+  ]
+
+  return (
+    <main className="min-h-screen bg-[#f6f1e8] text-[#17211f]">
+      <div className="grid min-h-screen lg:grid-cols-[280px_1fr]">
+        <aside className="border-r border-[#e1d7c7] bg-[#0f3d35] px-5 py-5 text-white lg:sticky lg:top-0 lg:h-screen">
+          <Brand light />
+          <nav className="mt-8 grid gap-2">
+            {navItems.map((item) => (
+              <Link key={item.href} to={item.href} className="flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-bold text-white/76 transition hover:bg-white/10 hover:text-white">
+                {item.icon}
+                {item.label}
+              </Link>
+            ))}
+          </nav>
+          <div className="mt-8 rounded-3xl bg-white/10 p-4 text-sm leading-6 text-white/70">
+            Web admin is the source of truth for broker lead routing, role management, and showing coordination.
+          </div>
+        </aside>
+        <section>
+          <div className="border-b border-[#e1d7c7] bg-white/70 px-5 py-4 backdrop-blur">
+            <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
+              <Link to="/" className="text-sm font-bold text-[#0f705e]">View public site</Link>
+              <UserButton />
+            </div>
+          </div>
+          <header className="mx-auto max-w-7xl px-5 py-10">
+            <p className="text-sm font-bold uppercase tracking-[0.24em] text-[#0f705e]">{kicker}</p>
+            <h1 className="mt-3 max-w-5xl text-4xl font-semibold tracking-[-0.06em] md:text-6xl">{title}</h1>
+            {description && <p className="mt-5 max-w-3xl text-lg leading-8 text-[#66746f]">{description}</p>}
+          </header>
+          {children}
+        </section>
+      </div>
+    </main>
+  )
+}
+
+function AdminDashboardPage() {
+  const { data, isLoading, isError } = useQuery({ queryKey: ['admin-dashboard'], queryFn: fetchAdminDashboard })
+  const metrics = data?.metrics
+
+  return (
+    <AdminShell kicker="Admin dashboard" title="Brokerage operations at a glance." description="See lead volume, unassigned work, stale follow-ups, and upcoming showings before diving into the CRM.">
+      <section className="mx-auto max-w-7xl px-5 pb-12">
+        {isLoading && <StateCard>Loading dashboard...</StateCard>}
+        {isError && <StateCard tone="error">Unable to load dashboard.</StateCard>}
+        {metrics && (
+          <>
+            <div className="grid gap-3 md:grid-cols-5">
+              <AdminMetric label="Open leads" value={metrics.total_open_leads} tone="dark" />
+              <AdminMetric label="New" value={metrics.new_leads} />
+              <AdminMetric label="Unassigned" value={metrics.unassigned_leads} />
+              <AdminMetric label="Showings" value={metrics.upcoming_showings} />
+              <AdminMetric label="Needs follow-up" value={metrics.overdue_followups} tone="warn" />
+            </div>
+            <div className="mt-6 grid gap-5 lg:grid-cols-2">
+              <AdminPanel title="Recent leads">
+                <div className="grid gap-3">
+                  {data.recent_leads.map((lead) => <LeadCompactRow key={lead.id} lead={lead} />)}
+                  {data.recent_leads.length === 0 && <p className="text-sm font-semibold text-[#66746f]">No leads yet.</p>}
+                </div>
+              </AdminPanel>
+              <AdminPanel title="Upcoming showings">
+                <div className="grid gap-3">
+                  {data.upcoming_showing_appointments.map((showing) => <ShowingCompactRow key={showing.id} showing={showing} />)}
+                  {data.upcoming_showing_appointments.length === 0 && <p className="text-sm font-semibold text-[#66746f]">No showings scheduled yet.</p>}
+                </div>
+              </AdminPanel>
+            </div>
+          </>
+        )}
+      </section>
+    </AdminShell>
+  )
+}
+
+function AdminMetric({ label, value, tone = 'light' }: { label: string; value: number; tone?: 'light' | 'dark' | 'warn' }) {
+  const classes = tone === 'dark' ? 'bg-[#0f3d35] text-white' : tone === 'warn' ? 'bg-[#fff5d9] text-[#6b4508]' : 'bg-white text-[#17211f]'
+  return <div className={`rounded-[1.5rem] p-5 shadow-sm ${classes}`}><p className="text-xs font-bold uppercase tracking-[0.18em] opacity-60">{label}</p><p className="mt-3 text-4xl font-semibold tracking-[-0.06em]">{value}</p></div>
+}
+
+function AdminPanel({ title, children }: { title: string; children: React.ReactNode }) {
+  return <div className="rounded-[2rem] bg-white p-5 shadow-sm"><h2 className="text-2xl font-semibold tracking-[-0.04em]">{title}</h2><div className="mt-4">{children}</div></div>
+}
+
+function LeadCompactRow({ lead }: { lead: Lead }) {
+  return (
+    <Link to={`/admin/leads/${lead.id}`} className="block rounded-2xl bg-[#f6f1e8] p-4 transition hover:bg-[#efe6d7]">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-bold text-[#17211f]">{lead.name}</p>
+          <p className="mt-1 text-xs font-semibold text-[#66746f]">{lead.listing?.title ?? lead.lead_type.replaceAll('_', ' ')}</p>
+        </div>
+        <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-[#0f705e]">{lead.status.replaceAll('_', ' ')}</span>
+      </div>
+    </Link>
+  )
+}
+
+function ShowingCompactRow({ showing }: { showing: ShowingAppointment }) {
+  return (
+    <Link to={`/admin/leads/${showing.lead_id}`} className="block rounded-2xl bg-[#f6f1e8] p-4 transition hover:bg-[#efe6d7]">
+      <p className="text-sm font-bold text-[#17211f]">{showing.listing?.title ?? 'Showing appointment'}</p>
+      <p className="mt-1 text-xs font-semibold text-[#66746f]">{formatDateTime(showing.scheduled_starts_at)} · {showing.agent?.name ?? 'Unassigned agent'}</p>
+    </Link>
+  )
+}
+
 function LeadsPage() {
   const { data, isLoading, isError, refetch } = useQuery({ queryKey: ['leads'], queryFn: fetchLeads })
   const statusMutation = useMutation({
@@ -1511,9 +1950,8 @@ function LeadsPage() {
   const scheduledLeads = leads.filter((lead) => lead.status === 'showing_scheduled').length
 
   return (
-    <Shell compact>
-      <ContentHeader kicker="Broker CRM" title="Lead inbox for broker follow-up." description="Track who asked, what listing they care about, which brokerage owns the relationship, and what needs to happen next." />
-      <section className="mx-auto max-w-6xl px-5 pb-10">
+    <AdminShell kicker="Broker CRM" title="Lead inbox for broker follow-up." description="Track who asked, what listing they care about, which brokerage owns the relationship, and what needs to happen next.">
+      <section className="mx-auto max-w-7xl px-5 pb-10">
         <div className="mb-5 grid gap-3 md:grid-cols-3">
           <div className="rounded-[1.75rem] bg-[#0f3d35] p-5 text-white"><p className="text-xs font-bold uppercase tracking-[0.18em] text-white/55">Open leads</p><p className="mt-2 text-4xl font-semibold tracking-[-0.06em]">{openLeads}</p></div>
           <div className="rounded-[1.75rem] bg-white p-5"><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#7b8a84]">New</p><p className="mt-2 text-4xl font-semibold tracking-[-0.06em]">{newLeads}</p></div>
@@ -1553,7 +1991,7 @@ function LeadsPage() {
           {leads.length === 0 && !isLoading && <StateCard>No leads yet. New tour requests and price alerts will appear here.</StateCard>}
         </div>
       </section>
-    </Shell>
+    </AdminShell>
   )
 }
 
@@ -1565,12 +2003,16 @@ function LeadDetailPage() {
     mutationFn: (payload: { status?: LeadStatus; assigned_agent_id?: number | null }) => updateLead(data!.lead.id, payload),
     onSuccess: () => refetch(),
   })
+  const showingMutation = useMutation({
+    mutationFn: (payload: Partial<ShowingAppointment> & { lead_id: number; id?: number }) => payload.id ? updateShowingAppointment(payload.id, payload) : createShowingAppointment(payload),
+    onSuccess: () => refetch(),
+  })
   const lead = data?.lead
   const assignableAgents = data?.assignable_agents ?? []
 
   return (
-    <Shell compact>
-      <section className="mx-auto max-w-6xl px-5 py-10">
+    <AdminShell kicker="Lead detail" title="Coordinate follow-up and showing schedule." description="Update status, assignment, and appointment details from one tenant-scoped CRM view.">
+      <section className="mx-auto max-w-7xl px-5 pb-10">
         <button onClick={() => navigate('/admin/leads')} className="mb-6 inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-bold text-[#304942]"><ArrowLeft size={16} /> Back to leads</button>
         {isLoading && <StateCard>Loading lead...</StateCard>}
         {isError && <StateCard tone="error">Unable to load this lead.</StateCard>}
@@ -1629,6 +2071,8 @@ function LeadDetailPage() {
                 {mutation.isError && <p className="mt-3 text-sm font-semibold text-[#ffd6d6]">{displayErrorMessage(mutation.error, 'Unable to update lead right now.')}</p>}
               </div>
 
+              <ShowingScheduler lead={lead} assignableAgents={assignableAgents} mutation={showingMutation} />
+
               {lead.listing && (
                 <div className="rounded-[2rem] bg-white p-6 shadow-sm">
                   <Home className="text-[#0f705e]" />
@@ -1643,7 +2087,238 @@ function LeadDetailPage() {
           </div>
         )}
       </section>
-    </Shell>
+    </AdminShell>
+  )
+}
+
+type ShowingMutation = {
+  mutate: (payload: Partial<ShowingAppointment> & { lead_id: number; id?: number }) => void
+  isPending: boolean
+  isError: boolean
+  error: unknown
+}
+
+function datetimeLocalValue(value?: string) {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  const offset = date.getTimezoneOffset()
+  const local = new Date(date.getTime() - offset * 60 * 1000)
+  return local.toISOString().slice(0, 16)
+}
+
+function ShowingScheduler({ lead, assignableAgents, mutation }: { lead: Lead; assignableAgents: Agent[]; mutation: ShowingMutation }) {
+  const showing = lead.latest_showing_appointment ?? lead.showing_appointments?.[0] ?? null
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const form = new FormData(event.currentTarget)
+    const payload: Partial<ShowingAppointment> & { lead_id: number; id?: number } = {
+      lead_id: lead.id,
+      id: showing?.id,
+      agent_id: form.get('agent_id') ? Number(form.get('agent_id')) : null,
+      scheduled_starts_at: String(form.get('scheduled_starts_at') || ''),
+      scheduled_ends_at: String(form.get('scheduled_ends_at') || ''),
+      timezone: String(form.get('timezone') || 'Pacific/Guam'),
+      tour_type: String(form.get('tour_type') || 'in_person') as ShowingAppointment['tour_type'],
+      status: String(form.get('status') || 'proposed') as ShowingAppointment['status'],
+      location: String(form.get('location') || ''),
+      consumer_notes: String(form.get('consumer_notes') || ''),
+      internal_notes: String(form.get('internal_notes') || ''),
+    }
+    mutation.mutate(payload)
+  }
+
+  return (
+    <div className="rounded-[2rem] bg-white p-6 shadow-sm">
+      <Clock3 className="text-[#0f705e]" />
+      <p className="mt-5 text-xs font-bold uppercase tracking-[0.2em] text-[#7b8a84]">Showing schedule</p>
+      <h2 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">{showing ? 'Update appointment' : 'Schedule appointment'}</h2>
+      {showing && (
+        <p className="mt-2 rounded-2xl bg-[#e9f5ef] p-3 text-sm font-semibold text-[#0f3d35]">
+          Current: {formatDateTime(showing.scheduled_starts_at)} · {showing.status.replaceAll('_', ' ')} · {showing.agent?.name ?? 'Unassigned agent'}
+        </p>
+      )}
+      <form onSubmit={handleSubmit} className="mt-5 grid gap-3">
+        <label className="grid gap-2 text-sm font-semibold text-[#304942]">
+          Agent
+          <select name="agent_id" defaultValue={showing?.agent_id ?? lead.assigned_agent_id ?? ''} className="min-h-12 rounded-2xl border border-[#dce5df] px-4">
+            <option value="">Unassigned</option>
+            {assignableAgents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name} · {agent.brokerage?.name}</option>)}
+          </select>
+        </label>
+        <div className="grid gap-3 md:grid-cols-2">
+          <Input name="scheduled_starts_at" label="Starts" type="datetime-local" defaultValue={datetimeLocalValue(showing?.scheduled_starts_at)} required />
+          <Input name="scheduled_ends_at" label="Ends" type="datetime-local" defaultValue={datetimeLocalValue(showing?.scheduled_ends_at)} />
+        </div>
+        <div className="grid gap-3 md:grid-cols-2">
+          <label className="grid gap-2 text-sm font-semibold text-[#304942]">
+            Status
+            <select name="status" defaultValue={showing?.status ?? 'confirmed'} className="min-h-12 rounded-2xl border border-[#dce5df] px-4">
+              <option value="proposed">Proposed</option>
+              <option value="confirmed">Confirmed</option>
+              <option value="completed">Completed</option>
+              <option value="cancelled">Cancelled</option>
+              <option value="no_show">No-show</option>
+            </select>
+          </label>
+          <label className="grid gap-2 text-sm font-semibold text-[#304942]">
+            Tour type
+            <select name="tour_type" defaultValue={showing?.tour_type ?? lead.tour_type ?? 'in_person'} className="min-h-12 rounded-2xl border border-[#dce5df] px-4">
+              <option value="in_person">In person</option>
+              <option value="virtual">Virtual</option>
+            </select>
+          </label>
+        </div>
+        <input type="hidden" name="timezone" value="Pacific/Guam" />
+        <Input name="location" label="Location or meeting point" defaultValue={showing?.location || lead.listing?.address || ''} />
+        <label className="grid gap-2 text-sm font-semibold text-[#304942]">
+          Notes for customer
+          <textarea name="consumer_notes" rows={3} defaultValue={showing?.consumer_notes || ''} className="rounded-2xl border border-[#dce5df] px-4 py-3" />
+        </label>
+        <label className="grid gap-2 text-sm font-semibold text-[#304942]">
+          Internal notes
+          <textarea name="internal_notes" rows={3} defaultValue={showing?.internal_notes || ''} className="rounded-2xl border border-[#dce5df] px-4 py-3" />
+        </label>
+        {mutation.isError && <p className="text-sm font-semibold text-red-700">{displayErrorMessage(mutation.error, 'Unable to schedule showing right now.')}</p>}
+        <button disabled={mutation.isPending} className="rounded-2xl bg-[#0f3d35] px-4 py-3 text-sm font-bold text-white disabled:opacity-60">
+          {mutation.isPending ? 'Saving...' : showing ? 'Update showing' : 'Schedule showing'}
+        </button>
+      </form>
+    </div>
+  )
+}
+
+function AdminShowingsPage() {
+  const { data, isLoading, isError } = useQuery({ queryKey: ['showing-appointments'], queryFn: fetchShowingAppointments })
+  const showings = data?.showing_appointments ?? []
+
+  return (
+    <AdminShell kicker="Showing calendar" title="Scheduled tours and appointment follow-up." description="A lightweight schedule view for proposed, confirmed, completed, and cancelled showing appointments.">
+      <section className="mx-auto max-w-7xl px-5 pb-10">
+        {isLoading && <StateCard>Loading showings...</StateCard>}
+        {isError && <StateCard tone="error">Unable to load showings.</StateCard>}
+        <div className="grid gap-4">
+          {showings.map((showing) => (
+            <Link key={showing.id} to={`/admin/leads/${showing.lead_id}`} className="rounded-[2rem] bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[#0f3d35]/10">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#0f705e]">{showing.status.replaceAll('_', ' ')}</p>
+                  <h2 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">{showing.listing?.title ?? 'Showing appointment'}</h2>
+                  <p className="mt-2 text-sm font-semibold text-[#66746f]">{formatDateTime(showing.scheduled_starts_at)} · {showing.tour_type.replaceAll('_', ' ')}</p>
+                </div>
+                <span className="rounded-full bg-[#f6f1e8] px-4 py-2 text-sm font-bold text-[#0f3d35]">{showing.agent?.name ?? 'Unassigned'}</span>
+              </div>
+              {showing.location && <p className="mt-4 rounded-2xl bg-[#f6f1e8] p-3 text-sm font-semibold text-[#304942]">{showing.location}</p>}
+              {showing.consumer_notes && <p className="mt-3 text-sm leading-6 text-[#66746f]">Customer notes: {showing.consumer_notes}</p>}
+            </Link>
+          ))}
+          {showings.length === 0 && !isLoading && <StateCard>No showing appointments scheduled yet.</StateCard>}
+        </div>
+      </section>
+    </AdminShell>
+  )
+}
+
+function AdminUsersPage() {
+  const { data, isLoading, isError, refetch } = useQuery({ queryKey: ['admin-users'], queryFn: fetchAdminUsers })
+  const mutation = useMutation({
+    mutationFn: ({ id, payload }: { id: number; payload: Record<string, unknown> }) => updateAdminUser(id, payload),
+    onSuccess: () => refetch(),
+  })
+  const users = data?.users ?? []
+  const brokerages = data?.brokerages ?? []
+  const agents = data?.agents ?? []
+
+  return (
+    <AdminShell kicker="Users & roles" title="Manage platform, brokerage, agent, and consumer access." description="Platform admins can promote users, attach brokerage memberships, and link user accounts to agent profiles.">
+      <section className="mx-auto max-w-7xl px-5 pb-10">
+        {isLoading && <StateCard>Loading users...</StateCard>}
+        {isError && <StateCard tone="error">Unable to load users. Platform admin access is required.</StateCard>}
+        {mutation.isError && <StateCard tone="error">{displayErrorMessage(mutation.error, 'Unable to update user.')}</StateCard>}
+        <div className="grid gap-4">
+          {users.map((user) => (
+            <UserRoleCard key={user.id} user={user} brokerages={brokerages} agents={agents} onSave={(payload) => mutation.mutate({ id: user.id, payload })} saving={mutation.isPending} />
+          ))}
+        </div>
+      </section>
+    </AdminShell>
+  )
+}
+
+function UserRoleCard({ user, brokerages, agents, onSave, saving }: { user: AdminUser; brokerages: Brokerage[]; agents: Agent[]; onSave: (payload: Record<string, unknown>) => void; saving: boolean }) {
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const form = new FormData(event.currentTarget)
+    const brokerageId = String(form.get('brokerage_id') || '')
+    const agentId = String(form.get('agent_id') || '')
+    const payload: Record<string, unknown> = {
+      role: String(form.get('role') || user.role),
+      brokerage_membership: brokerageId ? {
+        brokerage_id: Number(brokerageId),
+        role: String(form.get('membership_role') || 'agent'),
+        status: String(form.get('membership_status') || 'active'),
+      } : undefined,
+      agent_id: agentId ? Number(agentId) : null,
+    }
+    onSave(payload)
+  }
+
+  const activeMembership = user.brokerages?.[0]
+  const linkedAgent = user.agent_profiles?.[0]
+
+  return (
+    <form onSubmit={handleSubmit} className="rounded-[2rem] bg-white p-5 shadow-sm">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#0f705e]">{user.role.replaceAll('_', ' ')}</p>
+          <h2 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">{user.full_name || user.email}</h2>
+          <p className="mt-1 text-sm font-semibold text-[#66746f]">{user.email}</p>
+        </div>
+        <button disabled={saving} className="rounded-full bg-[#0f3d35] px-5 py-3 text-sm font-bold text-white disabled:opacity-60">{saving ? 'Saving...' : 'Save access'}</button>
+      </div>
+      <div className="mt-5 grid gap-3 lg:grid-cols-5">
+        <label className="grid gap-2 text-sm font-semibold text-[#304942]">
+          Product role
+          <select name="role" defaultValue={user.role} className="min-h-12 rounded-2xl border border-[#dce5df] px-4">
+            <option value="consumer">Consumer</option>
+            <option value="agent">Agent</option>
+            <option value="brokerage_admin">Brokerage admin</option>
+            <option value="platform_admin">Platform admin</option>
+          </select>
+        </label>
+        <label className="grid gap-2 text-sm font-semibold text-[#304942]">
+          Brokerage
+          <select name="brokerage_id" defaultValue={activeMembership?.brokerage?.id ?? ''} className="min-h-12 rounded-2xl border border-[#dce5df] px-4">
+            <option value="">No brokerage membership</option>
+            {brokerages.map((brokerage) => <option key={brokerage.id} value={brokerage.id}>{brokerage.name}</option>)}
+          </select>
+        </label>
+        <label className="grid gap-2 text-sm font-semibold text-[#304942]">
+          Membership role
+          <select name="membership_role" defaultValue={activeMembership?.role ?? 'agent'} className="min-h-12 rounded-2xl border border-[#dce5df] px-4">
+            <option value="agent">Agent</option>
+            <option value="brokerage_admin">Brokerage admin</option>
+          </select>
+        </label>
+        <label className="grid gap-2 text-sm font-semibold text-[#304942]">
+          Membership status
+          <select name="membership_status" defaultValue={activeMembership?.status ?? 'active'} className="min-h-12 rounded-2xl border border-[#dce5df] px-4">
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+            <option value="invited">Invited</option>
+            <option value="revoked">Revoked</option>
+          </select>
+        </label>
+        <label className="grid gap-2 text-sm font-semibold text-[#304942]">
+          Agent profile
+          <select name="agent_id" defaultValue={linkedAgent?.id ?? ''} className="min-h-12 rounded-2xl border border-[#dce5df] px-4">
+            <option value="">No linked agent</option>
+            {agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name} · {agent.brokerage?.name}</option>)}
+          </select>
+        </label>
+      </div>
+    </form>
   )
 }
 
@@ -1668,8 +2343,7 @@ function MobileMenuDrawer({ open, onClose }: { open: boolean; onClose: () => voi
     ['Villages', '/villages'],
     ['Military relocation', '/military'],
     ['Saved homes', '/saved'],
-    ['MLS sync', '/admin/sync'],
-    ['Lead inbox', '/admin/leads'],
+    ['My requests', '/account/requests'],
   ]
 
   return (
@@ -1799,7 +2473,7 @@ function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean
           <form onSubmit={handleSubmit} className="pb-4">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#0f705e] md:text-sm">Schedule Tour</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#0f705e] md:text-sm">Showing request</p>
                 <h2 className="mt-1 text-2xl font-semibold tracking-[-0.05em] md:mt-2 md:text-3xl">Request a showing</h2>
               </div>
               <button type="button" onClick={onClose} className="rounded-full border border-[#d7ded9] px-3 py-2 text-sm font-bold">Close</button>
@@ -1860,7 +2534,7 @@ function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean
             </div>
             {mutation.isError && <p className="mt-3 text-sm font-semibold text-red-700">Unable to submit right now.</p>}
             <button disabled={mutation.isPending} className="mt-5 w-full rounded-2xl bg-[#0f3d35] px-4 py-3 text-sm font-bold text-white disabled:opacity-60">
-              {mutation.isPending ? 'Submitting...' : 'Request Tour'}
+              {mutation.isPending ? 'Submitting...' : 'Send showing request'}
             </button>
           </form>
         )}
@@ -1889,8 +2563,7 @@ function TopNav() {
         <Link to="/villages">Villages</Link>
         <Link to="/military">Military</Link>
         <Link to="/saved">Saved</Link>
-        <Link to="/admin/sync">MLS sync</Link>
-        <Link to="/admin/leads">Leads</Link>
+        <Link to="/account/requests">Requests</Link>
         {isClerkEnabled && (
           <>
             <SignedOut>
@@ -1988,10 +2661,6 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 
 function StateCard({ children, tone = 'default' }: { children: React.ReactNode; tone?: 'default' | 'error' }) {
   return <p className={`rounded-2xl bg-white p-5 text-sm font-semibold ${tone === 'error' ? 'text-red-700' : 'text-[#53645f]'}`}>{children}</p>
-}
-
-function ConceptCard({ icon, title, description }: { icon: React.ReactNode; title: string; description: string }) {
-  return <div className="rounded-[2rem] bg-white p-6 shadow-sm"><div className="text-[#0f705e]">{icon}</div><h2 className="mt-5 text-2xl font-semibold tracking-[-0.04em]">{title}</h2><p className="mt-3 text-sm leading-6 text-[#66746f]">{description}</p></div>
 }
 
 function MiniStat({ label, value }: { label: string; value: string }) {

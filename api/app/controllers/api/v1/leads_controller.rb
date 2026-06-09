@@ -60,19 +60,23 @@ module Api
 
       def lead_scope
         base = Lead
-          .includes(:brokerage, :assigned_agent, listing: [:village, :brokerage, :agent])
+          .includes(:brokerage, :assigned_agent, { showing_appointments: [:listing, :brokerage, :agent, :created_by] }, listing: [:village, :brokerage, :agent])
 
         return base if current_user.platform_admin?
 
-        brokerage_ids = authorized_brokerage_ids
+        brokerage_admin_ids = authorized_brokerage_admin_ids
         agent_ids = authorized_agent_ids
-        return base.none if brokerage_ids.empty? && agent_ids.empty?
+        return base.none if brokerage_admin_ids.empty? && agent_ids.empty?
 
-        base.where(brokerage_id: brokerage_ids).or(base.where(assigned_agent_id: agent_ids))
+        scoped = nil
+        scoped = base.where(brokerage_id: brokerage_admin_ids) if brokerage_admin_ids.any?
+        agent_scope = base.where(assigned_agent_id: agent_ids) if agent_ids.any?
+        scoped = scoped ? scoped.or(agent_scope) : agent_scope if agent_scope
+        scoped || base.none
       end
 
-      def authorized_brokerage_ids
-        @authorized_brokerage_ids ||= current_user.active_brokerage_ids
+      def authorized_brokerage_admin_ids
+        @authorized_brokerage_admin_ids ||= current_user.active_brokerage_admin_ids
       end
 
       def authorized_agent_ids
@@ -82,7 +86,10 @@ module Api
       def assignable_agents_for_scope
         return Agent.includes(:brokerage).active.order(:name) if current_user.platform_admin?
 
-        Agent.includes(:brokerage).active.where(brokerage_id: authorized_brokerage_ids).order(:name)
+        brokerage_admin_ids = authorized_brokerage_admin_ids
+        return Agent.includes(:brokerage).active.where(brokerage_id: brokerage_admin_ids).order(:name) if brokerage_admin_ids.any?
+
+        Agent.includes(:brokerage).active.where(id: authorized_agent_ids).order(:name)
       end
 
       def assignable_agents_for(lead)

@@ -25,14 +25,26 @@ module Api
             assigned_agent_id: lead.assigned_agent_id,
             created_at: lead.created_at,
             updated_at: lead.updated_at,
+            consumer_status_label: consumer_status_label(lead.status),
             listing: listing_json(lead.listing),
             brokerage: brokerage_json(lead.brokerage),
-            assigned_agent: agent_json(lead.assigned_agent)
+            assigned_agent: agent_json(lead.assigned_agent),
+            latest_showing_appointment: showing_json(latest_showing(lead))
           }
         end
 
         def detail(lead)
-          summary(lead)
+          summary(lead).merge(
+            showing_appointments: showing_appointments_for(lead).map { |showing| showing_json(showing) }
+          )
+        end
+
+        def consumer(lead)
+          detail(lead).except(:quality_status, :lead_source, :last_contacted_at).merge(
+            message: lead.message,
+            showing_appointments: showing_appointments_for(lead).map { |showing| Api::V1::ShowingAppointmentSerializer.consumer(showing) },
+            latest_showing_appointment: Api::V1::ShowingAppointmentSerializer.consumer(latest_showing(lead))
+          )
         end
 
         private
@@ -48,6 +60,7 @@ module Api
             listing_kind: listing.listing_kind,
             property_type: listing.property_type,
             village: listing.village&.name,
+            primary_photo_url: listing.primary_photo_url,
             brokerage: brokerage_json(listing.brokerage),
             agent: agent_json(listing.agent)
           }
@@ -78,6 +91,38 @@ module Api
             phone: agent.phone,
             status: agent.status
           }
+        end
+
+        def showing_json(showing)
+          return nil unless showing
+
+          Api::V1::ShowingAppointmentSerializer.summary(showing)
+        end
+
+        def latest_showing(lead)
+          showings = showing_appointments_for(lead)
+          showings.find { |showing| %w[confirmed proposed].include?(showing.status) } || showings.first
+        end
+
+        def showing_appointments_for(lead)
+          if lead.association(:showing_appointments).loaded?
+            lead.showing_appointments.sort_by { |showing| showing.scheduled_starts_at || showing.created_at }.reverse
+          else
+            lead.showing_appointments.includes(:listing, :brokerage, :agent, :created_by).order(Arel.sql("scheduled_starts_at DESC NULLS LAST"), created_at: :desc)
+          end
+        end
+
+        def consumer_status_label(status)
+          {
+            "new" => "Request received",
+            "contacted" => "Agent follow-up started",
+            "showing_scheduled" => "Showing scheduled",
+            "nurturing" => "Still searching",
+            "closed" => "Request closed",
+            "lost" => "Request closed",
+            "spam" => "Request under review",
+            "archived" => "Request archived"
+          }[status] || "Request received"
         end
       end
     end

@@ -9,6 +9,7 @@ class User < ApplicationRecord
   has_many :brokerage_memberships, dependent: :destroy
   has_many :brokerages, through: :brokerage_memberships
   has_many :agent_profiles, class_name: "Agent", dependent: :nullify
+  has_many :created_showing_appointments, class_name: "ShowingAppointment", foreign_key: :created_by_id, dependent: :nullify, inverse_of: :created_by
 
   normalizes :email, with: ->(email) { email.to_s.strip.downcase }
 
@@ -57,6 +58,14 @@ class User < ApplicationRecord
 
   def active_brokerage_ids
     brokerage_memberships.active.pluck(:brokerage_id)
+  end
+
+  def active_brokerage_admin_ids
+    brokerage_memberships.active.where(role: "brokerage_admin").pluck(:brokerage_id)
+  end
+
+  def active_agent_member_brokerage_ids
+    brokerage_memberships.active.where(role: "agent").pluck(:brokerage_id)
   end
 
   def active_agent_ids

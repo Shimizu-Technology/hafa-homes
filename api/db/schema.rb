@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_06_010100) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_09_010000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -202,6 +202,33 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_06_010100) do
     t.datetime "updated_at", null: false
   end
 
+  create_table "showing_appointments", force: :cascade do |t|
+    t.bigint "agent_id"
+    t.bigint "brokerage_id"
+    t.text "consumer_notes"
+    t.datetime "created_at", null: false
+    t.bigint "created_by_id"
+    t.text "internal_notes"
+    t.bigint "lead_id", null: false
+    t.bigint "listing_id"
+    t.string "location"
+    t.datetime "scheduled_ends_at"
+    t.datetime "scheduled_starts_at"
+    t.string "status", default: "proposed", null: false
+    t.string "timezone", default: "Pacific/Guam", null: false
+    t.string "tour_type", default: "in_person", null: false
+    t.datetime "updated_at", null: false
+    t.index ["agent_id", "scheduled_starts_at"], name: "index_showing_appointments_on_agent_id_and_scheduled_starts_at"
+    t.index ["agent_id"], name: "index_showing_appointments_on_agent_id"
+    t.index ["brokerage_id", "scheduled_starts_at"], name: "idx_on_brokerage_id_scheduled_starts_at_97e717d5ce"
+    t.index ["brokerage_id"], name: "index_showing_appointments_on_brokerage_id"
+    t.index ["created_by_id"], name: "index_showing_appointments_on_created_by_id"
+    t.index ["lead_id", "created_at"], name: "index_showing_appointments_on_lead_id_and_created_at"
+    t.index ["lead_id"], name: "index_showing_appointments_on_lead_id"
+    t.index ["listing_id"], name: "index_showing_appointments_on_listing_id"
+    t.index ["status"], name: "index_showing_appointments_on_status"
+  end
+
   create_table "users", force: :cascade do |t|
     t.datetime "accepted_at"
     t.string "clerk_id", null: false
@@ -251,5 +278,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_06_010100) do
   add_foreign_key "listings", "villages"
   add_foreign_key "saved_listings", "listings"
   add_foreign_key "saved_listings", "users"
+  add_foreign_key "showing_appointments", "agents"
+  add_foreign_key "showing_appointments", "brokerages"
+  add_foreign_key "showing_appointments", "leads"
+  add_foreign_key "showing_appointments", "listings"
+  add_foreign_key "showing_appointments", "users", column: "created_by_id"
   add_foreign_key "users", "users", column: "invited_by_id"
 end
