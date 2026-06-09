@@ -11,7 +11,7 @@ module Api
       def index
         showings = staff_showing_appointment_scope
           .includes(:lead, :listing, :brokerage, :agent, :created_by)
-          .upcoming
+          .order(Arel.sql("scheduled_starts_at DESC NULLS LAST"), created_at: :desc)
           .limit(100)
 
         render json: { showing_appointments: showings.map { |showing| ShowingAppointmentSerializer.summary(showing) } }

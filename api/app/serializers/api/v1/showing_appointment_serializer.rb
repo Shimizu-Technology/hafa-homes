@@ -30,7 +30,7 @@ module Api
         def consumer(showing)
           return nil unless showing
 
-          summary(showing).except(:internal_notes, :created_by)
+          summary(showing).except(:internal_notes, :created_by, :created_by_id)
         end
 
         private

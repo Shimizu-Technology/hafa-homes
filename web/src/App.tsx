@@ -1113,6 +1113,10 @@ function ListingCard({ listing }: { listing: Listing }) {
 
 function ListingDetailPage() {
   const { id = '' } = useParams()
+  const [detailParams] = useSearchParams()
+  const fromAdmin = detailParams.get('from') === 'admin'
+  const adminLeadId = detailParams.get('lead_id')
+  const adminBackPath = adminLeadId ? `/admin/leads/${adminLeadId}` : '/admin/leads'
   const [leadOpen, setLeadOpen] = useState(false)
   const [priceTrackerOpen, setPriceTrackerOpen] = useState(false)
   const { isClerkEnabled, isSignedIn, userId } = useAuthContext()
@@ -1165,9 +1169,17 @@ function ListingDetailPage() {
           </div>
 
           <div className="hidden bg-[#0f3d35] px-5 py-5 text-white md:block"><div className="mx-auto max-w-7xl"><TopNav /></div></div>
+          {fromAdmin && (
+            <div className="border-b border-[#eadfce] bg-[#fff8ea] px-5 py-3">
+              <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 text-sm font-bold text-[#304942]">
+                <span>You are viewing this public listing from the admin CRM.</span>
+                <Link to={adminBackPath} className="inline-flex items-center gap-2 rounded-full bg-[#0f3d35] px-4 py-2 text-white"><ArrowLeft size={16} /> Back to lead</Link>
+              </div>
+            </div>
+          )}
 
           <section className="mx-auto max-w-7xl md:px-5 md:py-6">
-            <Link to="/" className="mb-6 hidden items-center gap-2 text-sm font-bold text-[#0f705e] md:inline-flex"><ArrowLeft size={16} /> Back to search</Link>
+            <Link to={fromAdmin ? adminBackPath : '/'} className="mb-6 hidden items-center gap-2 text-sm font-bold text-[#0f705e] md:inline-flex"><ArrowLeft size={16} /> {fromAdmin ? 'Back to lead' : 'Back to search'}</Link>
             <div className="grid gap-6 lg:grid-cols-[1fr_390px]">
               <div>
                 <div className="relative mx-4 mt-5 overflow-hidden rounded-[2rem] bg-[#0f3d35] shadow-xl shadow-[#0f3d35]/10 md:mx-0 md:mt-0">
@@ -2100,7 +2112,7 @@ function LeadDetailPage() {
                   <h2 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">{lead.listing.title}</h2>
                   <p className="mt-2 text-sm font-semibold text-[#66746f]">{lead.listing.village} · {currency(lead.listing.price, lead.listing.listing_kind)}</p>
                   {lead.listing.address && <p className="mt-3 text-sm leading-6 text-[#304942]">{lead.listing.address}</p>}
-                  <Link to={`/listings/${lead.listing.id}`} className="mt-5 inline-flex items-center gap-2 rounded-full bg-[#f6f1e8] px-4 py-2 text-sm font-bold text-[#304942]">View listing <ChevronRight size={16} /></Link>
+                  <Link to={`/listings/${lead.listing.id}?from=admin&lead_id=${lead.id}`} className="mt-5 inline-flex items-center gap-2 rounded-full bg-[#f6f1e8] px-4 py-2 text-sm font-bold text-[#304942]">View public listing <ChevronRight size={16} /></Link>
                 </div>
               )}
             </aside>
@@ -2574,7 +2586,14 @@ function Shell({ children, compact = false, mobileBottomPadding = true }: { chil
 }
 
 function TopNav() {
-  const { isClerkEnabled } = useAuthContext()
+  const { isClerkEnabled, isSignedIn, userId } = useAuthContext()
+  const { data: meData } = useQuery({
+    queryKey: ['me', userId, 'public-nav'],
+    queryFn: fetchMe,
+    enabled: isClerkEnabled && isSignedIn && Boolean(userId),
+    retry: false,
+  })
+  const showAdminLink = Boolean(meData?.user?.is_staff)
 
   return (
     <nav className="flex items-center justify-between">
@@ -2584,6 +2603,7 @@ function TopNav() {
         <Link to="/military">Military</Link>
         <Link to="/saved">Saved</Link>
         <Link to="/account/requests">Requests</Link>
+        {showAdminLink && <Link to="/admin" className="rounded-full bg-white/12 px-4 py-2 text-white">Admin</Link>}
         {isClerkEnabled && (
           <>
             <SignedOut>

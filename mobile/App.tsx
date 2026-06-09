@@ -1033,6 +1033,27 @@ function formatRequestDate(value?: string) {
   return new Date(value).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
 }
 
+function requestNextStep(request: ConsumerLead) {
+  if (request.latest_showing_appointment) return 'Your showing details are below. Contact the assigned agent if you need to reschedule.'
+
+  switch (request.status) {
+    case 'new':
+      return 'The brokerage has received your request and will assign follow-up soon.'
+    case 'contacted':
+      return 'An agent has started follow-up. Watch for a call, text, or email.'
+    case 'showing_scheduled':
+      return 'A showing is being coordinated. Appointment details will appear here once confirmed.'
+    case 'nurturing':
+      return 'The team is keeping this request open while you continue searching.'
+    case 'closed':
+    case 'lost':
+    case 'archived':
+      return 'This request is closed. You can submit a new request from any listing.'
+    default:
+      return 'The Hafa Homes team is reviewing this request.'
+  }
+}
+
 function RequestsSignInScreen({ clerkEnabled, onOpenAuth }: { clerkEnabled: boolean; onOpenAuth: () => void }) {
   return (
     <ScrollView contentContainerStyle={styles.listContent}>
@@ -1101,7 +1122,11 @@ function RequestHistoryCard({ request }: { request: ConsumerLead }) {
     <View style={styles.requestHistoryCard}>
       {request.listing?.primary_photo_url && <Image source={{ uri: request.listing.primary_photo_url }} style={styles.requestHistoryImage} />}
       <View style={styles.requestHistoryBody}>
-        <Text style={styles.requestHistoryStatus}>{request.consumer_status_label || request.status.replace(/_/g, ' ')}</Text>
+        <View style={styles.requestStatusCard}>
+          <Text style={styles.requestHistoryStatus}>Current status</Text>
+          <Text style={styles.requestStatusTitle}>{request.consumer_status_label || request.status.replace(/_/g, ' ')}</Text>
+          <Text style={styles.requestStatusMeta}>{requestNextStep(request)}</Text>
+        </View>
         <Text style={styles.requestHistoryTitle}>{request.listing?.title || request.lead_type.replace(/_/g, ' ')}</Text>
         <Text style={styles.requestHistoryMeta}>Submitted {formatRequestDate(request.created_at)}</Text>
         <View style={styles.showingSummaryCard}>
@@ -2099,6 +2124,9 @@ const styles = StyleSheet.create({
   requestHistoryImage: { backgroundColor: '#dbe8df', height: 170, width: '100%' },
   requestHistoryBody: { padding: 16 },
   requestHistoryStatus: { color: colors.green2, fontSize: 11, fontWeight: '900', letterSpacing: 1.6, textTransform: 'uppercase' },
+  requestStatusCard: { backgroundColor: colors.green, borderRadius: 18, marginBottom: 14, padding: 14 },
+  requestStatusTitle: { color: 'white', fontSize: 22, fontWeight: '900', letterSpacing: -0.5, marginTop: 5 },
+  requestStatusMeta: { color: 'rgba(255,255,255,0.78)', fontSize: 13, fontWeight: '700', lineHeight: 20, marginTop: 6 },
   requestHistoryTitle: { color: colors.ink, fontSize: 20, fontWeight: '900', letterSpacing: -0.4, marginTop: 5 },
   requestHistoryMeta: { color: colors.muted, fontSize: 13, fontWeight: '700', lineHeight: 20, marginTop: 4 },
   requestHistoryMessage: { color: colors.muted, fontSize: 13, fontWeight: '700', lineHeight: 20, marginTop: 12 },
