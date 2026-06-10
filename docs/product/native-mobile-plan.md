@@ -1,6 +1,6 @@
 # Native Mobile App Plan
 
-_Last updated: 2026-06-10 after PR #10 broker CRM expansion merged._
+_Last updated: 2026-06-10 after PR #11 account deletion work._
 
 ## Decision direction
 
@@ -52,7 +52,7 @@ The web app remains useful for:
 - iOS bundle ID exists: `com.shimizutechnology.hafahomes`.
 - Historical TestFlight build was created and installed on a real phone.
 - Mobile now has consumer browse/detail/map/saved/request flows plus request history.
-- Clerk auth and server-backed saved homes are implemented.
+- Clerk auth, server-backed saved homes, and self-service account deletion are implemented.
 - Mobile staff/admin mode is intentionally not the main CRM surface yet; web admin remains primary.
 
 Use `npm run typecheck` and `npm run doctor` before mobile changes are pushed.
@@ -171,6 +171,8 @@ Implemented:
 
 Still future:
 
+- proper Profile & settings screen from More.
+- editable safe consumer profile fields.
 - saved searches/alerts.
 - notification preferences.
 - public App Store auth hardening with production Apple credentials.
@@ -190,14 +192,16 @@ Recommended behavior:
 
 ## Recommended next steps
 
-1. Keep `/web` live as the demo/admin/web/SEO surface.
-2. Build domain-first broker-branded website/app configuration in the shared platform.
-3. Consider `EXPO_PUBLIC_DEFAULT_BROKERAGE_SLUG` or equivalent config for broker-branded builds; web should resolve tenants primarily by broker-owned domains.
-4. Improve map loading and zoom-aware marker behavior.
-5. Add native marker preview bottom sheet.
-6. Add saved searches/alerts after broker-branded foundation.
-7. Validate Flexmls/MLS access and display rules before app-store launch with real listing data.
-8. Complete App Store Connect metadata/screenshots/privacy answers for public release.
+1. Merge/deploy account deletion, verify `CLERK_SECRET_KEY`, and submit a replacement iOS build if App Review requires account deletion.
+2. Build a proper mobile Profile & settings screen reached from More, with edit profile, sign out, privacy links, and delete account in a danger zone.
+3. Keep `/web` live as the demo/admin/web/SEO surface.
+4. Build domain-first broker-branded website/app configuration in the shared platform.
+5. Consider `EXPO_PUBLIC_DEFAULT_BROKERAGE_SLUG` or equivalent config for broker-branded builds; web should resolve tenants primarily by broker-owned domains.
+6. Improve map loading and zoom-aware marker behavior.
+7. Add native marker preview bottom sheet.
+8. Add saved searches/alerts after broker-branded foundation.
+9. Validate Flexmls/MLS access and display rules before app-store launch with real listing data.
+10. Complete App Store Connect metadata/screenshots/privacy answers for public release.
 
 ## Open questions
 

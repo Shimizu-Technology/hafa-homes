@@ -208,9 +208,24 @@ fully sellable Real Geeks alternative
 
 ## Immediate operational next step
 
+### Merge and deploy account deletion before the next App Store build
+
+PR #11 adds self-service account deletion for Apple account-creation compliance.
+
+Recommended order:
+
+1. Merge PR #11 after review.
+2. Deploy latest Rails API.
+3. Confirm production `CLERK_SECRET_KEY` is configured on the API.
+4. Verify authenticated `DELETE /api/v1/me` with a disposable test account.
+5. Build a replacement iOS app with EAS so mobile account deletion is included.
+6. Submit the replacement build to App Store Connect if the current review has not already completed.
+
+See `docs/app-store-release.md`.
+
 ### Refresh mobile/TestFlight after deploying API
 
-Leon’s preferred next operational move is to get the latest mobile app changes into Apple review/TestFlight before starting the broker-branded build.
+Leon’s preferred operational move is to keep the App Store/TestFlight build current before starting the broker-branded build.
 
 Important dependency:
 
@@ -220,7 +235,7 @@ Recommended order:
 
 1. Deploy latest Rails API.
 2. Run production migrations.
-3. Verify production listing/saved/request endpoints.
+3. Verify production listing/saved/request/account-deletion endpoints.
 4. Verify mobile locally against production API.
 5. Build iOS with EAS.
 6. Submit latest build to App Store Connect/TestFlight.
@@ -230,7 +245,23 @@ See `docs/app-store-release.md`.
 
 ## Recommended next product priority
 
-### Next sprint: Domain-first broker-branded website/app foundation
+### Next sprint: consumer profile/settings polish, then domain-first broker-branded foundation
+
+Recommended immediate branch after PR #11:
+
+```bash
+feature/consumer-profile-settings
+```
+
+Recommended profile/settings scope:
+
+- Mobile More tab gets a clear **Profile & settings** entry instead of treating the More card as the long-term account surface.
+- Dedicated mobile settings screen with profile summary, safe editable fields, sign out, privacy links, and delete account in a danger zone.
+- Web `/account` becomes the matching settings page.
+- Add `PATCH /api/v1/me` for safe consumer profile fields only if needed.
+- Do not expose role, brokerage, agent, tenant, or internal CRM controls through consumer profile editing.
+
+After that, continue the broker-branded foundation.
 
 Recommended branch:
 
@@ -238,7 +269,7 @@ Recommended branch:
 feature/broker-branded-sites-apps
 ```
 
-Why this is next:
+Why broker branding remains the next major product priority:
 
 - Mike/John notes imply brokerages may want their own owned-domain website/app experience, not just a listing or slug inside generic Hafa Homes.
 - Broker feedback/Real Geeks research says website + app + CRM is the sellable bundle.
