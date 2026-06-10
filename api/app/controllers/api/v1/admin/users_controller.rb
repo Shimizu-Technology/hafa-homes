@@ -46,7 +46,13 @@ module Api
           brokerage_id = membership_params[:brokerage_id]
           return if brokerage_id.blank?
 
-          membership = @user.brokerage_memberships.find_or_initialize_by(brokerage_id: brokerage_id)
+          brokerage = Brokerage.find_by(id: brokerage_id)
+          unless brokerage
+            @user.errors.add(:base, "Brokerage #{brokerage_id} not found")
+            raise ActiveRecord::RecordInvalid, @user
+          end
+
+          membership = @user.brokerage_memberships.find_or_initialize_by(brokerage: brokerage)
           membership.role = membership_params[:role] if membership_params[:role].present?
           membership.status = membership_params[:status] if membership_params[:status].present?
           membership

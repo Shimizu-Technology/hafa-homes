@@ -2028,7 +2028,7 @@ function AdminDashboardPage() {
         {isError && <StateCard tone="error">Unable to load dashboard.</StateCard>}
         {metrics && (
           <>
-            <div className="grid gap-3 md:grid-cols-5">
+            <div className="grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-5">
               <AdminMetric label="Open leads" value={metrics.total_open_leads} tone="dark" />
               <AdminMetric label="New" value={metrics.new_leads} />
               <AdminMetric label="Unassigned" value={metrics.unassigned_leads} />
@@ -2058,7 +2058,7 @@ function AdminDashboardPage() {
 
 function AdminMetric({ label, value, tone = 'light' }: { label: string; value: number; tone?: 'light' | 'dark' | 'warn' }) {
   const classes = tone === 'dark' ? 'bg-[#0f3d35] text-white' : tone === 'warn' ? 'bg-[#fff5d9] text-[#6b4508]' : 'bg-white text-[#17211f]'
-  return <div className={`rounded-[1.5rem] p-4 shadow-sm sm:p-5 ${classes}`}><p className="text-xs font-bold uppercase tracking-[0.18em] opacity-60">{label}</p><p className="mt-3 text-3xl font-semibold tracking-[-0.06em] sm:text-4xl">{value}</p></div>
+  return <div className={`rounded-[1.25rem] p-3 shadow-sm sm:rounded-[1.5rem] sm:p-5 ${classes}`}><p className="text-[10px] font-bold uppercase tracking-[0.14em] opacity-60 sm:text-xs sm:tracking-[0.18em]">{label}</p><p className="mt-2 text-2xl font-semibold tracking-[-0.06em] sm:mt-3 sm:text-4xl">{value}</p></div>
 }
 
 function AdminPanel({ title, children }: { title: string; children: React.ReactNode }) {
@@ -2354,10 +2354,17 @@ function notificationErrorMessage(message?: string) {
 function LeadNotificationPanel({ lead, mutation }: { lead: Lead; mutation: NotificationMutation }) {
   const deliveries = lead.notification_deliveries ?? []
   const [sendMode, setSendMode] = useState<'consumer_email' | 'consumer_sms' | 'agent_email'>('consumer_email')
+  const [visibleDeliveryCount, setVisibleDeliveryCount] = useState(3)
   const hasCustomerPhone = Boolean(lead.phone)
   const hasAgentEmail = Boolean(lead.assigned_agent?.email)
   const isEmail = sendMode !== 'consumer_sms'
   const selectedModeUnavailable = sendMode === 'consumer_sms' ? !hasCustomerPhone : sendMode === 'agent_email' ? !hasAgentEmail : false
+  const visibleDeliveries = deliveries.slice(0, visibleDeliveryCount)
+  const hiddenDeliveryCount = Math.max(deliveries.length - visibleDeliveryCount, 0)
+
+  useEffect(() => {
+    setVisibleDeliveryCount(3)
+  }, [lead.id])
 
   function defaultSubject() {
     if (sendMode === 'agent_email') return `Update on ${lead.name}`
@@ -2423,10 +2430,13 @@ function LeadNotificationPanel({ lead, mutation }: { lead: Lead; mutation: Notif
         </button>
       </form>
       <div className="mt-5 border-t border-[#edf0ec] pt-4">
-        <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#7b8a84]">Recent sends</p>
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#7b8a84]">Recent sends</p>
+          {deliveries.length > 0 && <span className="rounded-full bg-[#f6f1e8] px-2.5 py-1 text-[11px] font-bold text-[#66746f]">{deliveries.length}</span>}
+        </div>
         <div className="mt-3 grid gap-2">
-          {deliveries.map((delivery) => (
-            <div key={delivery.id} className="rounded-2xl bg-[#f6f1e8] p-3 text-sm">
+          {visibleDeliveries.map((delivery) => (
+            <div key={delivery.id} className="rounded-[1.25rem] bg-[#f6f1e8] p-3 text-sm">
               <div className="flex items-center justify-between gap-3">
                 <p className="font-bold capitalize text-[#304942]">{delivery.channel} to {delivery.recipient_role}</p>
                 <span className={`rounded-full bg-white px-2 py-1 text-xs font-bold ${notificationStatusClass(delivery.status)}`}>{notificationStatusLabel(delivery.status)}</span>
@@ -2439,6 +2449,20 @@ function LeadNotificationPanel({ lead, mutation }: { lead: Lead; mutation: Notif
           ))}
           {deliveries.length === 0 && <p className="rounded-2xl bg-[#f6f1e8] p-3 text-sm font-semibold text-[#66746f]">No notifications queued yet.</p>}
         </div>
+        {deliveries.length > 3 && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {hiddenDeliveryCount > 0 && (
+              <button type="button" onClick={() => setVisibleDeliveryCount((count) => Math.min(count + 3, deliveries.length))} className="min-h-9 rounded-full border border-[#dce5df] px-3 text-xs font-bold text-[#0f3d35]">
+                Show {Math.min(3, hiddenDeliveryCount)} more
+              </button>
+            )}
+            {visibleDeliveryCount > 3 && (
+              <button type="button" onClick={() => setVisibleDeliveryCount(3)} className="min-h-9 rounded-full px-3 text-xs font-bold text-[#66746f] hover:bg-[#f6f1e8]">
+                Show latest only
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )
@@ -2579,6 +2603,11 @@ function AdminUsersPage() {
   const staffUsers = users.filter((user) => user.role !== 'consumer')
   const consumerUsers = users.filter((user) => user.role === 'consumer')
   const visibleUsers = filter === 'staff' ? staffUsers : filter === 'consumers' ? consumerUsers : users
+  const filterTabs = [
+    { value: 'staff', label: 'Admins & agents', count: staffUsers.length },
+    { value: 'consumers', label: 'Consumers', count: consumerUsers.length },
+    { value: 'all', label: 'All users', count: users.length },
+  ] as const
 
   return (
     <AdminShell kicker="Users" title="Team access">
@@ -2586,21 +2615,20 @@ function AdminUsersPage() {
         {isLoading && <StateCard>Loading users...</StateCard>}
         {isError && <StateCard tone="error">Unable to load users. Platform admin access is required.</StateCard>}
         {mutation.isError && <StateCard tone="error">{displayErrorMessage(mutation.error, 'Unable to update user.')}</StateCard>}
-        <div className="mb-5 flex flex-wrap items-center gap-2 rounded-[1.5rem] bg-white p-2 shadow-sm">
-          {([
-            ['staff', `Admins & agents (${staffUsers.length})`],
-            ['consumers', `Consumers (${consumerUsers.length})`],
-            ['all', `All users (${users.length})`],
-          ] as const).map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => setFilter(value)}
-              className={`min-h-11 flex-1 rounded-full px-4 text-sm font-bold transition sm:flex-none ${filter === value ? 'bg-[#0f3d35] text-white' : 'text-[#53645f] hover:bg-[#f6f1e8] hover:text-[#0f3d35]'}`}
-            >
-              {label}
-            </button>
-          ))}
+        <div className="mb-5 overflow-x-auto rounded-[1.25rem] bg-white p-1.5 shadow-sm sm:rounded-[1.5rem] sm:p-2">
+          <div className="flex min-w-max items-center gap-1.5 sm:min-w-0 sm:flex-wrap sm:gap-2">
+            {filterTabs.map((tab) => (
+              <button
+                key={tab.value}
+                type="button"
+                onClick={() => setFilter(tab.value)}
+                className={`inline-flex min-h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-full px-3 text-xs font-bold transition sm:min-h-11 sm:px-4 sm:text-sm ${filter === tab.value ? 'bg-[#0f3d35] text-white' : 'text-[#53645f] hover:bg-[#f6f1e8] hover:text-[#0f3d35]'}`}
+              >
+                <span>{tab.label}</span>
+                <span className={`rounded-full px-2 py-0.5 text-[10px] sm:text-xs ${filter === tab.value ? 'bg-white/15 text-white' : 'bg-[#f6f1e8] text-[#66746f]'}`}>{tab.count}</span>
+              </button>
+            ))}
+          </div>
         </div>
         <div className="grid gap-4">
           {visibleUsers.map((user) => (

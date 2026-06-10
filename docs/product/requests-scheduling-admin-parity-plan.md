@@ -82,7 +82,7 @@ Routes:
 
 Dashboard metrics include open leads, new leads, unassigned leads, upcoming showings, and stale follow-ups.
 
-Lead detail lets staff edit customer/request fields after a call, including name, email, phone, preferred contact method, request type, tour type, preferred date/time, target price, and message. Admin layouts are tuned for both desktop and mobile web, including the lead detail editor, notification panel, routing panel, lists, and user-management forms.
+Lead detail lets staff edit customer/request fields after a call, including name, email, phone, preferred contact method, request type, tour type, preferred date/time, target price, and message. Admin layouts are tuned for both desktop and mobile web, including compact mobile dashboard metrics, cleaner user filter chips, the lead detail editor, notification panel, routing panel, lists, and user-management forms. Notification history shows the latest sends first and can expand older rows on demand instead of flooding the mobile page.
 
 ### User and role management
 
