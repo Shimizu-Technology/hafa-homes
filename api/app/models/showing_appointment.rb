@@ -1,5 +1,5 @@
 class ShowingAppointment < ApplicationRecord
-  attr_accessor :skip_agent_inference
+  attr_accessor :skip_agent_inference, :activity_actor
 
   STATUSES = %w[proposed confirmed completed cancelled no_show].freeze
   TOUR_TYPES = %w[in_person virtual].freeze
@@ -82,7 +82,7 @@ class ShowingAppointment < ApplicationRecord
     LeadActivity.record!(
       lead: lead,
       action: "showing_updated",
-      actor: created_by,
+      actor: activity_actor || created_by,
       subject: self,
       summary: previous_changes.key?("id") ? "Showing appointment created" : "Showing appointment updated",
       metadata: {

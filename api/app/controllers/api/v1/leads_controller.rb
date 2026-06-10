@@ -45,7 +45,7 @@ module Api
         return if apply_lead_update_params == false
 
         if @lead.save
-          record_lead_update_activity(permitted)
+          record_lead_update_activity
           render json: {
             lead: LeadSerializer.detail(@lead),
             assignable_agents: assignable_agents_for(@lead).map(&:as_api_json)
@@ -126,7 +126,7 @@ module Api
         end
       end
 
-      def record_lead_update_activity(_permitted)
+      def record_lead_update_activity
         trackable_fields = %w[
           status assigned_agent_id quality_status lead_type name email phone preferred_contact_method
           preferred_time preferred_tour_date tour_type target_price message source_campaign source_url

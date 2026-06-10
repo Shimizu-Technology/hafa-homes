@@ -17,7 +17,7 @@ class LeadActivity < ApplicationRecord
   belongs_to :actor, class_name: "User", optional: true
   belongs_to :subject, polymorphic: true, optional: true
 
-  validates :action, presence: true
+  validates :action, presence: true, inclusion: { in: ACTIONS }
   validates :occurred_at, presence: true
 
   before_validation :set_defaults
