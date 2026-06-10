@@ -1,6 +1,6 @@
 # Consumer Account, Saves, and Inquiry Plan
 
-_Last updated: 2026-06-01._
+_Last updated: 2026-06-10 after request history and CRM merges._
 
 ## Product principle
 
@@ -69,7 +69,7 @@ After a signed-out request succeeds, the app can offer a soft CTA to create an a
 
 ## Phase 2 — consumer inquiry history
 
-Implemented on `feature/requests-scheduling-admin-parity` after PR #8.
+Implemented in PR #9 and merged to `main`.
 
 UX:
 
@@ -90,11 +90,11 @@ Do not block showing requests behind account creation unless abuse/spam becomes 
 
 ## Phase 3 — account-powered search loop
 
-After broker demo essentials:
+After broker-branded and demo essentials:
 
 - saved searches
 - listing alerts
 - inquiry status notifications
 - server-backed recent views
 - account-based recommendations
-- brokerage/agent assignment visibility
+- richer brokerage/agent visibility on broker-branded surfaces

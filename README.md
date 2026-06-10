@@ -2,7 +2,7 @@
 
 **Hafa Homes** is a proposed Guam-first housing and real estate platform inspired by the Hawaii-focused Locations LLC app.
 
-The goal is to build a polished, mobile-first experience for finding homes, rentals, neighborhoods, and real estate guidance on Guam — with local filters and workflows that national housing apps do not handle well.
+The goal is to build a polished, mobile-first experience for finding homes, rentals, neighborhoods, and real estate guidance on Guam — with local filters and workflows that national housing apps do not handle well. The product has evolved into a broker-first platform direction: Hafa Homes is the reference app, while the shared backend/web/mobile codebases can power broker-owned-domain websites, broker-branded app experiences, lead CRM, and future property-management workflows.
 
 ## Working tagline
 
@@ -10,14 +10,14 @@ The goal is to build a polished, mobile-first experience for finding homes, rent
 
 ## Project status
 
-This repository contains the MVP/demo foundation:
+This repository contains the current broker-platform demo foundation:
 
-- `/api` — Rails API with Postgres-backed seed data and initial listing/search endpoints
-- `/web` — React/Vite/TypeScript PWA shell with Tailwind and app-like mobile UI
-- `/mobile` — Expo/React Native iOS/Android app shell for the consumer mobile experience
-- `/docs` — product, research, MLS, and architecture documentation
+- `/api` — Rails API with Postgres-backed seed data, listing/search endpoints, Clerk auth integration, broker/agent tenancy, showing appointments, notification delivery logs, and CRM records.
+- `/web` — React/Vite/TypeScript PWA and admin CRM with Tailwind, public listing/search surfaces, request history, scheduling/admin pages, and broker lead detail CRM workspace.
+- `/mobile` — Expo/React Native iOS/Android app for the consumer mobile experience.
+- `/docs` — product, research, MLS, architecture, broker platform, CRM, and white-label brokerage documentation.
 
-The first implementation target was a mobile-first PWA. Current direction is to keep the PWA for demo/admin/web/SEO while building a dedicated Expo native app as the broker/agent sales differentiator.
+The first implementation target was a mobile-first PWA. Current direction is to keep the PWA for demo/admin/web/SEO, keep improving the Expo native app, and add a domain-first broker-branded website/app layer from shared codebases.
 
 ## Why this exists
 
@@ -81,6 +81,8 @@ The web app uses `VITE_API_URL`; the mobile app uses `EXPO_PUBLIC_API_URL`. Both
 - [Brokerage Platform Plan](docs/product/brokerage-platform-plan.md)
 - [White-Label Brokerage Platform Plan](docs/product/white-label-brokerage-platform-plan.md)
 - [Broker Platform Implementation Plan](docs/product/broker-platform-implementation-plan.md)
+- [Broker CRM Expansion Plan](docs/product/broker-crm-expansion-plan.md)
+- [Broker-Branded Website/App Layer Plan](docs/product/broker-branded-layer-plan.md)
 - [August 1 Demo Plan](docs/product/august-1-demo-plan.md)
 - [Auth and Roles Plan](docs/product/auth-roles-plan.md)
 - [Consumer Account Plan](docs/product/consumer-account-plan.md)

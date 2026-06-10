@@ -1,12 +1,12 @@
 # Broker CRM Expansion Plan
 
-_Last updated: 2026-06-10._
+_Last updated: 2026-06-10 after PR #10 merged._
 
 ## Purpose
 
 This phase deepens the broker/admin CRM after the broker platform and request/showing foundations. The goal is to make Hafa Homes feel like a real lead-follow-up workspace for brokers and agents, not only a lead list.
 
-## Implemented in `feature/broker-crm-expansion`
+## Implemented in PR #10 (`feature/broker-crm-expansion`)
 
 ### CRM records
 
@@ -39,11 +39,15 @@ This gives broker admins and agents a chronological audit trail of what happened
 
 Added scoped staff endpoints:
 
+- `GET /api/v1/leads/:lead_id/notes`
 - `POST /api/v1/leads/:lead_id/notes`
+- `PATCH /api/v1/lead_notes/:id`
+- `GET /api/v1/leads/:lead_id/tasks`
 - `POST /api/v1/leads/:lead_id/tasks`
 - `PATCH /api/v1/lead_tasks/:id`
+- `GET /api/v1/leads/:lead_id/activities`
 
-All endpoints use existing `StaffLeadScoping`, so platform admins, brokerage admins, and agents only operate on leads/tasks they are allowed to access.
+All endpoints use existing `StaffLeadScoping`, so platform admins, brokerage admins, and agents only operate on leads/CRM records they are allowed to access.
 
 ### Admin web UX
 
@@ -70,7 +74,7 @@ The layout is tuned for both desktop and mobile admin use.
 - Saved-search/listing activity scoring.
 - Calendar integration.
 - CRM search/filtering by task due date, overdue status, lead quality, and archived records.
-- Dedicated full-history drawers/tables backed by the paginated notes/tasks/activity endpoints.
+- Dedicated full-history drawers/tables or pages backed by the paginated notes/tasks/activity endpoints.
 - CSV export.
 - Automated speed-to-lead reminders.
 - Agent performance reporting.

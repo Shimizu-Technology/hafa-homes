@@ -1,6 +1,6 @@
 # Hafa Homes Auth and Roles Plan
 
-_Last updated: 2026-06-01._
+_Last updated: 2026-06-10 after broker platform, scheduling, and CRM merges._
 
 ## Decision
 
@@ -9,8 +9,8 @@ Use Clerk for authentication across web and native mobile, with Rails as the sou
 ## Roles
 
 - `platform_admin` — Hafa Homes/Shimizu Technology operator with full platform access.
-- `brokerage_admin` — future brokerage admin role, scoped to one brokerage once brokerage modeling exists.
-- `agent` — future agent/realtor role, scoped to assigned listings/leads once brokerage modeling exists.
+- `brokerage_admin` — brokerage admin role, scoped through active brokerage memberships.
+- `agent` — agent/realtor role, scoped to assigned/scoped leads through linked agent profiles.
 - `consumer` — public buyer/renter account.
 
 Default admin bootstrap email:
@@ -43,12 +43,26 @@ When `PLATFORM_ADMIN_EMAIL` is set to that address, that Clerk user is assigned 
 
 ### Current protected endpoints
 
-- `GET /api/v1/me`
-- `GET /api/v1/leads`
-- `GET /api/v1/data_sync_runs`
-- `GET /api/v1/admin/users`
+Consumer/account:
 
-Listing search, listing detail, villages, lead creation, and privacy remain public.
+- `GET /api/v1/me`
+- `GET /api/v1/me/saved_listings`
+- `GET /api/v1/me/leads`
+
+Staff/admin:
+
+- `GET /api/v1/leads`
+- `GET /api/v1/leads/:id`
+- `PATCH /api/v1/leads/:id`
+- showing appointment staff endpoints
+- lead notes/tasks/activity staff endpoints
+- `GET /api/v1/data_sync_runs`
+- `GET /api/v1/admin/dashboard`
+- `GET /api/v1/admin/users`
+- `GET /api/v1/admin/brokerages`
+- `GET /api/v1/admin/agents`
+
+Listing search, listing detail, villages, public lead creation, and privacy remain public.
 
 ## Environment variables
 
@@ -78,19 +92,28 @@ EXPO_PUBLIC_CLERK_JWT_TEMPLATE=optional-template-name
 
 ## Implementation sequence
 
+Completed:
+
 1. Auth/roles foundation.
 2. Server-backed saved listings and signed-in lead association.
 3. Brokerage and agent models.
 4. Lead routing by brokerage/agent.
 5. Broker/admin lead inbox.
 6. Consumer inquiry history.
-7. Property-management preview.
+7. Showing scheduling.
+8. CRM notes/tasks/activity.
+
+Still future:
+
+1. Domain-first broker-branded public website/app layer.
+2. Lead quality/verification/automation.
+3. Property-management preview.
 
 ## Notes
 
 - Keep consumer browsing public to reduce friction.
 - Do not rely only on Clerk metadata for authorization; use Rails roles.
-- Future brokerage roles should be scoped by brokerage ID once brokerages exist.
+- Brokerage roles are scoped by active brokerage membership and linked agent profiles.
 - Saved homes require auth because they are user-owned and server-backed.
 - Showing requests stay public for lead conversion, but attach `user_id` when submitted by a signed-in user.
 - Add Sign in with Apple before enabling Apple/Google social auth in the public iOS app.

@@ -1,10 +1,10 @@
 # Hafa Homes Brokerage Platform Plan
 
-_Last updated: 2026-06-05 after broker feedback / Real Geeks research._
+_Last updated: 2026-06-10 after PR #10 broker CRM expansion merged._
 
 ## Positioning
 
-Hafa Homes is now being built toward a broker-first Guam real estate software platform. Hafa Homes itself is the demo/reference product; the larger platform should support broker-branded websites, broker-branded apps, lead CRM, and future property-management workflows.
+Hafa Homes is now being built toward a broker-first Guam real estate software platform. Hafa Homes itself is the demo/reference product; the larger platform should support broker-owned-domain websites, broker-branded apps, lead CRM, and future property-management workflows.
 
 Consumer-facing promise:
 
@@ -33,7 +33,7 @@ Why:
 ### Tier 1 — Brokerage Website/App / Search
 
 - Branded brokerage presence.
-- Broker-branded website/search surface.
+- Broker-owned-domain website/search surface.
 - Optional broker-branded mobile app from shared Expo codebase.
 - Listing search/filter/map.
 - Listing detail pages.
@@ -67,9 +67,27 @@ Everything in Tier 2, plus:
 - Manager/tenant messaging.
 - Maintenance requests later.
 
+## Current build status
+
+Completed platform foundations now include:
+
+- auth and role model;
+- brokerage/agent/membership tenancy;
+- listing and lead brokerage/agent attribution;
+- staff lead inbox/detail with tenant scoping;
+- showing appointments and request history;
+- safe notification delivery logging/foundation;
+- CRM notes, tasks, activity timeline, source/campaign fields, and edit/archive controls.
+
+The product can now credibly demo a broker lead workflow, not only a consumer listing browser.
+
+Next gap:
+
+> Domain-first broker-branded public website/app layer so each brokerage can see how Hafa Homes could power its existing or future customer-facing domain/app experience.
+
 ## Product architecture implications
 
-Build platform foundations now:
+Continue building platform foundations:
 
 - `Brokerage`
 - `Agent`
@@ -83,14 +101,14 @@ Build platform foundations now:
 
 ## Near-term product priorities
 
-1. Brokerage and agent data model.
-2. Listing association with brokerage/agent.
-3. Lead routing / broker lead inbox.
-4. Auth and roles.
-5. Server-backed saved listings.
-6. Broker demo dashboard.
+1. Domain-first broker-branded website/app foundation.
+2. Brokerage-scoped public search/listing pages.
+3. Agent roster/profile pages.
+4. Brokerage-routed lead forms.
+5. Lead quality and CRM automation follow-up.
+6. MLS/Flexmls/GAR discovery and adapter planning.
 7. Property-management preview surface.
-8. Current TestFlight/App Store polish.
+8. Production demo hardening and TestFlight refresh when ready.
 
 ## August 1 target
 
@@ -103,7 +121,8 @@ By then, Hafa Homes should be able to show:
 - request showing/contact flow
 - broker/agent identity
 - lead capture/routing story
-- web/admin broker dashboard concept
+- web/admin broker dashboard and CRM workflow
+- broker-owned-domain website/app concept
 - property-management premium-tier concept
 - clear pricing/packages/proposal
 

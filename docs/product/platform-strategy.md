@@ -1,6 +1,6 @@
 # Hafa Homes Platform Strategy
 
-_Last updated: 2026-06-05 after broker feedback / Real Geeks research._
+_Last updated: 2026-06-10 after PR #10 broker CRM expansion merged._
 
 ## Current direction
 
@@ -15,6 +15,34 @@ Brokerages can subscribe to Hafa Homes-powered software, authorize or connect th
 The 2026-06-05 broker feedback shifted the architecture from “one Hafa Homes app that every broker subscribes into” toward a **white-label-capable brokerage platform**. Hafa Homes remains the demo and possible public marketplace layer, but individual brokerages may want their own branded site/app powered by the same backend and codebases.
 
 This is closer to a Guam-first Real Geeks alternative — brokerage website + brokerage app + lead CRM + property-management portal — than a one-off website for a single brokerage.
+
+## Current implementation status
+
+As of PR #10, the platform foundation now includes:
+
+- Clerk auth and Rails-owned product roles.
+- broker/agent tenancy with `Brokerage`, `Agent`, and `BrokerageMembership`.
+- listing/lead brokerage and agent attribution.
+- tenant-scoped staff lead access.
+- consumer saved homes and request history.
+- public showing request capture.
+- staff showing scheduling.
+- safe notification logging/foundation through Resend and ClickSend gates.
+- broker/admin CRM primitives: notes, tasks, activity timeline, source/campaign tracking, edit/archive controls, and paginated history endpoints.
+
+Current product maturity:
+
+```text
+credible broker-platform demo
+```
+
+Still missing before a full Real Geeks-style sales claim:
+
+- domain-first broker-branded public website/app layer;
+- real MLS/Flexmls authorization and sync;
+- lead verification/scoring/automation;
+- property-management preview;
+- production deployment/demo hardening.
 
 ## Why this is valuable
 
@@ -143,20 +171,17 @@ Build toward a broker-first platform while keeping the existing consumer demo po
 
 Next major product capabilities:
 
-1. Brokerage and agent data model
-2. Listing ownership/attribution by brokerage and optionally agent
-3. Lead routing by listing/agent/brokerage
-4. Brokerage/agent admin dashboard and lead inbox
-5. Authentication/accounts for consumers, agents, brokerages, and admins
-6. Server-backed saved listings, saved searches, and alert preferences
-7. MLS/Flexmls sync adapter skeleton once a broker authorizes access
-8. Property-management / tenant portal preview for premium package
-9. Neighborhood intelligence on listing detail pages
-10. Mortgage calculator and affordability guide
-11. Native app TestFlight/App Store release process
-12. Map search polish: loading states, marker clustering/counts, and zoom-gated price pins
-13. White-label brokerage website/app configuration
-14. CRM/lead activity foundation
+1. Domain-first broker-branded website/app configuration and public pages.
+2. `BrokerageDomain` host-based tenant resolution with slug preview fallback.
+3. Brokerage-scoped listing/search surfaces.
+4. Agent roster/profile pages.
+5. Lead forms routed from broker-branded surfaces to the correct brokerage.
+6. Lead quality follow-up: duplicate detection, verification badges, saved-search/listing activity scoring, speed-to-lead reminders.
+7. MLS/Flexmls sync adapter skeleton once a broker authorizes access.
+8. Property-management / tenant portal preview for premium package.
+9. Production deployment/demo hardening.
+10. Native broker-branded app build profiles and App Store strategy.
+11. Map/search polish and SEO-oriented public content pages.
 
 ## Meeting source
 

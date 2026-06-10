@@ -1,6 +1,6 @@
 # Hafa Homes August 1 Demo Plan
 
-_Last updated: 2026-06-05 after broker feedback / Real Geeks research._
+_Last updated: 2026-06-10 after PR #10 broker CRM expansion merged._
 
 ## Goal
 
@@ -14,89 +14,68 @@ This does **not** require full MLS sync, payment processing, chat, or full tenan
 
 ## Current milestone
 
-- iOS app submitted to App Review for public App Store release.
-- TestFlight is already working.
-- Current app supports search, map, listing detail, saved homes, showing requests, mortgage calculator, and Local Intel.
-- Product strategy has shifted broker-first after the SSI Automation meeting with Mike Sakazaki and John Ilao.
-- 2026-06-05 broker feedback added Real Geeks as the key competitive reference and pushed the plan toward broker-branded websites/apps plus CRM.
+Already built/merged:
 
-## Strategic priorities
+- Expo mobile app foundation and historical TestFlight build.
+- Web/PWA public listing/search surfaces.
+- Clerk auth and roles.
+- Server-backed saved homes.
+- Broker/agent tenancy and staff scoping.
+- Broker/admin lead inbox/detail.
+- Consumer request history.
+- Showing appointments and admin scheduling.
+- Safe notification delivery foundation.
+- CRM workspace with notes, tasks, activity timeline, edit/archive controls, source/campaign tracking, and responsive admin UI.
 
-### 1. Auth and roles foundation
+Current maturity:
 
-Start here if scoped as platform infrastructure, not just consumer login.
+```text
+credible broker-platform demo
+```
 
-Roles needed:
+Still needed for a stronger August broker pitch:
 
-- platform admin
-- brokerage admin
-- agent
-- consumer
+- latest API/mobile deployment and Apple/TestFlight refresh;
+- domain-first broker-branded website/app foundation;
+- property-management preview;
+- production deploy/demo hardening;
+- package/pricing/proposal materials;
+- MLS/Flexmls/GAR discovery answers.
 
-Minimum viable auth scope:
+## Strategic priorities from here
 
-- User model.
-- Secure password or magic-link sign-in.
-- API token/session handling for mobile and web.
-- Role field or role assignments.
-- Current-user endpoint.
-- Web admin route protection.
-- Mobile token storage with Expo SecureStore.
+### 1. Domain-first broker-branded website/app story
 
-Why this can come first:
+This is the next product priority.
 
-- Broker/admin lead inbox requires restricted access.
-- Brokerage admins should only see their own data.
-- Agents need future lead/listing access.
-- Consumer saved listings eventually need accounts.
-
-Important constraint:
-
-> Do not overbuild consumer auth first. Build auth/roles as the foundation for brokerage/admin workflows.
-
-### 2. Brokerage and agent platform model
+Show that Hafa Homes is not only one consumer app. It is the demo/reference implementation for broker-owned domains, broker-specific websites, and broker-branded app builds.
 
 Add:
 
-- Brokerage model.
-- Agent model.
-- Listings belong to brokerage and optionally agent.
-- Leads route to brokerage and optionally agent.
-- Seed demo brokerages/agents.
-- API returns brokerage/agent data.
-- Mobile listing detail shows broker/agent context better.
-
-### 3. Broker-branded website/app story
-
-Show that Hafa Homes is not only one consumer app. It is the demo/reference implementation for broker-specific websites and broker-branded app builds.
-
-Add:
-
-- Brokerage branding/config concept.
+- `BrokerageDomain` and host-based tenant resolution.
+- Brokerage branding/config.
+- Brokerage public homepage/profile on owned domains.
+- Brokerage-scoped search/listings.
+- Agent roster/profile pages.
 - Broker domain/app deployment story.
 - Website takeover pitch: homepage, search, listings, agent pages, lead forms.
 - Shared backend/codebase explanation so Mike/John can explain why this is scalable.
 
-### 4. Broker/admin lead inbox
+See `docs/product/broker-branded-layer-plan.md`.
 
-Add:
+### 2. Production demo hardening
 
-- Web/admin lead inbox.
-- Lead statuses: new, contacted, showing scheduled, closed, archived/spam.
-- Lead detail view.
-- Listing, brokerage, agent, contact method, and message shown clearly.
-- Basic assignment/routing.
+Before serious broker demos, verify latest merged features in production:
 
-### 5. Server-backed saved listings
+- deploy latest API;
+- run production migrations;
+- verify background jobs;
+- deploy latest web;
+- verify notification gates/config;
+- refresh TestFlight/mobile config if needed;
+- set up demo users/data.
 
-Add after auth foundation:
-
-- Saved listings table.
-- API endpoints.
-- Mobile save sync when logged in.
-- Keep anonymous local saves as fallback.
-
-### 6. Property-management preview
+### 3. Property-management preview
 
 For August, build a premium-tier demo surface only:
 
@@ -109,7 +88,7 @@ For August, build a premium-tier demo surface only:
 
 Do not build full payments or maintenance workflows yet.
 
-### 7. Broker pitch and package docs
+### 4. Broker pitch and package docs
 
 Mike and John need:
 
@@ -120,9 +99,9 @@ Mike and John need:
 - MLS/Flexmls FAQ.
 - Broker demo script.
 - Real Geeks competitive positioning.
-- White-label brokerage website/app plan.
+- White-label brokerage website/app explanation.
 
-### 8. MLS/Flexmls discovery
+### 5. MLS/Flexmls discovery
 
 By August 1, the team should know or have a credible answer for:
 
@@ -133,76 +112,63 @@ By August 1, the team should know or have a credible answer for:
 - What refresh cadence is required?
 - Can leads route to listing agent, selected agent, or broker?
 
-### 9. Android setup
+### 6. Lead quality / CRM automation follow-up
 
-Secondary to broker platform work, but useful by August:
+After broker branding, improve the Real Geeks comparison:
 
-- Google Play Developer account.
-- Android package/app signing.
-- Internal testing track.
-- Public listing once iOS flow is stable.
+- duplicate lead detection;
+- verified email/phone badges;
+- saved-search/listing activity scoring;
+- speed-to-lead reminders;
+- CSV export;
+- agent follow-up reporting.
 
-## Suggested timeline
+## Suggested updated timeline
 
-### June 1–7
+### June 10–June 21
 
-- Monitor App Review.
-- Share App Store link when approved.
-- Start auth/roles foundation branch.
-- Decide auth approach.
-- Add User model and basic sessions/token flow.
-
-### June 8–21
-
-- Add brokerage/agent models.
-- Add listing attribution.
-- Add lead routing fields.
-- Seed demo brokerages/agents.
-- Protect web admin routes.
+- Deploy latest API/migrations for mobile dependencies.
+- Build and submit latest iOS/TestFlight build.
+- Then build domain-first broker-branded website/app foundation.
+- Update demo data/branding.
+- Continue broker/MLS discovery.
+- Draft package/pricing outline.
 
 ### June 22–July 5
 
-- Build broker/admin lead inbox.
-- Add lead statuses.
-- Add current-user/role-aware UI.
-- Add server-backed saved listings if auth is stable.
+- Add lead quality quick wins if time allows.
+- Build property-management preview surface.
+- Prepare broker demo script.
+- Continue Carl/Clare/Bawar conversations.
 
-### July 6–19
+### July 6–July 19
 
-- Build property-management preview.
-- Polish mobile broker/agent listing detail surfaces.
-- Draft broker pitch, package tiers, and pricing docs.
-- Continue MLS/Flexmls discovery.
+- Production deploy/hardening.
+- Refresh TestFlight/mobile demo if needed.
+- Finalize package/pricing docs.
+- Prepare first broker pilot proposal.
 
 ### July 20–August 1
 
 - Polish and bug fix.
-- Submit App Store update if needed.
-- Prepare Android internal test if time allows.
 - Rehearse broker demo.
-- Finalize first broker discovery targets.
+- Decide first 3–5 broker discovery/pilot targets.
+- Demo with Mike/John and then trusted broker contacts.
 
 ## Recommended next branch
 
-Auth/roles are merged. The next recommended branch is:
-
 ```bash
-feature/broker-platform-foundation
+feature/broker-branded-sites-apps
 ```
-
-This combines brokerage tenancy with a thin first broker lead inbox/detail workflow.
 
 ## Definition of done for August 1
 
-- Public iOS App Store listing is live or approved.
-- Mobile app demo feels polished.
-- Auth/roles exist.
-- Broker/admin can access protected web dashboard.
-- Brokerages/agents are modeled in data.
-- Listings and leads show brokerage/agent attribution.
-- Broker lead inbox exists.
-- Broker-branded website/app strategy is documented and demoable.
+- Public demo feels polished on web/mobile.
+- Domain-first broker-branded website/app story is demoable.
+- Broker/admin CRM workflow is demoable end-to-end.
+- Showing request/scheduling flow is demoable end-to-end.
 - Property-management premium tier can be demonstrated as a preview.
 - Pitch/pricing/package docs are ready for Mike and John.
 - Real Geeks competitive positioning is documented.
 - MLS/Flexmls access path is at least understood enough for broker conversations.
+- Production deployment and demo data are stable enough for live broker meetings.

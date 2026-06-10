@@ -107,13 +107,29 @@ Possible revenue streams:
 6. Mortgage/prequalification referrals
 7. Property management/rental tools
 
-## MVP goal
+## Current product status
 
-Create a polished demo that Mike and the potential investor can open on mobile and understand immediately.
+As of PR #10, Hafa Homes has moved beyond the initial MVP/demo foundation. It now includes:
+
+- public web/PWA and Expo mobile consumer surfaces
+- Clerk auth and server-backed saved homes
+- broker/agent tenancy
+- staff/admin lead inbox and tenant scoping
+- showing appointments and consumer request history
+- safe notification logging/foundation
+- broker CRM notes, tasks, and activity timeline
+
+The next major gap is the broker-branded website/app layer, proving that the same platform can power each brokerage’s customer-facing experience.
+
+## MVP / demo goal
+
+Create a polished demo that Mike, John, and trusted broker contacts can open and understand immediately.
 
 The demo should prove:
 
-- The app can feel like a Guam version of Locations LLC
-- The search experience can be better than existing Guam sites
-- The platform can support MLS-integrated listings later
-- The local angle is the value, not just the listing feed
+- The app can feel like a Guam version of Locations LLC.
+- The search experience can be better than existing Guam sites.
+- The broker CRM can manage real lead follow-up.
+- The same platform can support broker-branded sites/apps.
+- The platform can support MLS-integrated listings later after authorization.
+- The local angle is the value, not just the listing feed.

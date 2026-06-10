@@ -1,6 +1,6 @@
 # Hafa Homes White-Label Brokerage Platform Plan
 
-_Last updated: 2026-06-05 after broker feedback / Real Geeks research._
+_Last updated: 2026-06-10 after PR #10 broker CRM expansion merged._
 
 ## Strategic decision
 
@@ -54,6 +54,7 @@ Brokerage customers may get their own branded public website:
 
 Website capabilities:
 
+- broker-owned domain support as the primary product path
 - homepage / broker brand story
 - IDX/listing search once authorized
 - listing detail pages
@@ -188,13 +189,14 @@ Fields/concepts:
 
 ### BrokerageDomain
 
-Maps domains/subdomains to a brokerage tenant.
+Maps broker-owned domains/subdomains to a brokerage tenant. This should be the primary broker-facing routing model. Slugs are retained for previews/local development, but final broker sites should use domains they own.
 
 Examples:
 
 - `homeventuresguam.com`
+- `www.homeventuresguam.com`
 - `search.homeventuresguam.com`
-- `homeventures.hafahomes.com`
+- `empirerealtyguam.com`
 
 ### BrokerageBranding
 
@@ -259,27 +261,27 @@ Leads should be routed and owned:
 
 ### LeadActivity
 
-Tracks consumer/broker/agent activity:
+Tracks consumer/broker/agent activity. Implemented timeline events include:
 
-- lead created
-- listing viewed
-- listing saved
-- showing requested
-- message sent
-- agent assigned
-- status changed
-- note added
-- task completed
+- lead created/updated
+- showing appointment created/updated
+- notification queued/sent/failed/skipped
+- note added/updated/archived
+- task created/updated/completed/reopened/archived
+
+Future events can include listing viewed, listing saved, saved-search activity, phone/email verification, and automated follow-up reminders.
 
 ### LeadTask / LeadNote
 
-CRM primitives:
+CRM primitives now implemented:
 
 - follow-up task
 - due date
 - assigned user
-- note body
-- visibility later
+- completion/reopen/archive
+- internal note body
+- note edit/archive
+- default-hidden archived records
 
 ## Data isolation and authorization
 
@@ -307,43 +309,66 @@ Completed in PR #7:
 
 ### Phase 1 — broker platform foundation
 
-Recommended next feature branch:
+Status: completed in PR #8.
 
-```bash
-feature/broker-platform-foundation
-```
-
-Scope combines tenancy plus a thin first CRM layer:
+Included:
 
 - Brokerage model.
 - Agent model.
 - BrokerageMembership model.
 - Listing brokerage/agent fields.
 - Lead brokerage/agent fields.
-- Seed Hafa Homes demo brokerage and at least one sample broker/agent.
-- Update APIs to include brokerage/agent attribution.
-- Enforce role/tenant authorization on admin endpoints.
-- Basic lead inbox/detail.
+- Seeded Hafa Homes demo brokerage and sample agents.
+- APIs include brokerage/agent attribution.
+- Role/tenant authorization on staff/admin endpoints.
+- Lead inbox/detail.
 - Lead status and assigned-agent updates.
-- Document tenant scoping rules.
+
+### Phase 1.5 — requests, showings, admin parity
+
+Status: completed in PR #9.
+
+Included:
+
+- consumer request history.
+- showing appointments and admin scheduling.
+- admin dashboard/users/showings.
+- notification delivery foundation.
+- public/mobile parity improvements.
+
+### Phase 1.75 — CRM expansion
+
+Status: completed in PR #10.
+
+Included:
+
+- lead notes.
+- lead tasks/reminders.
+- activity timeline.
+- edit/archive controls.
+- source/campaign tracking.
+- paginated CRM history endpoints.
+- responsive CRM workspace on lead detail.
 
 ### Phase 2 — broker branding / website foundation
 
-Recommended branch:
+Recommended next branch:
 
 ```bash
-feature/broker-website-foundation
+feature/broker-branded-sites-apps
 ```
 
 Scope:
 
-- brokerage slug/domain routing
-- branded homepage config
-- brokerage listing search page
-- agent roster/profile pages
-- lead forms that route to brokerage
-- compliance/disclaimer area
-- initial “powered by Hafa Homes” footer option
+- `BrokerageDomain` host-based tenant routing.
+- slug preview fallback for local/dev/demo.
+- branded homepage config.
+- brokerage listing search page on broker-owned domains.
+- agent roster/profile pages.
+- lead forms that route to brokerage by resolved tenant.
+- compliance/disclaimer area.
+- initial “Powered by Hafa Homes” footer option.
+- shared Expo/EAS app branding configuration plan.
 
 Note: for SEO-heavy public sites, evaluate moving broker websites to Next.js/Astro later. Keep the current Vite web app for dashboard/admin and demo until the need is proven.
 
@@ -351,24 +376,25 @@ Note: for SEO-heavy public sites, evaluate moving broker websites to Next.js/Ast
 
 Scope:
 
-- tenant config file or remote app config
-- EAS build profiles per broker
-- broker-specific app name/icon/colors
-- bundle ID/package naming pattern
-- app-store metadata template
-- support process for updates
+- tenant config file or remote app config.
+- EAS build profiles per broker.
+- broker-specific app name/icon/colors.
+- bundle ID/package naming pattern.
+- app-store metadata template.
+- support process for updates.
+- Apple white-label/template review strategy.
 
-### Phase 4 — CRM expansion, lead quality, and automations
+### Phase 4 — lead quality and CRM automations
 
 Scope:
 
-- phone/email verification
-- verified lead badge
-- duplicate lead detection
-- SMS/email notifications to agents
-- speed-to-lead reminders
-- saved-search/listing activity scoring
-- simple drip workflows later
+- phone/email verification.
+- verified lead badge.
+- duplicate lead detection.
+- SMS/email notifications to agents.
+- speed-to-lead reminders.
+- saved-search/listing activity scoring.
+- simple drip workflows later.
 
 ### Phase 5 — property management / rental premium tier
 
@@ -438,6 +464,8 @@ Hafa Homes should be demoed as:
 - Use Hafa Homes as the demo/reference product.
 - Build one shared multi-tenant platform backend.
 - Build broker-branded sites/apps from shared codebases/config, not separate full stacks.
-- Build CRM/lead routing next because broker value depends on lead conversion.
+- Broker-owned domains are the primary web product; slugs are preview/dev fallback only.
+- CRM/lead routing foundation is now implemented enough for a credible demo.
+- Build broker-branded websites/apps next because broker feedback points toward website/app/CRM replacement or augmentation.
 - Treat Real Geeks as the main broker-software competitor.
 - Differentiate through Guam-first UX, local support, fast customization, and rental/property-management workflows.

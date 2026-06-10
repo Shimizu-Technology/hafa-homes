@@ -13,7 +13,7 @@ This plan extends the broker platform foundation beyond lead capture into the en
 5. stricter role-scoped access,
 6. public web/mobile feature parity.
 
-## Implemented in `feature/requests-scheduling-admin-parity`
+## Implemented in PR #9 (`feature/requests-scheduling-admin-parity`)
 
 ### Consumer request history
 

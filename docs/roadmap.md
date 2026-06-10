@@ -1,160 +1,247 @@
 # Roadmap
 
-## Phase 0: Planning and validation
+_Last updated: 2026-06-10 after PR #10 broker CRM expansion merged._
 
-Status: current
+## Current product direction
 
-Tasks:
+Hafa Homes is now a broker-first Guam real estate platform, not only a consumer listing demo.
 
-- Choose project name
-- Create repo
-- Document research and decisions
-- Define MVP scope
-- Confirm target demo audience
-- Confirm domain availability and purchase if desired
+The intended sellable bundle is:
 
-## Phase 1: PWA demo
+```text
+broker-branded website + broker-branded app option + lead CRM + future property-management portal
+```
 
-Goal: Build a polished clickable/functional demo that Mike and investor can review on mobile.
+Hafa Homes remains the demo/reference public brand and possible Guam marketplace layer.
 
-Features:
+## Completed phases
 
-- Mobile-first Hafa Homes UI
-- Home/search landing page
-- Buy/rent filters
-- Sample Guam listings
-- Search results list/map concept
-- Listing detail pages
-- Favorites/saved search concept
-- Military relocation page
-- Village pages
-- Lead capture forms
-- MLS sync/admin concept page
+### Phase 0 — Planning and validation
 
-Data:
+Status: complete.
 
-- Seed/demo listings
-- Demo villages
-- Demo feature tags
+Completed:
 
-Deliverable:
+- project name and repo
+- product/research docs
+- Locations LLC inspiration research
+- Guam-first MVP scope
+- broker-first strategy after Mike/John discussions
+- Real Geeks competitive framing after broker feedback
 
-- Hosted demo URL
-- GitHub repo with code and docs
+### Phase 1 — PWA demo
 
-## Phase 2: Data access and platform model discovery
+Status: complete enough for demo; ongoing polish.
 
-Goal: Determine how real listing data can be legally/technically integrated and validate the broker/agent subscription model.
+Completed:
 
-Current signal from Mike:
+- React/Vite public web app
+- mobile-first Hafa Homes UI
+- home/search/listing surfaces
+- buy/rent filters
+- sample Guam listings
+- listing detail pages
+- Local Intel
+- lead capture forms
+- hosted Netlify demo historically available
 
-- Guam brokers use `my.flexmls.com` / Flexmls.
-- Brokerages/agents already pay for MLS access.
-- Hafa Homes can be positioned as the app/search/lead platform that connects to authorized listing feeds.
-- The likely model is brokerages/agents subscribing to participate, publish listings/agents, and receive leads through Hafa Homes.
+### Phase 2 — Native mobile foundation
 
-Tasks:
+Status: complete enough for TestFlight/demo; ongoing polish.
 
-- Confirm Flexmls/Guam MLS access path
-- Confirm whether Hafa Homes can be approved as vendor/app platform
-- Confirm whether multiple brokerages can authorize feeds into one consumer app
-- Determine feed format: IDX, RESO Web API, RETS, Flexmls IDX, embed/iframe, CSV/export, etc.
-- Review display/compliance rules
-- Confirm sold/rental data availability
-- Confirm refresh requirements
-- Confirm attribution/disclaimer requirements
-- Confirm listing photo rights
-- Validate first pilot brokerage/agent
-- Validate pricing model: setup fee, monthly subscription, per-agent seats, featured placement
+Completed:
 
-Deliverable:
+- Expo app under `/mobile`
+- EAS project configured
+- iOS bundle ID registered
+- TestFlight build historically created and installable
+- mobile listing browse/detail/search/map flows
+- saved homes after sign-in
+- request/showing forms
+- mobile request history
 
-- Data integration plan
-- Platform/business model plan
-- Updated technical architecture
+### Phase 3 — Auth and consumer accounts
 
-## Phase 3: Broker/agent marketplace MVP
+Status: complete.
 
-Goal: Turn demo into working product with authorized data and broker/agent participation.
+Completed in PR #7:
 
-Features:
+- Clerk auth across Rails API, web, and mobile
+- Rails `User` model
+- roles: platform admin, brokerage admin, agent, consumer
+- server-backed saved listings
+- signed-in lead/user association
+- protected admin/staff access foundation
 
-- Authentication/accounts for buyers, renters, agents, and admins
-- Sign in with Apple for iOS plus email/password or magic-link sign-in
-- Server-backed saved listings and saved searches
-- Real listing import/sync
-- Brokerage profiles
-- Agent/realtor profiles
-- Listing ownership/attribution by brokerage/agent
-- Admin dashboard
-- Broker/agent lead inbox
-- Listing normalization
-- Search/filter implementation
-- Saved listings
-- Saved searches
-- Email/SMS alerts
-- Lead routing to listing agent/brokerage
-- Contact/showing request flows
-- Basic analytics
-- Neighborhood intelligence sections
-- Mortgage calculator / affordability guide
+### Phase 4 — Broker platform foundation
 
-## Phase 4: Business workflows
+Status: complete.
 
-Goal: Support agents/property managers/investor operations.
+Completed in PR #8:
 
-Possible features:
+- `Brokerage`
+- `Agent`
+- `BrokerageMembership`
+- listing brokerage/agent attribution
+- lead brokerage/agent attribution
+- role/tenant-scoped staff lead access
+- broker/admin lead inbox/detail
+- lead status and assignment updates
 
-- Agent dashboard
-- Lead assignment
-- Property manager dashboard
-- Owner listing submissions
-- Featured listings
-- Rental inquiry management
-- Market snapshots
-- Village demand analytics
+### Phase 5 — Requests, showings, admin parity
 
-## Phase 5: Native mobile app
+Status: complete.
 
-Goal: Build a dedicated iOS/Android consumer app once the PWA proof-of-concept and broker/agent interest are validated.
+Completed in PR #9:
 
-Status as of 2026-05-26: iOS TestFlight build is live and installable. Next work is productionizing lead/auth/map flows and completing App Store metadata/screenshots/privacy answers.
+- `ShowingAppointment`
+- consumer request history
+- web/mobile requests surfaces
+- admin dashboard/users/showings
+- scheduling workflow
+- safer staff scoping
+- web/mobile listing detail parity
+- notification delivery foundation
+- Guam phone normalization
 
-Current direction: keep improving the Expo app in `/mobile` while keeping `/web` for the PWA, landing pages, SEO/content, and admin/broker dashboards.
+### Phase 6 — Broker CRM expansion
 
-Mike noted that brokerages may already have websites, so app-store/native app presence can become a selling point.
+Status: complete.
 
-Recommended path:
+Completed in PR #10:
 
-- Keep Rails API as shared backend
-- Keep `/web` live for demo/admin/web/SEO
-- Continue EAS/TestFlight builds from `/mobile`
-- Replace request-showing prototype with an in-app lead form
-- Add authentication and server-backed saved listings/searches
-- Improve native map loading states
-- Add zoom-aware map behavior: clusters/counts at broad zoom, individual price pills only when zoomed in
-- Add native marker preview bottom sheet
-- Complete App Store metadata/screenshots/privacy answers
+- lead notes
+- lead tasks/reminders
+- lead activity timeline
+- note/task edit and archive
+- source/campaign fields
+- CRM summary counts
+- paginated CRM history endpoints
+- expandable activity change details
+- responsive CRM workspace on lead detail
 
-Reasons to do native:
+## Immediate release track
 
-- App-store presence helps sales pitch
-- Better consumer app positioning than another brokerage website
-- Push notifications become important
-- Strong consumer adoption
-- Need deeper mobile capabilities
-- Brokerages/agents want to say their listings are in a real mobile app
+Before starting the next large product branch, Leon wants to refresh the mobile app in Apple/TestFlight.
 
-See: `docs/product/native-mobile-plan.md`
+Recommended order:
 
-## Phase 6: Expansion
+1. Deploy latest API and run production migrations.
+2. Verify production endpoints used by mobile.
+3. Build iOS production/TestFlight app with EAS.
+4. Submit latest build to App Store Connect.
+5. Add Mike/John/testers.
 
-Potential expansion areas:
+See `docs/app-store-release.md`.
 
-- Mortgage/prequalification referrals
-- Property management tools
-- Rental applications
-- Document upload
-- Tenant screening integrations
-- Relocation service marketplace
-- Market reports and investor dashboards
+## Active next product phase
+
+### Phase 7 — Domain-first broker-branded website/app foundation
+
+Recommended branch:
+
+```bash
+feature/broker-branded-sites-apps
+```
+
+Goal:
+
+> Prove that the same platform can power brokerage-specific customer-facing experiences.
+
+Recommended scope:
+
+- `BrokerageDomain` and host-based tenant resolution
+- brokerage branding config
+- brokerage public homepage/profile on broker-owned domains
+- brokerage-scoped listing/search page
+- agent roster/profile pages
+- brokerage-routed lead forms
+- slug preview fallback for local/dev/demo only
+- “Powered by Hafa Homes” footer option
+- Expo/EAS broker-branded app configuration plan
+
+See `docs/product/broker-branded-layer-plan.md`.
+
+## Upcoming phases
+
+### Phase 8 — Lead quality / CRM automation
+
+Goal: improve broker confidence in lead quality and follow-up accountability.
+
+Potential scope:
+
+- duplicate lead detection
+- phone/email verification badges
+- saved-search/listing activity scoring
+- speed-to-lead reminders
+- notification preferences
+- CSV export
+- agent follow-up reporting
+
+### Phase 9 — Property management preview
+
+Goal: demo premium-tier rental/property-management value for Guam brokerages/property managers.
+
+Potential scope:
+
+- managed properties
+- tenant list
+- lease/date placeholders
+- rent status placeholder
+- maintenance request preview
+- owner/tenant portal concept
+
+### Phase 10 — Production deployment and demo hardening
+
+Goal: make the latest platform safe and smooth to demo from production URLs/devices.
+
+Potential scope:
+
+- deploy latest API
+- run production migrations
+- verify background jobs
+- deploy latest web
+- refresh TestFlight/mobile config
+- demo accounts and seed data
+- notification gates/config verification
+- App Store/TestFlight notes update
+
+### Phase 11 — MLS/Flexmls integration path
+
+Start only after authorization/compliance is clear.
+
+Potential scope:
+
+- provider adapter interface
+- normalized listing payload
+- feed/source models
+- sync run logging
+- attribution/disclaimer fields
+- dry-run importer using authorized sample data
+
+## Parallel discovery track
+
+Keep these discovery conversations moving while product work continues:
+
+- Carl / MLS committee: Flexmls/GAR/vendor/compliance path.
+- Clare Delgado / Home Ventures: Real Geeks usage, broker pain, property-management workflows.
+- Bawar / GAR: association/political landscape and broker introductions.
+- First pilot brokerage: feed authorization, package/pricing feedback, demo validation.
+
+## Business packaging work
+
+Mike/John/Leon should continue shaping:
+
+1. Tier 1 — Brokerage Website/App/Search.
+2. Tier 2 — Engagement/Lead CRM.
+3. Tier 3 — Property Management/Tenant Portal.
+
+Open decisions:
+
+- setup fee range
+- monthly subscription range
+- per-agent seat logic
+- broker-owned domain onboarding/support
+- broker-branded app pricing/support
+- first pilot discount or beta package
+- operating/entity structure for SSI Automation / Shimizu Technology collaboration
