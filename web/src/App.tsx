@@ -290,6 +290,11 @@ type LeadPayload = {
   listing_id?: number
 }
 
+type LeadUpdatePayload = Partial<Omit<LeadPayload, 'listing_id'>> & {
+  status?: LeadStatus
+  assigned_agent_id?: number | null
+}
+
 const quickFilters = [
   { label: 'Near Andersen AFB', slug: 'near-andersen-afb' },
   { label: 'Near Navy Base', slug: 'near-naval-base-guam' },
@@ -383,7 +388,7 @@ async function fetchAdminUsers(): Promise<AdminUsersResponse> {
   return response.json()
 }
 
-async function updateLead(id: number, payload: { status?: LeadStatus; assigned_agent_id?: number | null }): Promise<LeadResponse> {
+async function updateLead(id: number, payload: LeadUpdatePayload): Promise<LeadResponse> {
   const response = await fetch(`${API_URL}/api/v1/leads/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
@@ -2145,7 +2150,7 @@ function LeadDetailPage() {
   const navigate = useNavigate()
   const { data, isLoading, isError, refetch } = useQuery({ queryKey: ['lead', id], queryFn: () => fetchLead(id || ''), enabled: Boolean(id) })
   const mutation = useMutation({
-    mutationFn: (payload: { status?: LeadStatus; assigned_agent_id?: number | null }) => updateLead(data!.lead.id, payload),
+    mutationFn: (payload: LeadUpdatePayload) => updateLead(data!.lead.id, payload),
     onSuccess: () => refetch(),
   })
   const showingMutation = useMutation({
@@ -2178,25 +2183,7 @@ function LeadDetailPage() {
                 <LeadStatusSelect value={lead.status} onChange={(status) => mutation.mutate({ status })} disabled={mutation.isPending} />
               </div>
 
-              <div className="mt-6 grid gap-3 md:grid-cols-2">
-                <LeadMeta icon={<Mail size={16} />} label="Email" value={lead.email} />
-                <LeadMeta icon={<Phone size={16} />} label="Phone" value={lead.phone || 'Not provided'} />
-                <LeadMeta icon={<MessageSquare size={16} />} label="Preferred contact" value={lead.preferred_contact_method || 'Not provided'} />
-                <LeadMeta icon={<ClipboardList size={16} />} label="Lead type" value={lead.lead_type.replaceAll('_', ' ')} />
-              </div>
-
-              {lead.message && (
-                <div className="mt-6 rounded-[1.5rem] bg-[#f6f1e8] p-5">
-                  <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#7b8a84]">Message</p>
-                  <p className="mt-3 text-sm leading-7 text-[#304942]">{lead.message}</p>
-                </div>
-              )}
-
-              <div className="mt-6 grid gap-3 md:grid-cols-3">
-                <LeadMeta icon={<ClipboardList size={16} />} label="Tour" value={lead.tour_type?.replaceAll('_', ' ') || 'Not requested'} />
-                <LeadMeta icon={<ClipboardList size={16} />} label="Preferred date" value={lead.preferred_tour_date || 'Not provided'} />
-                <LeadMeta icon={<ClipboardList size={16} />} label="Preferred time" value={lead.preferred_time || 'Not provided'} />
-              </div>
+              <LeadEditForm lead={lead} mutation={mutation} />
             </article>
 
             <aside className="space-y-5">
@@ -2242,6 +2229,13 @@ function LeadDetailPage() {
   )
 }
 
+type LeadMutation = {
+  mutate: (payload: LeadUpdatePayload) => void
+  isPending: boolean
+  isError: boolean
+  error: unknown
+}
+
 type ShowingMutation = {
   mutate: (payload: Partial<ShowingAppointment> & { lead_id: number; id?: number }) => void
   isPending: boolean
@@ -2254,6 +2248,107 @@ type NotificationMutation = {
   isPending: boolean
   isError: boolean
   error: unknown
+}
+
+function LeadEditForm({ lead, mutation }: { lead: Lead; mutation: LeadMutation }) {
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const form = new FormData(event.currentTarget)
+    mutation.mutate({
+      name: String(form.get('name') || '').trim(),
+      email: String(form.get('email') || '').trim(),
+      phone: String(form.get('phone') || '').trim(),
+      preferred_contact_method: String(form.get('preferred_contact_method') || '').trim(),
+      lead_type: String(form.get('lead_type') || '').trim(),
+      tour_type: String(form.get('tour_type') || '').trim(),
+      preferred_tour_date: String(form.get('preferred_tour_date') || '').trim(),
+      preferred_time: String(form.get('preferred_time') || '').trim(),
+      target_price: String(form.get('target_price') || '').trim(),
+      message: String(form.get('message') || '').trim(),
+    })
+  }
+
+  return (
+    <form key={`${lead.id}-${lead.updated_at}`} onSubmit={handleSubmit} className="mt-6 rounded-[1.75rem] border border-[#edf0ec] bg-[#fbfaf6] p-4 md:p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#7b8a84]">Customer details</p>
+          <p className="mt-1 text-sm font-semibold text-[#66746f]">Agents can correct contact info and request preferences after a customer call.</p>
+        </div>
+        <button disabled={mutation.isPending} className="min-h-10 rounded-full bg-[#0f3d35] px-4 text-sm font-bold text-white disabled:opacity-60">
+          {mutation.isPending ? 'Saving...' : 'Save changes'}
+        </button>
+      </div>
+
+      <div className="mt-5 grid gap-3 md:grid-cols-2">
+        <Input name="name" label="Name" defaultValue={lead.name} required />
+        <Input name="email" label="Email" defaultValue={lead.email} type="email" required />
+        <Input name="phone" label="Phone" defaultValue={lead.phone || '+1671'} inputMode="tel" />
+        <label className="grid gap-2 text-sm font-semibold text-[#304942]">
+          Preferred contact
+          <select name="preferred_contact_method" defaultValue={lead.preferred_contact_method || ''} className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
+            <option value="">Not provided</option>
+            <option value="phone">Phone</option>
+            <option value="text">Text</option>
+            <option value="email">Email</option>
+          </select>
+        </label>
+        <label className="grid gap-2 text-sm font-semibold text-[#304942]">
+          Request type
+          <select name="lead_type" defaultValue={lead.lead_type} className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
+            {!['showing_request', 'price_tracker', 'general_inquiry'].includes(lead.lead_type) && <option value={lead.lead_type}>{lead.lead_type.replaceAll('_', ' ')}</option>}
+            <option value="showing_request">Showing request</option>
+            <option value="price_tracker">Price tracker</option>
+            <option value="general_inquiry">General inquiry</option>
+          </select>
+        </label>
+        <label className="grid gap-2 text-sm font-semibold text-[#304942]">
+          Tour type
+          <select name="tour_type" defaultValue={lead.tour_type || ''} className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
+            <option value="">Not requested</option>
+            <option value="in_person">In person</option>
+            <option value="virtual">Virtual</option>
+          </select>
+        </label>
+        <Input name="preferred_tour_date" label="Preferred date" defaultValue={lead.preferred_tour_date || ''} type="date" />
+        <label className="grid gap-2 text-sm font-semibold text-[#304942]">
+          Preferred time
+          <select name="preferred_time" defaultValue={lead.preferred_time || ''} className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
+            <option value="">Not provided</option>
+            <option value="morning">Morning</option>
+            <option value="afternoon">Afternoon</option>
+            <option value="evening">Evening</option>
+            <option value="flexible">Flexible</option>
+          </select>
+        </label>
+        <Input name="target_price" label="Target price" defaultValue={lead.target_price ? String(lead.target_price) : ''} type="number" min="0" step="1000" />
+      </div>
+
+      <label className="mt-3 grid gap-2 text-sm font-semibold text-[#304942]">
+        Message
+        <textarea name="message" rows={4} defaultValue={lead.message || ''} className="rounded-2xl border border-[#dce5df] bg-white px-4 py-3" />
+      </label>
+      {mutation.isError && <p className="mt-3 text-sm font-semibold text-red-700">{displayErrorMessage(mutation.error, 'Unable to update lead right now.')}</p>}
+    </form>
+  )
+}
+
+function notificationStatusLabel(status: NotificationDelivery['status']) {
+  return status === 'skipped' ? 'not sent' : status
+}
+
+function notificationStatusClass(status: NotificationDelivery['status']) {
+  if (status === 'sent') return 'text-[#0f705e]'
+  if (status === 'failed') return 'text-red-700'
+  if (status === 'skipped') return 'text-[#8a4b0f]'
+  return 'text-[#53645f]'
+}
+
+function notificationErrorMessage(message?: string) {
+  if (!message) return ''
+  if (message === 'sms notifications disabled or missing ClickSend configuration') return 'Not sent locally — LIVE_SMS_ENABLED is false or ClickSend credentials are missing.'
+  if (message === 'email notifications disabled or missing Resend configuration') return 'Not sent locally — EMAIL_NOTIFICATIONS_ENABLED is false or Resend configuration is missing.'
+  return message
 }
 
 function LeadNotificationPanel({ lead, mutation }: { lead: Lead; mutation: NotificationMutation }) {
@@ -2301,7 +2396,7 @@ function LeadNotificationPanel({ lead, mutation }: { lead: Lead; mutation: Notif
       <Bell className="text-[#0f705e]" />
       <p className="mt-5 text-xs font-bold uppercase tracking-[0.2em] text-[#7b8a84]">Notifications</p>
       <h2 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">Send an update</h2>
-      <p className="mt-2 text-sm leading-6 text-[#66746f]">Write the message before sending. Email/SMS delivery stays gated by production notification settings.</p>
+      <p className="mt-2 text-sm leading-6 text-[#66746f]">Write the message before sending. Local/dev queues are recorded here; live delivery only runs when Resend or ClickSend is enabled.</p>
       <form onSubmit={handleSubmit} className="mt-5 grid gap-3">
         <label className="grid gap-2 text-sm font-semibold text-[#304942]">
           Send to
@@ -2321,7 +2416,7 @@ function LeadNotificationPanel({ lead, mutation }: { lead: Lead; mutation: Notif
           {isEmail ? 'Message' : 'Text message'}
           <textarea key={`body-${sendMode}`} name="body" rows={isEmail ? 5 : 4} required defaultValue={defaultBody()} maxLength={sendMode === 'consumer_sms' ? 320 : undefined} className="rounded-2xl border border-[#dce5df] px-4 py-3" />
         </label>
-        {sendMode === 'consumer_sms' && <p className="text-xs font-semibold text-[#66746f]">Texts send to Guam numbers in +1671 format when ClickSend live sending is enabled.</p>}
+        {sendMode === 'consumer_sms' && <p className="text-xs font-semibold text-[#66746f]">Texts are normalized to Guam +1671 format before ClickSend delivery.</p>}
         {mutation.isError && <p className="text-sm font-semibold text-red-700">{displayErrorMessage(mutation.error, 'Unable to queue notification right now.')}</p>}
         <button disabled={mutation.isPending || selectedModeUnavailable} className="min-h-12 rounded-2xl bg-[#0f3d35] px-4 text-sm font-bold text-white disabled:opacity-50">
           {mutation.isPending ? 'Queueing...' : isEmail ? 'Queue email' : 'Queue text'}
@@ -2334,12 +2429,12 @@ function LeadNotificationPanel({ lead, mutation }: { lead: Lead; mutation: Notif
             <div key={delivery.id} className="rounded-2xl bg-[#f6f1e8] p-3 text-sm">
               <div className="flex items-center justify-between gap-3">
                 <p className="font-bold capitalize text-[#304942]">{delivery.channel} to {delivery.recipient_role}</p>
-                <span className="rounded-full bg-white px-2 py-1 text-xs font-bold text-[#0f705e]">{delivery.status}</span>
+                <span className={`rounded-full bg-white px-2 py-1 text-xs font-bold ${notificationStatusClass(delivery.status)}`}>{notificationStatusLabel(delivery.status)}</span>
               </div>
               <p className="mt-1 text-xs font-semibold text-[#66746f]">{delivery.recipient} · {formatDateTime(delivery.sent_at || delivery.failed_at || delivery.queued_at || delivery.created_at)}</p>
               {delivery.subject && <p className="mt-2 text-xs font-bold text-[#304942]">{delivery.subject}</p>}
               {delivery.body_preview && <p className="mt-1 text-xs leading-5 text-[#66746f]">{delivery.body_preview}</p>}
-              {delivery.error_message && <p className="mt-1 text-xs font-semibold text-[#8a4b0f]">{delivery.error_message}</p>}
+              {delivery.error_message && <p className="mt-1 text-xs font-semibold text-[#8a4b0f]">{notificationErrorMessage(delivery.error_message)}</p>}
             </div>
           ))}
           {deliveries.length === 0 && <p className="rounded-2xl bg-[#f6f1e8] p-3 text-sm font-semibold text-[#66746f]">No notifications queued yet.</p>}

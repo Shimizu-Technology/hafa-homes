@@ -32,6 +32,7 @@ module Api
         return if performed?
 
         lead.user = current_user if current_user
+        lead.queue_request_received_notification = true
 
         if lead.save
           render json: { lead: LeadSerializer.summary(lead) }, status: :created
@@ -112,9 +113,16 @@ module Api
           end
         end
 
+        normalize_blank_update_values(permitted)
         @lead.assign_attributes(permitted)
         @lead.last_contacted_at = Time.current if permitted.key?(:status) && contact_status?(@lead.status)
         true
+      end
+
+      def normalize_blank_update_values(permitted)
+        %i[phone preferred_time preferred_tour_date tour_type target_price message].each do |key|
+          permitted[key] = nil if permitted.key?(key) && permitted[key].blank?
+        end
       end
 
       def contact_status?(status)
@@ -146,7 +154,20 @@ module Api
       end
 
       def lead_update_params
-        params.require(:lead).permit(:status, :assigned_agent_id)
+        params.require(:lead).permit(
+          :status,
+          :assigned_agent_id,
+          :lead_type,
+          :name,
+          :email,
+          :phone,
+          :preferred_contact_method,
+          :preferred_time,
+          :preferred_tour_date,
+          :tour_type,
+          :target_price,
+          :message
+        )
       end
 
       def notification_params

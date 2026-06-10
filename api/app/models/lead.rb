@@ -9,7 +9,9 @@ class Lead < ApplicationRecord
   has_many :showing_appointments, dependent: :destroy
   has_many :notification_deliveries, dependent: :destroy
 
-  after_commit :queue_request_received_notifications, on: :create
+  attr_accessor :queue_request_received_notification
+
+  after_commit :queue_request_received_notifications, on: :create, if: :queue_request_received_notification?
 
   validates :lead_type, :name, :email, presence: true
   validates :status, inclusion: { in: STATUSES }
@@ -42,6 +44,10 @@ class Lead < ApplicationRecord
 
     self.brokerage ||= listing.brokerage
     self.assigned_agent ||= listing.agent
+  end
+
+  def queue_request_received_notification?
+    ActiveModel::Type::Boolean.new.cast(queue_request_received_notification)
   end
 
   def queue_request_received_notifications

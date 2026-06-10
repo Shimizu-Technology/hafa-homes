@@ -8,7 +8,7 @@ module Api
             lead_type: lead.lead_type,
             name: lead.name,
             email: lead.email,
-            phone: lead.phone,
+            phone: display_phone(lead.phone),
             preferred_contact_method: lead.preferred_contact_method,
             preferred_time: lead.preferred_time,
             preferred_tour_date: lead.preferred_tour_date,
@@ -49,6 +49,10 @@ module Api
         end
 
         private
+
+        def display_phone(phone)
+          ClicksendClient.normalize_phone(phone).presence || phone
+        end
 
         def listing_json(listing)
           return nil unless listing

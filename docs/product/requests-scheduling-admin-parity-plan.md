@@ -1,6 +1,6 @@
 # Requests, Showings, Admin, and Public Parity Plan
 
-_Last updated: 2026-06-09._
+_Last updated: 2026-06-10._
 
 ## Purpose
 
@@ -60,7 +60,9 @@ Added a safe notification foundation for request and showing workflows:
 - Scheduling or updating a showing queues customer email and customer SMS when those contact methods exist, plus agent email when an assigned agent has an email.
 - Admins can compose and queue customer email, customer text, and agent email from lead detail, including custom email subject/heading/body or SMS body.
 - Lead detail shows recent delivery status/history and custom message previews.
-- Phone inputs default toward Guam `+1671` formatting; Rails normalizes Guam phone numbers before SMS delivery.
+- Skipped local/dev sends are labeled as “not sent” with clearer configuration messages instead of looking like provider failures.
+- Phone inputs default toward Guam `+1671` formatting; Rails normalizes Guam phone numbers before SMS delivery, including legacy/raw local numbers already on leads.
+- Initial request-received notifications only queue for consumer-initiated API lead creation; staff/scripted lead creation stays quiet unless explicitly opted in.
 
 This follows the starter-app Resend/ClickSend pattern: important sends should be visible and resendable from the dashboard, while live SMS/email remains opt-in via environment config.
 
@@ -78,6 +80,8 @@ Routes:
 - `/admin/sync`
 
 Dashboard metrics include open leads, new leads, unassigned leads, upcoming showings, and stale follow-ups.
+
+Lead detail lets staff edit customer/request fields after a call, including name, email, phone, preferred contact method, request type, tour type, preferred date/time, target price, and message.
 
 ### User and role management
 

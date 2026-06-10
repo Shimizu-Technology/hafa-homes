@@ -101,7 +101,8 @@ class LeadNotificationService
     end
 
     def deliver_email!(delivery)
-      return delivery.mark_skipped!("email notifications disabled or missing Resend configuration") unless email_configured?
+      return delivery.mark_skipped!("Email not sent because EMAIL_NOTIFICATIONS_ENABLED is false") unless ActiveModel::Type::Boolean.new.cast(ENV["EMAIL_NOTIFICATIONS_ENABLED"])
+      return delivery.mark_skipped!("Email not sent because Resend configuration is missing") unless ENV["RESEND_API_KEY"].present? && from_email.present?
 
       response = Resend::Emails.send(
         {
@@ -118,7 +119,8 @@ class LeadNotificationService
     end
 
     def deliver_sms!(delivery)
-      return delivery.mark_skipped!("sms notifications disabled or missing ClickSend configuration") unless ClicksendClient.configured? && ClicksendClient.live_enabled?
+      return delivery.mark_skipped!("SMS not sent because LIVE_SMS_ENABLED is false") unless ClicksendClient.live_enabled?
+      return delivery.mark_skipped!("SMS not sent because ClickSend credentials are missing") unless ClicksendClient.configured?
 
       result = ClicksendClient.send_sms(to: delivery.recipient, body: sms_body(delivery))
       if result[:success]
