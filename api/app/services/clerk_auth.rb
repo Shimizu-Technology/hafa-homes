@@ -51,7 +51,7 @@ class ClerkAuth
 
       response = HTTParty.get(
         "https://api.clerk.com/v1/users/#{clerk_user_id}",
-        headers: { "Authorization" => "Bearer #{secret_key}" },
+        headers: clerk_api_headers(secret_key),
         timeout: 5
       )
 
@@ -67,7 +67,42 @@ class ClerkAuth
       nil
     end
 
+    def delete_user(clerk_user_id)
+      secret_key = ENV.fetch("CLERK_SECRET_KEY", nil)
+      unless secret_key.present?
+        Rails.logger.error("CLERK_SECRET_KEY is required for account deletion")
+        return { success: false, status: :not_configured, message: "Account deletion is not configured" }
+      end
+
+      if clerk_user_id.blank?
+        return { success: false, status: :invalid_user, message: "Missing Clerk user ID" }
+      end
+
+      response = HTTParty.delete(
+        "https://api.clerk.com/v1/users/#{clerk_user_id}",
+        headers: clerk_api_headers(secret_key),
+        timeout: 8
+      )
+
+      if response.success? || response.code == 404
+        return { success: true, status: response.code }
+      end
+
+      Rails.logger.warn("Clerk API account deletion failed for #{clerk_user_id}: #{response.code} #{response.body.to_s.truncate(240)}")
+      { success: false, status: response.code, message: "Unable to delete Clerk account" }
+    rescue HTTParty::Error, Timeout::Error => e
+      Rails.logger.warn("Clerk API account deletion failed for #{clerk_user_id}: #{e.message}")
+      { success: false, status: :network_error, message: "Unable to reach Clerk" }
+    end
+
     private
+
+    def clerk_api_headers(secret_key)
+      {
+        "Authorization" => "Bearer #{secret_key}",
+        "Content-Type" => "application/json"
+      }
+    end
 
     def fetch_jwks(force_refresh: false)
       cached = Rails.cache.read(JWKS_CACHE_KEY) unless force_refresh

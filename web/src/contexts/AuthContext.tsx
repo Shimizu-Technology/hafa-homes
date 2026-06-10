@@ -8,6 +8,7 @@ type AuthContextValue = {
   isSignedIn: boolean
   isLoading: boolean
   userId: string | null
+  signOut?: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextValue>({
@@ -20,7 +21,7 @@ const AuthContext = createContext<AuthContextValue>({
 const CLERK_JWT_TEMPLATE = import.meta.env.VITE_CLERK_JWT_TEMPLATE
 
 function ClerkAuthBridge({ children }: { children: ReactNode }) {
-  const { getToken, isLoaded, isSignedIn, userId } = useAuth()
+  const { getToken, isLoaded, isSignedIn, signOut, userId } = useAuth()
 
   useEffect(() => {
     setAuthTokenGetter(async () => {
@@ -36,7 +37,7 @@ function ClerkAuthBridge({ children }: { children: ReactNode }) {
   }, [getToken])
 
   return (
-    <AuthContext.Provider value={{ isClerkEnabled: true, isSignedIn: Boolean(isSignedIn), isLoading: !isLoaded, userId: userId ?? null }}>
+    <AuthContext.Provider value={{ isClerkEnabled: true, isSignedIn: Boolean(isSignedIn), isLoading: !isLoaded, userId: userId ?? null, signOut: () => signOut() }}>
       {children}
     </AuthContext.Provider>
   )
