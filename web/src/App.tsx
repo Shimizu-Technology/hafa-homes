@@ -1650,8 +1650,13 @@ function AccountPage() {
   const deleteMutation = useMutation({
     mutationFn: deleteCurrentAccount,
     onSuccess: async () => {
-      await signOut?.()
-      navigate('/', { replace: true })
+      try {
+        await signOut?.()
+      } catch (signOutError) {
+        console.warn('Account deleted but sign-out failed', signOutError)
+      } finally {
+        navigate('/', { replace: true })
+      }
     },
   })
 
@@ -1691,7 +1696,13 @@ function AccountPage() {
           </div>
           <button
             type="button"
-            onClick={async () => { await signOut?.(); navigate('/', { replace: true }) }}
+            onClick={async () => {
+              try {
+                await signOut?.()
+              } finally {
+                navigate('/', { replace: true })
+              }
+            }}
             className="mt-5 rounded-full border border-[#d7ded9] px-5 py-3 text-sm font-bold text-[#0f3d35]"
           >
             Sign out

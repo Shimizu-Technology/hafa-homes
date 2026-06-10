@@ -19,14 +19,32 @@ module Api
       end
 
       def destroy
-        deletion = ClerkAuth.delete_user(current_user.clerk_id)
-        unless deletion[:success]
-          Rails.logger.warn("Unable to delete Clerk account for user #{current_user.id}: #{deletion[:status]} #{deletion[:message]}")
-          render json: { error: "Account deletion is temporarily unavailable. Please contact support if this continues." }, status: account_deletion_failure_status(deletion[:status])
+        unless ClerkAuth.deletion_configured?
+          Rails.logger.error("CLERK_SECRET_KEY is required for account deletion")
+          render json: { error: "Account deletion is temporarily unavailable. Please contact support if this continues." }, status: :service_unavailable
           return
         end
 
-        current_user.destroy!
+        user_id = current_user.id
+        clerk_id = current_user.clerk_id
+
+        begin
+          ActiveRecord::Base.transaction do
+            current_user.destroy!
+          end
+        rescue ActiveRecord::ActiveRecordError => e
+          Rails.logger.warn("Unable to delete local account for user #{user_id}: #{e.class} #{e.message}")
+          render json: { error: "Account deletion could not be completed. Please try again or contact support." }, status: :unprocessable_entity
+          return
+        end
+
+        deletion = ClerkAuth.delete_user(clerk_id)
+        unless deletion[:success]
+          Rails.logger.warn("Unable to delete Clerk account for deleted local user #{user_id}: #{deletion[:status]} #{deletion[:message]}")
+          render json: { error: "Your Hafa Homes account data was removed, but identity-provider deletion could not be completed. Please sign in and try again, or contact support." }, status: account_deletion_failure_status(deletion[:status])
+          return
+        end
+
         render json: { deleted: true }
       end
 

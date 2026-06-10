@@ -5,7 +5,7 @@ import * as Linking from 'expo-linking'
 import { StatusBar } from 'expo-status-bar'
 import * as WebBrowser from 'expo-web-browser'
 import { WebView } from 'react-native-webview'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
@@ -1173,19 +1173,26 @@ function AuthUnavailableCard() {
 function AccountCard({ auth, onOpenAuth }: { auth: AppAuth; onOpenAuth: (prompt?: AuthPrompt) => void }) {
   const [deletingAccount, setDeletingAccount] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
+  const deletingAccountRef = useRef(false)
 
   async function handleDeleteAccount() {
-    if (!auth.getToken) return
+    if (!auth.getToken || deletingAccountRef.current) return
 
+    deletingAccountRef.current = true
     setDeletingAccount(true)
     setDeleteError(null)
     try {
       await deleteAccount(auth.getToken)
-      await auth.signOut?.()
+      try {
+        await auth.signOut?.()
+      } catch (signOutError) {
+        console.warn('Account deleted but sign-out failed', signOutError)
+      }
       Alert.alert('Account deleted', 'Your Hafa Homes account, saved homes, and account link to request history were deleted.')
     } catch (error) {
       setDeleteError(error instanceof Error ? error.message : 'Unable to delete account right now.')
     } finally {
+      deletingAccountRef.current = false
       setDeletingAccount(false)
     }
   }

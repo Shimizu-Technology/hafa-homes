@@ -67,6 +67,10 @@ class ClerkAuth
       nil
     end
 
+    def deletion_configured?
+      ENV.fetch("CLERK_SECRET_KEY", nil).present?
+    end
+
     def delete_user(clerk_user_id)
       secret_key = ENV.fetch("CLERK_SECRET_KEY", nil)
       unless secret_key.present?
