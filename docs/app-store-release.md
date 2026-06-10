@@ -10,6 +10,7 @@ _Last updated: 2026-06-10 after PR #10 broker CRM expansion merged._
 - App Store Connect app ID: `6773042903`
 - First iOS production build previously uploaded to TestFlight.
 - Build previously tested on Leon's phone through TestFlight.
+- App Store version `1.0.0` is already approved/ready for distribution, so new TestFlight/App Store builds must use a higher marketing version such as `1.0.1`.
 - Production API env is configured in EAS: `EXPO_PUBLIC_API_URL=https://hafa-homes.onrender.com`
 - Production Mapbox token is configured in EAS as a sensitive variable.
 
@@ -44,6 +45,17 @@ At minimum, production API should include:
 - current listing detail/listing search endpoints.
 
 If the mobile app points at `https://hafa-homes.onrender.com`, then Render production migrations must run before the mobile build is reviewed seriously.
+
+## Versioning note
+
+Apple closes a pre-release train once that app version has been approved/released. If App Store Connect rejects a build with:
+
+```text
+90186: Invalid Pre-Release Train
+90062: CFBundleShortVersionString must contain a higher version
+```
+
+then bump `expo.version` in `mobile/app.json`, for example from `1.0.0` to `1.0.1`, commit it, rebuild, and submit again. EAS `autoIncrement` handles the internal iOS build number; it does not replace the need to bump the public app version after Apple closes the previous train.
 
 ## Recommended next mobile release sequence
 
