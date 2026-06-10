@@ -144,20 +144,23 @@ module Api
         end
 
         def crm_summary(lead)
+          task_counts = lead.lead_tasks.group(:status).count
           open_tasks = lead.lead_tasks.open_status
           overdue_count = open_tasks.where("due_at < ?", Time.current).count
-          next_task = open_tasks.order(Arel.sql("due_at ASC NULLS LAST"), created_at: :desc).first
+          next_task_due_at = open_tasks.order(Arel.sql("due_at ASC NULLS LAST"), created_at: :desc).limit(1).pick(:due_at)
+          note_counts = lead.lead_notes.group(Arel.sql("CASE WHEN archived_at IS NULL THEN 'active' ELSE 'archived' END")).count
+          activity_count, last_activity_at = lead.lead_activities.pick(Arel.sql("COUNT(*)"), Arel.sql("MAX(occurred_at)")) || [0, nil]
 
           {
-            open_task_count: open_tasks.count,
+            open_task_count: task_counts.fetch("open", 0),
             overdue_task_count: overdue_count,
-            completed_task_count: lead.lead_tasks.where(status: "completed").count,
-            archived_task_count: lead.lead_tasks.where(status: "cancelled").count,
-            note_count: lead.lead_notes.active.count,
-            archived_note_count: lead.lead_notes.archived.count,
-            activity_count: lead.lead_activities.count,
-            next_task_due_at: next_task&.due_at,
-            last_activity_at: lead.lead_activities.maximum(:occurred_at)
+            completed_task_count: task_counts.fetch("completed", 0),
+            archived_task_count: task_counts.fetch("cancelled", 0),
+            note_count: note_counts.fetch("active", 0),
+            archived_note_count: note_counts.fetch("archived", 0),
+            activity_count: activity_count.to_i,
+            next_task_due_at: next_task_due_at,
+            last_activity_at: last_activity_at
           }
         end
 
