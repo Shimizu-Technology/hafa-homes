@@ -63,8 +63,6 @@ module Api
 
           showing.agent = agent
           showing.brokerage ||= agent.brokerage
-          showing.lead.assigned_agent ||= agent
-          showing.lead.brokerage ||= agent.brokerage
         else
           showing.skip_agent_inference = true
           showing.agent = nil

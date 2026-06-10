@@ -47,7 +47,7 @@ Staff endpoints:
 - `POST /api/v1/showing_appointments`
 - `PATCH /api/v1/showing_appointments/:id`
 
-Confirmed/proposed dated showings advance the lead to `showing_scheduled`. If the only active scheduled showing is later cancelled or marked no-show, the lead returns to `contacted` so consumer request history does not keep showing stale “Showing scheduled” status.
+Confirmed/proposed dated showings advance the lead to `showing_scheduled`. Showing agent assignment persists back to the lead even when an appointment is still proposed without a final scheduled time. If the only active scheduled showing is later cancelled or marked no-show, the lead returns to `contacted` so consumer request history does not keep showing stale “Showing scheduled” status.
 
 ### Notifications
 
