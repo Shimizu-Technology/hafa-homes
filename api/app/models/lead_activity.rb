@@ -3,9 +3,13 @@ class LeadActivity < ApplicationRecord
     lead_created
     lead_updated
     note_added
+    note_updated
+    note_archived
     task_created
+    task_updated
     task_completed
     task_reopened
+    task_archived
     showing_updated
     notification_queued
     notification_sent
@@ -36,6 +40,32 @@ class LeadActivity < ApplicationRecord
       metadata: metadata.compact,
       occurred_at: Time.current
     )
+  end
+
+  def self.change_details(changes, fields)
+    Array(fields).filter_map do |field|
+      values = changes[field.to_s]
+      next unless values
+
+      before, after = values
+      next if before == after
+
+      {
+        field: field.to_s,
+        label: field.to_s.humanize,
+        from: serialize_change_value(before),
+        to: serialize_change_value(after)
+      }
+    end
+  end
+
+  def self.serialize_change_value(value)
+    return nil if value.nil?
+    return value.iso8601 if value.respond_to?(:iso8601)
+    return value.to_s("F") if value.is_a?(BigDecimal)
+    return value.truncate(240) if value.is_a?(String)
+
+    value
   end
 
   private

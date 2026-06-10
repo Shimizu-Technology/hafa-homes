@@ -14,9 +14,11 @@ Rails.application.routes.draw do
       resources :villages, only: [:index]
       resources :leads, only: [:index, :show, :create, :update] do
         post :notifications, on: :member, to: "leads#send_notification"
-        resources :lead_notes, only: [:create], path: "notes"
-        resources :lead_tasks, only: [:create], path: "tasks"
+        resources :lead_notes, only: [:index, :create], path: "notes"
+        resources :lead_tasks, only: [:index, :create], path: "tasks"
+        resources :lead_activities, only: [:index], path: "activities"
       end
+      resources :lead_notes, only: [:update]
       resources :lead_tasks, only: [:update]
       resources :showing_appointments, only: [:index, :show, :create, :update]
       resources :saved_searches, only: [:create]

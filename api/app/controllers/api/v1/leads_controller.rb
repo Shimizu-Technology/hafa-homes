@@ -139,7 +139,7 @@ module Api
           action: "lead_updated",
           actor: current_user,
           summary: lead_update_summary(changed_fields),
-          metadata: { changed_fields: changed_fields }
+          metadata: { changes: LeadActivity.change_details(@lead.previous_changes, trackable_fields) }
         )
       end
 

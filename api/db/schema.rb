@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_10_050000) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_10_070000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -109,18 +109,24 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_10_050000) do
   end
 
   create_table "lead_notes", force: :cascade do |t|
+    t.datetime "archived_at"
+    t.bigint "archived_by_id"
     t.bigint "author_id"
     t.text "body", null: false
     t.datetime "created_at", null: false
     t.bigint "lead_id", null: false
     t.datetime "updated_at", null: false
     t.string "visibility", default: "internal", null: false
+    t.index ["archived_by_id"], name: "index_lead_notes_on_archived_by_id"
     t.index ["author_id"], name: "index_lead_notes_on_author_id"
+    t.index ["lead_id", "archived_at", "created_at"], name: "index_lead_notes_on_lead_id_and_archived_at_and_created_at"
     t.index ["lead_id", "created_at"], name: "index_lead_notes_on_lead_id_and_created_at"
     t.index ["lead_id"], name: "index_lead_notes_on_lead_id"
   end
 
   create_table "lead_tasks", force: :cascade do |t|
+    t.datetime "archived_at"
+    t.bigint "archived_by_id"
     t.bigint "assigned_to_id"
     t.datetime "completed_at"
     t.bigint "completed_by_id"
@@ -132,10 +138,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_10_050000) do
     t.string "status", default: "open", null: false
     t.string "title", null: false
     t.datetime "updated_at", null: false
+    t.index ["archived_by_id"], name: "index_lead_tasks_on_archived_by_id"
     t.index ["assigned_to_id", "status", "due_at"], name: "index_lead_tasks_on_assigned_to_id_and_status_and_due_at"
     t.index ["assigned_to_id"], name: "index_lead_tasks_on_assigned_to_id"
     t.index ["completed_by_id"], name: "index_lead_tasks_on_completed_by_id"
     t.index ["created_by_id"], name: "index_lead_tasks_on_created_by_id"
+    t.index ["lead_id", "archived_at", "status", "due_at"], name: "index_lead_tasks_on_lead_archive_status_due"
     t.index ["lead_id", "status", "due_at"], name: "index_lead_tasks_on_lead_id_and_status_and_due_at"
     t.index ["lead_id"], name: "index_lead_tasks_on_lead_id"
   end
@@ -349,8 +357,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_10_050000) do
   add_foreign_key "lead_activities", "leads"
   add_foreign_key "lead_activities", "users", column: "actor_id"
   add_foreign_key "lead_notes", "leads"
+  add_foreign_key "lead_notes", "users", column: "archived_by_id"
   add_foreign_key "lead_notes", "users", column: "author_id"
   add_foreign_key "lead_tasks", "leads"
+  add_foreign_key "lead_tasks", "users", column: "archived_by_id"
   add_foreign_key "lead_tasks", "users", column: "assigned_to_id"
   add_foreign_key "lead_tasks", "users", column: "completed_by_id"
   add_foreign_key "lead_tasks", "users", column: "created_by_id"

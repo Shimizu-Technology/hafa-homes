@@ -128,11 +128,15 @@ module Api
         end
 
         def lead_notes_for(lead)
-          lead.lead_notes.includes(:author).recent_first.limit(10)
+          lead.lead_notes.active.includes(:author, :archived_by).recent_first.limit(10)
         end
 
         def lead_tasks_for(lead)
-          lead.lead_tasks.includes(:assigned_to, :created_by, :completed_by).open_first.limit(20)
+          includes = [:assigned_to, :created_by, :completed_by, :archived_by]
+          open_tasks = lead.lead_tasks.where(status: "open").includes(includes).order(Arel.sql("due_at ASC NULLS LAST"), created_at: :desc).limit(15)
+          completed_tasks = lead.lead_tasks.where(status: "completed").includes(includes).order(Arel.sql("completed_at DESC NULLS LAST"), updated_at: :desc).limit(5)
+
+          open_tasks.to_a + completed_tasks.to_a
         end
 
         def lead_activities_for(lead)
@@ -147,6 +151,11 @@ module Api
           {
             open_task_count: open_tasks.count,
             overdue_task_count: overdue_count,
+            completed_task_count: lead.lead_tasks.where(status: "completed").count,
+            archived_task_count: lead.lead_tasks.where(status: "cancelled").count,
+            note_count: lead.lead_notes.active.count,
+            archived_note_count: lead.lead_notes.archived.count,
+            activity_count: lead.lead_activities.count,
             next_task_due_at: next_task&.due_at,
             last_activity_at: lead.lead_activities.maximum(:occurred_at)
           }

@@ -8,7 +8,9 @@ module Api
             lead_id: note.lead_id,
             body: note.body,
             visibility: note.visibility,
+            archived_at: note.archived_at,
             author: user_json(note.author),
+            archived_by: user_json(note.archived_by),
             created_at: note.created_at,
             updated_at: note.updated_at
           }

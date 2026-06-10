@@ -89,7 +89,8 @@ class ShowingAppointment < ApplicationRecord
         status: status,
         tour_type: tour_type,
         scheduled_starts_at: scheduled_starts_at,
-        agent_id: agent_id
+        agent_id: agent_id,
+        changes: LeadActivity.change_details(previous_changes, %w[status tour_type scheduled_starts_at scheduled_ends_at location agent_id consumer_notes internal_notes])
       }
     )
   end

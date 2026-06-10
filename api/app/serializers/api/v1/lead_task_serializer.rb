@@ -11,10 +11,12 @@ module Api
             status: task.status,
             due_at: task.due_at,
             completed_at: task.completed_at,
+            archived_at: task.archived_at,
             overdue: task.overdue?,
             assigned_to: user_json(task.assigned_to),
             created_by: user_json(task.created_by),
             completed_by: user_json(task.completed_by),
+            archived_by: user_json(task.archived_by),
             created_at: task.created_at,
             updated_at: task.updated_at
           }

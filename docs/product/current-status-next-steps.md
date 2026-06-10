@@ -47,7 +47,7 @@ The 2026-06-05 broker feedback added Real Geeks as the key competitor and clarif
 - Brokerage/agent tenancy foundation is merged through PR #8.
 - Broker lead inbox/detail, lead status, assigned-agent updates, and staff-editable lead/customer request fields are implemented on web admin.
 - PR #9 added consumer request history, showing appointments, responsive admin dashboard/users/showings with compact mobile controls, stricter role scoping, web/mobile listing-detail parity, a collapsible admin sidebar, role-filtered user management, and a safe Resend/ClickSend notification foundation with compose/resend actions, paginated recent-send history, scheduled-showing notifications, Guam phone normalization, guarded consumer-only initial request notifications, and atomic delivery-job claiming to avoid duplicate live sends.
-- `feature/broker-crm-expansion` adds CRM notes, tasks, activity timeline, source/campaign tracking fields, and a mobile/desktop responsive CRM workspace on lead detail.
+- `feature/broker-crm-expansion` adds CRM notes, tasks, edit/archive CRM controls, server-counted CRM summary metrics, paginated staff history endpoints, expandable activity change details, source/campaign tracking fields, and a mobile/desktop responsive CRM workspace on lead detail.
 - Property-management/tenant portal features are not built yet.
 - Latest main should be deployed and submitted to TestFlight after the Local Intel merge.
 - App Store public release metadata/screenshots/privacy answers still need to be completed in App Store Connect.

@@ -7,6 +7,13 @@ module Api
       before_action :authenticate_user!
       before_action :require_staff!
 
+      def index
+        lead = staff_lead_scope.find(params[:lead_id])
+        tasks = filtered_tasks(lead.lead_tasks.includes(:assigned_to, :created_by, :completed_by, :archived_by)).open_first
+        response = paginated_response(tasks, :lead_tasks) { |task| Api::V1::LeadTaskSerializer.summary(task) }
+        render json: response
+      end
+
       def create
         lead = staff_lead_scope.find(params[:lead_id])
         task = lead.lead_tasks.build(task_params)
@@ -68,6 +75,38 @@ module Api
           task.completed_by = nil
           task.completed_at = nil
         end
+      end
+
+      def filtered_tasks(scope)
+        case params[:status]
+        when "open"
+          scope.where(status: "open")
+        when "completed"
+          scope.where(status: "completed")
+        when "archived", "cancelled"
+          scope.where(status: "cancelled")
+        when "all"
+          scope
+        else
+          scope.active_status
+        end
+      end
+
+      def paginated_response(scope, collection_key)
+        page = [params.fetch(:page, 1).to_i, 1].max
+        per_page = [[params.fetch(:per_page, 10).to_i, 1].max, 50].min
+        total_count = scope.count
+        records = scope.offset((page - 1) * per_page).limit(per_page)
+
+        {
+          collection_key => records.map { |record| yield(record) },
+          pagination: {
+            page: page,
+            per_page: per_page,
+            total_count: total_count,
+            total_pages: (total_count.to_f / per_page).ceil
+          }
+        }
       end
     end
   end

@@ -49,14 +49,16 @@ All endpoints use existing `StaffLeadScoping`, so platform admins, brokerage adm
 
 Lead detail now includes a responsive CRM workspace with:
 
-- CRM summary cards for open tasks, overdue tasks, and notes.
+- CRM summary cards for open tasks, overdue tasks, and server-counted notes.
 - next follow-up panel.
 - add follow-up task form.
 - add internal note form.
-- open task list with done/reopen actions.
-- recent completed tasks.
-- recent internal notes.
-- activity timeline.
+- open task list with done/reopen, edit, and archive actions.
+- recent completed tasks with incremental show-more controls.
+- recent internal notes with edit/archive actions and incremental show-more controls.
+- activity timeline with expandable change details for field-level before/after context.
+- default-hidden archived notes/tasks so the lead workspace does not get cluttered.
+- paginated staff API indexes for notes, tasks, and activities for deeper history views.
 - quality/source fields in the lead details editor.
 
 The layout is tuned for both desktop and mobile admin use.
@@ -67,7 +69,8 @@ The layout is tuned for both desktop and mobile admin use.
 - Verified email/phone badge workflow.
 - Saved-search/listing activity scoring.
 - Calendar integration.
-- CRM search/filtering by task due date, overdue status, and lead quality.
+- CRM search/filtering by task due date, overdue status, lead quality, and archived records.
+- Dedicated full-history drawers/tables backed by the paginated notes/tasks/activity endpoints.
 - CSV export.
 - Automated speed-to-lead reminders.
 - Agent performance reporting.
