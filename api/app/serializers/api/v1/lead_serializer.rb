@@ -18,6 +18,8 @@ module Api
             status: lead.status,
             quality_status: lead.quality_status,
             lead_source: lead.lead_source,
+            source_campaign: lead.source_campaign,
+            source_url: lead.source_url,
             last_contacted_at: lead.last_contacted_at,
             listing_id: lead.listing_id,
             user_id: lead.user_id,
@@ -36,12 +38,16 @@ module Api
         def detail(lead)
           summary(lead).merge(
             showing_appointments: showing_appointments_for(lead).map { |showing| showing_json(showing) },
-            notification_deliveries: notification_deliveries_for(lead).map { |delivery| Api::V1::NotificationDeliverySerializer.summary(delivery) }
+            notification_deliveries: notification_deliveries_for(lead).map { |delivery| Api::V1::NotificationDeliverySerializer.summary(delivery) },
+            lead_notes: lead_notes_for(lead).map { |note| Api::V1::LeadNoteSerializer.summary(note) },
+            lead_tasks: lead_tasks_for(lead).map { |task| Api::V1::LeadTaskSerializer.summary(task) },
+            lead_activities: lead_activities_for(lead).map { |activity| Api::V1::LeadActivitySerializer.summary(activity) },
+            crm_summary: crm_summary(lead)
           )
         end
 
         def consumer(lead)
-          summary(lead).except(:quality_status, :lead_source, :last_contacted_at).merge(
+          summary(lead).except(:quality_status, :lead_source, :source_campaign, :source_url, :last_contacted_at).merge(
             message: lead.message,
             showing_appointments: showing_appointments_for(lead).map { |showing| Api::V1::ShowingAppointmentSerializer.consumer(showing) },
             latest_showing_appointment: Api::V1::ShowingAppointmentSerializer.consumer(latest_showing(lead))
@@ -119,6 +125,31 @@ module Api
 
         def notification_deliveries_for(lead)
           lead.notification_deliveries.recent_first.limit(10)
+        end
+
+        def lead_notes_for(lead)
+          lead.lead_notes.includes(:author).recent_first.limit(10)
+        end
+
+        def lead_tasks_for(lead)
+          lead.lead_tasks.includes(:assigned_to, :created_by, :completed_by).open_first.limit(20)
+        end
+
+        def lead_activities_for(lead)
+          lead.lead_activities.includes(:actor).recent_first.limit(30)
+        end
+
+        def crm_summary(lead)
+          open_tasks = lead.lead_tasks.open_status
+          overdue_count = open_tasks.where("due_at < ?", Time.current).count
+          next_task = open_tasks.order(Arel.sql("due_at ASC NULLS LAST"), created_at: :desc).first
+
+          {
+            open_task_count: open_tasks.count,
+            overdue_task_count: overdue_count,
+            next_task_due_at: next_task&.due_at,
+            last_activity_at: lead.lead_activities.maximum(:occurred_at)
+          }
         end
 
         def consumer_status_label(status)

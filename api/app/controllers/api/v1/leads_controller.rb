@@ -45,6 +45,7 @@ module Api
         return if apply_lead_update_params == false
 
         if @lead.save
+          record_lead_update_activity(permitted)
           render json: {
             lead: LeadSerializer.detail(@lead),
             assignable_agents: assignable_agents_for(@lead).map(&:as_api_json)
@@ -120,9 +121,34 @@ module Api
       end
 
       def normalize_blank_update_values(permitted)
-        %i[phone preferred_time preferred_tour_date tour_type target_price message].each do |key|
+        %i[phone preferred_time preferred_tour_date tour_type target_price message source_campaign source_url].each do |key|
           permitted[key] = nil if permitted.key?(key) && permitted[key].blank?
         end
+      end
+
+      def record_lead_update_activity(_permitted)
+        trackable_fields = %w[
+          status assigned_agent_id quality_status lead_type name email phone preferred_contact_method
+          preferred_time preferred_tour_date tour_type target_price message source_campaign source_url
+        ]
+        changed_fields = @lead.previous_changes.keys & trackable_fields
+        return if changed_fields.empty?
+
+        LeadActivity.record!(
+          lead: @lead,
+          action: "lead_updated",
+          actor: current_user,
+          summary: lead_update_summary(changed_fields),
+          metadata: { changed_fields: changed_fields }
+        )
+      end
+
+      def lead_update_summary(changed_fields)
+        labels = changed_fields.map { |field| field.to_s.humanize.downcase }
+        return "Lead updated" if labels.empty?
+        return "Updated #{labels.first}" if labels.one?
+
+        "Updated #{labels.first(labels.length - 1).join(', ')} and #{labels.last}"
       end
 
       def contact_status?(status)
@@ -157,6 +183,7 @@ module Api
         params.require(:lead).permit(
           :status,
           :assigned_agent_id,
+          :quality_status,
           :lead_type,
           :name,
           :email,
@@ -166,7 +193,9 @@ module Api
           :preferred_tour_date,
           :tour_type,
           :target_price,
-          :message
+          :message,
+          :source_campaign,
+          :source_url
         )
       end
 
