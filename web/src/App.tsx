@@ -421,6 +421,12 @@ async function fetchMe(): Promise<MeResponse> {
   return response.json()
 }
 
+async function deleteCurrentAccount(): Promise<{ deleted: boolean }> {
+  const response = await fetch(`${API_URL}/api/v1/me`, { method: 'DELETE', headers: await authHeaders() })
+  if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to delete account'), response.status)
+  return response.json()
+}
+
 async function fetchSyncRuns(): Promise<SyncRunsResponse> {
   const response = await fetch(`${API_URL}/api/v1/data_sync_runs`, { headers: await authHeaders() })
   if (!response.ok) throw new Error('Unable to load sync runs')
@@ -743,6 +749,7 @@ function App() {
         <Route path="/villages/:slug" element={<VillageDetailPage />} />
         <Route path="/military" element={<MilitaryPage />} />
         <Route path="/saved" element={<SavedPage />} />
+        <Route path="/account" element={<AccountPage />} />
         <Route path="/account/requests" element={<RequestsPage />} />
         <Route path="/requests" element={<RequestsPage />} />
         <Route path="/privacy" element={<PrivacyPage />} />
@@ -1629,6 +1636,111 @@ function SavedPage() {
   )
 }
 
+function AccountPage() {
+  const { isClerkEnabled, isSignedIn, isLoading, signOut, userId } = useAuthContext()
+  const navigate = useNavigate()
+  const [deletePanelOpen, setDeletePanelOpen] = useState(false)
+  const [confirmation, setConfirmation] = useState('')
+  const { data, isLoading: isMeLoading } = useQuery({
+    queryKey: ['me', userId, 'account'],
+    queryFn: fetchMe,
+    enabled: isClerkEnabled && isSignedIn && Boolean(userId),
+    retry: false,
+  })
+  const deleteMutation = useMutation({
+    mutationFn: deleteCurrentAccount,
+    onSuccess: async () => {
+      try {
+        await signOut?.()
+      } catch (signOutError) {
+        console.warn('Account deleted but sign-out failed', signOutError)
+      } finally {
+        navigate('/', { replace: true })
+      }
+    },
+  })
+
+  if (isLoading || isMeLoading) return <Shell compact><StateCard>Checking account...</StateCard></Shell>
+
+  if (!isClerkEnabled) {
+    return (
+      <Shell compact>
+        <ContentHeader kicker="Account" title="Account tools are coming online." description="Clerk must be configured before synced saved homes, request history, and account deletion are available." />
+      </Shell>
+    )
+  }
+
+  if (!isSignedIn) {
+    return (
+      <Shell compact>
+        <ContentHeader kicker="Account" title="Sign in to manage your Hafa Homes account." description="Public browsing stays open. Accounts unlock synced saved homes, request history, and self-service account deletion." />
+        <section className="mx-auto max-w-3xl px-5 pb-10"><div className="rounded-[2rem] bg-white p-8 text-center shadow-sm"><SignInButton mode="modal"><button className="rounded-full bg-[#0f3d35] px-6 py-3 text-sm font-bold text-white">Sign in or create account</button></SignInButton></div></section>
+      </Shell>
+    )
+  }
+
+  const user = data?.user
+  const canDelete = confirmation.trim().toUpperCase() === 'DELETE' && !deleteMutation.isPending
+
+  return (
+    <Shell compact>
+      <ContentHeader kicker="Account" title="Manage your Hafa Homes account." description="Review your signed-in profile, jump back into saved homes, or permanently delete your account when needed." />
+      <section className="mx-auto grid max-w-5xl gap-5 px-5 pb-12 lg:grid-cols-[1fr_0.9fr]">
+        <div className="rounded-[2rem] bg-white p-6 shadow-sm">
+          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#0f705e]">Profile</p>
+          <h2 className="mt-3 text-3xl font-semibold tracking-[-0.05em] text-[#17211f]">{user?.full_name || user?.email || 'Hafa Homes account'}</h2>
+          {user?.email && <p className="mt-2 text-sm font-semibold text-[#66746f]">{user.email}</p>}
+          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+            <Link to="/saved" className="rounded-2xl bg-[#e9f5ef] px-4 py-4 text-sm font-bold text-[#0f3d35]">Saved homes</Link>
+            <Link to="/account/requests" className="rounded-2xl bg-[#e9f5ef] px-4 py-4 text-sm font-bold text-[#0f3d35]">Request history</Link>
+          </div>
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                await signOut?.()
+              } finally {
+                navigate('/', { replace: true })
+              }
+            }}
+            className="mt-5 rounded-full border border-[#d7ded9] px-5 py-3 text-sm font-bold text-[#0f3d35]"
+          >
+            Sign out
+          </button>
+        </div>
+
+        <div className="rounded-[2rem] border border-red-200 bg-[#fff8f6] p-6 shadow-sm">
+          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-red-700">Delete account</p>
+          <h2 className="mt-3 text-3xl font-semibold tracking-[-0.05em] text-[#491d1d]">Permanently remove your account.</h2>
+          <p className="mt-3 text-sm leading-6 text-[#7c4a43]">This deletes your Clerk/Hafa Homes account and synced saved homes. Showing/contact requests are preserved for brokerage follow-up, but they will no longer be linked to your account.</p>
+
+          {!deletePanelOpen ? (
+            <button type="button" onClick={() => setDeletePanelOpen(true)} className="mt-5 rounded-full bg-red-700 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-red-900/10">Delete account</button>
+          ) : (
+            <div className="mt-5 rounded-3xl bg-white p-4">
+              <label className="grid gap-2 text-sm font-semibold text-[#491d1d]">
+                Type DELETE to confirm
+                <input
+                  value={confirmation}
+                  onChange={(event) => setConfirmation(event.target.value)}
+                  className="min-h-12 rounded-2xl border border-red-200 px-4 outline-none focus:border-red-600 focus:ring-4 focus:ring-red-100"
+                />
+              </label>
+              {deleteMutation.isError && <p className="mt-3 text-sm font-semibold text-red-700">{displayErrorMessage(deleteMutation.error, 'Unable to delete account right now.')}</p>}
+              <div className="mt-4 flex flex-wrap gap-3">
+                <button type="button" onClick={() => deleteMutation.mutate()} disabled={!canDelete} className="rounded-full bg-red-700 px-5 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-45">
+                  {deleteMutation.isPending ? 'Deleting...' : 'Delete permanently'}
+                </button>
+                <button type="button" onClick={() => { setDeletePanelOpen(false); setConfirmation('') }} className="rounded-full border border-[#d7ded9] px-5 py-3 text-sm font-bold text-[#0f3d35]">Cancel</button>
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
+    </Shell>
+  )
+}
+
 function RequestsPage() {
   const { isClerkEnabled, isSignedIn, isLoading, userId } = useAuthContext()
   const { data, isLoading: requestsLoading, isError } = useQuery({ queryKey: ['my-leads', userId], queryFn: fetchMyLeads, enabled: isClerkEnabled && isSignedIn })
@@ -1705,8 +1817,9 @@ function PrivacyPage() {
         <div className="grid gap-5 rounded-[2rem] bg-white p-6 text-sm leading-7 text-[#3d4d48] shadow-sm md:p-8">
           <p><strong className="text-[#17211f]">Information we collect.</strong> Hafa Homes may collect contact details you submit through showing requests, price alerts, saved searches, or similar forms, plus basic app usage information used to improve the product.</p>
           <p><strong className="text-[#17211f]">How we use it.</strong> We use submitted information to respond to inquiries, coordinate real estate follow-up, improve listing search, troubleshoot the app, and understand aggregate product usage.</p>
-          <p><strong className="text-[#17211f]">Saved listings.</strong> The native app stores saved listing IDs and cached listing details locally on your device so saved homes can remain available between sessions.</p>
-          <p><strong className="text-[#17211f]">Third-party services.</strong> The app may use services such as Mapbox for maps, hosting providers for the API/web app, and analytics or monitoring tools when enabled.</p>
+          <p><strong className="text-[#17211f]">Saved listings.</strong> Signed-in saved homes are stored with your Hafa Homes account so they can sync across web and mobile. The native app may also cache listing details locally on your device for performance.</p>
+          <p><strong className="text-[#17211f]">Account deletion.</strong> Signed-in users can delete their account from the Account screen in the web app or the More screen in the mobile app. Deleting an account removes synced saved homes and disconnects account links from request history while preserving submitted showing/contact requests for brokerage follow-up.</p>
+          <p><strong className="text-[#17211f]">Third-party services.</strong> The app may use services such as Clerk for authentication, Mapbox for maps, hosting providers for the API/web app, and analytics or monitoring tools when enabled.</p>
           <p><strong className="text-[#17211f]">Contact.</strong> For privacy questions or data requests, email <a className="font-bold text-[#0f705e]" href="mailto:hello@hafahomes.com">hello@hafahomes.com</a>.</p>
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#7b8a84]">Last updated May 25, 2026</p>
         </div>
@@ -3471,6 +3584,7 @@ function MobileMenuDrawer({ open, onClose }: { open: boolean; onClose: () => voi
     ['Military relocation', '/military'],
     ['Saved homes', '/saved'],
     ['My requests', '/account/requests'],
+    ['Account', '/account'],
   ]
 
   return (
@@ -3698,6 +3812,7 @@ function TopNav() {
         <Link to="/military">Military</Link>
         <Link to="/saved">Saved</Link>
         <Link to="/account/requests">Requests</Link>
+        <Link to="/account">Account</Link>
         {showAdminLink && <Link to="/admin" className="rounded-full bg-white/12 px-4 py-2 text-white">Admin</Link>}
         {isClerkEnabled && (
           <>

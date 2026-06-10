@@ -3,7 +3,7 @@ Rails.application.routes.draw do
 
   namespace :api do
     namespace :v1 do
-      resource :me, only: [:show], controller: :me do
+      resource :me, only: [:show, :destroy], controller: :me do
         get :leads
       end
       get "me/saved_listings", to: "saved_listings#index"

@@ -28,6 +28,7 @@ The latest mobile app should be reviewed as a demo/early production Guam real es
 - server-backed saved homes;
 - showing/contact request form;
 - consumer request history;
+- self-service account deletion from web and mobile account screens;
 - demo listing data while MLS/Flexmls access is validated.
 
 Do **not** claim live MLS data until authorization/compliance is complete.
@@ -74,8 +75,10 @@ For production, verify separately that:
 - production migrations have run;
 - production seeded/demo listings exist;
 - Clerk production/test issuer env vars are correct;
+- `CLERK_SECRET_KEY` is set on the API so self-service account deletion can remove the Clerk user;
 - `GET /api/v1/listings` works;
-- authenticated saved/request endpoints work with the mobile Clerk token.
+- authenticated saved/request endpoints work with the mobile Clerk token;
+- authenticated `DELETE /api/v1/me` works from a disposable test account before App Review.
 
 ### 2. Verify mobile locally
 
@@ -96,7 +99,8 @@ Test on a physical phone or simulator:
 - sign-in works;
 - save/unsave works;
 - showing request submits;
-- request history loads after sign-in.
+- request history loads after sign-in;
+- account deletion works from a disposable test account.
 
 ### 3. Build iOS production/TestFlight build
 
@@ -194,7 +198,7 @@ Avoid `MLS` as a keyword until authorized data/compliance is confirmed.
 ### Review notes draft
 
 ```text
-This build is an early production/TestFlight version of Hafa Homes. Listing data is demo/seed data. The app demonstrates search, map exploration, listing details, saved homes, showing-request lead flow, and request history while authorized MLS/Flexmls data integration is finalized.
+This build is an early production/TestFlight version of Hafa Homes. Listing data is demo/seed data. The app demonstrates search, map exploration, listing details, saved homes, showing-request lead flow, request history, and self-service account deletion while authorized listing data integrations are finalized.
 ```
 
 ### Screenshots needed

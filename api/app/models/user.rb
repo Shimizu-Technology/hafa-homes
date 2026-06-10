@@ -3,6 +3,7 @@ class User < ApplicationRecord
   ADMIN_ROLES = %w[platform_admin brokerage_admin agent].freeze
 
   belongs_to :invited_by, class_name: "User", optional: true
+  has_many :invited_users, class_name: "User", foreign_key: :invited_by_id, dependent: :nullify, inverse_of: :invited_by
   has_many :saved_listing_records, class_name: "SavedListing", dependent: :destroy
   has_many :saved_listings, through: :saved_listing_records, source: :listing
   has_many :leads, dependent: :nullify
@@ -10,6 +11,14 @@ class User < ApplicationRecord
   has_many :brokerages, through: :brokerage_memberships
   has_many :agent_profiles, class_name: "Agent", dependent: :nullify
   has_many :created_showing_appointments, class_name: "ShowingAppointment", foreign_key: :created_by_id, dependent: :nullify, inverse_of: :created_by
+  has_many :lead_activities_as_actor, class_name: "LeadActivity", foreign_key: :actor_id, dependent: :nullify, inverse_of: :actor
+  has_many :authored_lead_notes, class_name: "LeadNote", foreign_key: :author_id, dependent: :nullify, inverse_of: :author
+  has_many :archived_lead_notes, class_name: "LeadNote", foreign_key: :archived_by_id, dependent: :nullify, inverse_of: :archived_by
+  has_many :assigned_lead_tasks, class_name: "LeadTask", foreign_key: :assigned_to_id, dependent: :nullify, inverse_of: :assigned_to
+  has_many :created_lead_tasks, class_name: "LeadTask", foreign_key: :created_by_id, dependent: :nullify, inverse_of: :created_by
+  has_many :completed_lead_tasks, class_name: "LeadTask", foreign_key: :completed_by_id, dependent: :nullify, inverse_of: :completed_by
+  has_many :archived_lead_tasks, class_name: "LeadTask", foreign_key: :archived_by_id, dependent: :nullify, inverse_of: :archived_by
+  has_many :sent_notification_deliveries, class_name: "NotificationDelivery", foreign_key: :sent_by_id, dependent: :nullify, inverse_of: :sent_by
 
   normalizes :email, with: ->(email) { email.to_s.strip.downcase }
 

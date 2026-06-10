@@ -5,7 +5,7 @@ import * as Linking from 'expo-linking'
 import { StatusBar } from 'expo-status-bar'
 import * as WebBrowser from 'expo-web-browser'
 import { WebView } from 'react-native-webview'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
@@ -267,6 +267,15 @@ async function fetchMyLeads(getToken: GetAuthToken): Promise<{ leads: ConsumerLe
     headers: await authHeaders(getToken),
   })
   if (!response.ok) throw new ApiRequestError(await apiErrorMessage(response, 'Unable to load your requests'), response.status)
+  return response.json()
+}
+
+async function deleteAccount(getToken: GetAuthToken): Promise<{ deleted: boolean }> {
+  const response = await fetch(`${API_URL}/api/v1/me`, {
+    method: 'DELETE',
+    headers: await authHeaders(getToken),
+  })
+  if (!response.ok) throw new ApiRequestError(await apiErrorMessage(response, 'Unable to delete account'), response.status)
   return response.json()
 }
 
@@ -1162,13 +1171,58 @@ function AuthUnavailableCard() {
 }
 
 function AccountCard({ auth, onOpenAuth }: { auth: AppAuth; onOpenAuth: (prompt?: AuthPrompt) => void }) {
+  const [deletingAccount, setDeletingAccount] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+  const deletingAccountRef = useRef(false)
+
+  async function handleDeleteAccount() {
+    if (!auth.getToken || deletingAccountRef.current) return
+
+    deletingAccountRef.current = true
+    setDeletingAccount(true)
+    setDeleteError(null)
+    try {
+      await deleteAccount(auth.getToken)
+      try {
+        await auth.signOut?.()
+      } catch (signOutError) {
+        console.warn('Account deleted but sign-out failed', signOutError)
+      }
+      Alert.alert('Account deleted', 'Your Hafa Homes account, saved homes, and account link to request history were deleted.')
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : 'Unable to delete account right now.')
+    } finally {
+      deletingAccountRef.current = false
+      setDeletingAccount(false)
+    }
+  }
+
+  function confirmDeleteAccount() {
+    Alert.alert(
+      'Delete Hafa Homes account?',
+      'This permanently deletes your Hafa Homes account and synced saved homes. Showing/contact requests are retained for broker follow-up, but they will no longer be linked to your account.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: deletingAccount ? 'Deleting...' : 'Delete account', style: 'destructive', onPress: handleDeleteAccount },
+      ],
+    )
+  }
+
   if (auth.isSignedIn) {
     return (
       <View style={styles.accountCard}>
         <Text style={styles.accountKicker}>Account</Text>
         <Text style={styles.accountTitle}>{auth.userName || auth.userEmail || 'Hafa Homes account'}</Text>
-        <Text style={styles.accountCopy}>You are signed in. Saved homes now sync to this account; future lead history and broker tools will build on the same profile.</Text>
-        <Pressable style={styles.secondaryCta} onPress={() => auth.signOut?.()}><Text style={styles.secondaryCtaText}>Sign out</Text></Pressable>
+        <Text style={styles.accountCopy}>You are signed in. Saved homes now sync to this account; request history stays available across devices.</Text>
+        <Pressable style={styles.secondaryCta} onPress={() => auth.signOut?.()} disabled={deletingAccount}><Text style={styles.secondaryCtaText}>Sign out</Text></Pressable>
+        <View style={styles.dangerZone}>
+          <Text style={styles.dangerTitle}>Delete account</Text>
+          <Text style={styles.dangerCopy}>Permanently remove your Hafa Homes account and synced saved homes. Public showing/contact requests are preserved for follow-up, but disconnected from your account.</Text>
+          {deleteError && <Text style={styles.dangerError}>{deleteError}</Text>}
+          <Pressable style={[styles.dangerCta, deletingAccount && styles.ctaDisabled]} onPress={confirmDeleteAccount} disabled={deletingAccount}>
+            <Text style={styles.dangerCtaText}>{deletingAccount ? 'Deleting account...' : 'Delete account'}</Text>
+          </Pressable>
+        </View>
       </View>
     )
   }
@@ -2012,6 +2066,12 @@ const styles = StyleSheet.create({
   accountKicker: { color: colors.mint, fontSize: 12, fontWeight: '900', letterSpacing: 1.8, textTransform: 'uppercase' },
   accountTitle: { color: 'white', fontSize: 22, fontWeight: '900', letterSpacing: -0.5 },
   accountCopy: { color: 'rgba(255,255,255,0.78)', fontSize: 14, fontWeight: '700', lineHeight: 21 },
+  dangerZone: { backgroundColor: 'rgba(255,255,255,0.08)', borderColor: 'rgba(255,255,255,0.14)', borderRadius: 22, borderWidth: 1, gap: 8, marginTop: 6, padding: 14 },
+  dangerTitle: { color: '#fee2e2', fontSize: 16, fontWeight: '900' },
+  dangerCopy: { color: 'rgba(255,255,255,0.74)', fontSize: 13, fontWeight: '700', lineHeight: 19 },
+  dangerError: { color: '#fecaca', fontSize: 13, fontWeight: '800', lineHeight: 18 },
+  dangerCta: { alignItems: 'center', backgroundColor: '#fee2e2', borderRadius: 18, marginTop: 4, paddingVertical: 12 },
+  dangerCtaText: { color: '#7f1d1d', fontSize: 14, fontWeight: '900' },
   authModalShell: { backgroundColor: colors.sand, flex: 1 },
   authKeyboard: { flex: 1 },
   authHeader: { alignItems: 'flex-start', flexDirection: 'row', justifyContent: 'space-between', padding: 20, paddingBottom: 12 },
