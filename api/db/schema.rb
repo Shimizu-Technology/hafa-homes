@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_06_010100) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_09_010200) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -182,6 +182,33 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_06_010100) do
     t.index ["village_id"], name: "index_listings_on_village_id"
   end
 
+  create_table "notification_deliveries", force: :cascade do |t|
+    t.string "channel", null: false
+    t.datetime "created_at", null: false
+    t.text "error_message"
+    t.string "event_name", null: false
+    t.datetime "failed_at"
+    t.bigint "lead_id"
+    t.jsonb "metadata", default: {}, null: false
+    t.string "provider", null: false
+    t.string "provider_message_id"
+    t.datetime "queued_at"
+    t.string "recipient", null: false
+    t.string "recipient_role", null: false
+    t.datetime "sent_at"
+    t.bigint "sent_by_id"
+    t.bigint "showing_appointment_id"
+    t.string "status", default: "queued", null: false
+    t.datetime "updated_at", null: false
+    t.index ["channel", "status"], name: "index_notification_deliveries_on_channel_and_status"
+    t.index ["lead_id", "created_at"], name: "index_notification_deliveries_on_lead_id_and_created_at"
+    t.index ["lead_id"], name: "index_notification_deliveries_on_lead_id"
+    t.index ["provider_message_id"], name: "index_notification_deliveries_on_provider_message_id"
+    t.index ["sent_by_id"], name: "index_notification_deliveries_on_sent_by_id"
+    t.index ["showing_appointment_id", "created_at"], name: "idx_notification_deliveries_on_showing_and_created_at"
+    t.index ["showing_appointment_id"], name: "index_notification_deliveries_on_showing_appointment_id"
+  end
+
   create_table "saved_listings", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.string "email"
@@ -200,6 +227,33 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_06_010100) do
     t.jsonb "filters"
     t.string "name"
     t.datetime "updated_at", null: false
+  end
+
+  create_table "showing_appointments", force: :cascade do |t|
+    t.bigint "agent_id"
+    t.bigint "brokerage_id"
+    t.text "consumer_notes"
+    t.datetime "created_at", null: false
+    t.bigint "created_by_id"
+    t.text "internal_notes"
+    t.bigint "lead_id", null: false
+    t.bigint "listing_id"
+    t.string "location"
+    t.datetime "scheduled_ends_at"
+    t.datetime "scheduled_starts_at"
+    t.string "status", default: "proposed", null: false
+    t.string "timezone", default: "Pacific/Guam", null: false
+    t.string "tour_type", default: "in_person", null: false
+    t.datetime "updated_at", null: false
+    t.index ["agent_id", "scheduled_starts_at"], name: "index_showing_appointments_on_agent_id_and_scheduled_starts_at"
+    t.index ["agent_id"], name: "index_showing_appointments_on_agent_id"
+    t.index ["brokerage_id", "scheduled_starts_at"], name: "idx_on_brokerage_id_scheduled_starts_at_97e717d5ce"
+    t.index ["brokerage_id"], name: "index_showing_appointments_on_brokerage_id"
+    t.index ["created_by_id"], name: "index_showing_appointments_on_created_by_id"
+    t.index ["lead_id", "created_at"], name: "index_showing_appointments_on_lead_id_and_created_at"
+    t.index ["lead_id"], name: "index_showing_appointments_on_lead_id"
+    t.index ["listing_id"], name: "index_showing_appointments_on_listing_id"
+    t.index ["status"], name: "index_showing_appointments_on_status"
   end
 
   create_table "users", force: :cascade do |t|
@@ -249,7 +303,15 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_06_010100) do
   add_foreign_key "listings", "agents"
   add_foreign_key "listings", "brokerages"
   add_foreign_key "listings", "villages"
+  add_foreign_key "notification_deliveries", "leads"
+  add_foreign_key "notification_deliveries", "showing_appointments"
+  add_foreign_key "notification_deliveries", "users", column: "sent_by_id"
   add_foreign_key "saved_listings", "listings"
   add_foreign_key "saved_listings", "users"
+  add_foreign_key "showing_appointments", "agents"
+  add_foreign_key "showing_appointments", "brokerages"
+  add_foreign_key "showing_appointments", "leads"
+  add_foreign_key "showing_appointments", "listings"
+  add_foreign_key "showing_appointments", "users", column: "created_by_id"
   add_foreign_key "users", "users", column: "invited_by_id"
 end

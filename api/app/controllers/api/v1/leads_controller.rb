@@ -2,14 +2,15 @@ module Api
   module V1
     class LeadsController < ApplicationController
       include ClerkAuthenticatable
+      include StaffLeadScoping
 
-      before_action :authenticate_user!, only: [:index, :show, :update]
-      before_action :require_staff!, only: [:index, :show, :update]
+      before_action :authenticate_user!, only: [:index, :show, :update, :send_notification]
+      before_action :require_staff!, only: [:index, :show, :update, :send_notification]
       before_action :authenticate_user_optional, only: [:create]
-      before_action :set_lead, only: [:show, :update]
+      before_action :set_lead, only: [:show, :update, :send_notification]
 
       def index
-        leads = lead_scope.order(created_at: :desc).limit(100)
+        leads = staff_lead_scope.order(created_at: :desc).limit(100)
 
         render json: {
           leads: leads.map { |lead| LeadSerializer.summary(lead) },
@@ -31,6 +32,7 @@ module Api
         return if performed?
 
         lead.user = current_user if current_user
+        lead.queue_request_received_notification = true
 
         if lead.save
           render json: { lead: LeadSerializer.summary(lead) }, status: :created
@@ -52,45 +54,44 @@ module Api
         end
       end
 
+      def send_notification
+        permitted = notification_params
+        unless NotificationDelivery::CHANNELS.include?(permitted[:channel]) && NotificationDelivery::RECIPIENT_ROLES.include?(permitted[:recipient_role])
+          return render json: { errors: ["Notification recipient or channel is invalid"] }, status: :unprocessable_entity
+        end
+
+        if permitted[:event_name].blank? || permitted[:event_name] == "manual_update"
+          if permitted[:body].blank?
+            return render json: { errors: ["Message body is required"] }, status: :unprocessable_entity
+          end
+
+          if permitted[:channel] == "email" && permitted[:subject].blank?
+            return render json: { errors: ["Email subject is required"] }, status: :unprocessable_entity
+          end
+        end
+
+        delivery = LeadNotificationService.queue_manual(
+          @lead,
+          channel: permitted[:channel],
+          recipient_role: permitted[:recipient_role],
+          event_name: permitted[:event_name].presence || "manual_update",
+          sent_by: current_user,
+          subject: permitted[:subject],
+          title: permitted[:title],
+          body: permitted[:body]
+        )
+
+        if delivery
+          render json: { notification_delivery: NotificationDeliverySerializer.summary(delivery) }, status: :accepted
+        else
+          render json: { errors: ["No #{permitted[:recipient_role]} #{permitted[:channel]} recipient is available for this lead"] }, status: :unprocessable_entity
+        end
+      end
+
       private
 
       def set_lead
-        @lead = lead_scope.find(params[:id])
-      end
-
-      def lead_scope
-        base = Lead
-          .includes(:brokerage, :assigned_agent, listing: [:village, :brokerage, :agent])
-
-        return base if current_user.platform_admin?
-
-        brokerage_ids = authorized_brokerage_ids
-        agent_ids = authorized_agent_ids
-        return base.none if brokerage_ids.empty? && agent_ids.empty?
-
-        base.where(brokerage_id: brokerage_ids).or(base.where(assigned_agent_id: agent_ids))
-      end
-
-      def authorized_brokerage_ids
-        @authorized_brokerage_ids ||= current_user.active_brokerage_ids
-      end
-
-      def authorized_agent_ids
-        @authorized_agent_ids ||= current_user.active_agent_ids
-      end
-
-      def assignable_agents_for_scope
-        return Agent.includes(:brokerage).active.order(:name) if current_user.platform_admin?
-
-        Agent.includes(:brokerage).active.where(brokerage_id: authorized_brokerage_ids).order(:name)
-      end
-
-      def assignable_agents_for(lead)
-        agents = assignable_agents_for_scope
-        brokerage_id = lead.brokerage_id || lead.assigned_agent&.brokerage_id
-        return agents if brokerage_id.blank?
-
-        agents.where(brokerage_id: brokerage_id)
+        @lead = staff_lead_scope.find(params[:id])
       end
 
       def apply_lead_update_params
@@ -112,9 +113,16 @@ module Api
           end
         end
 
+        normalize_blank_update_values(permitted)
         @lead.assign_attributes(permitted)
         @lead.last_contacted_at = Time.current if permitted.key?(:status) && contact_status?(@lead.status)
         true
+      end
+
+      def normalize_blank_update_values(permitted)
+        %i[phone preferred_time preferred_tour_date tour_type target_price message].each do |key|
+          permitted[key] = nil if permitted.key?(key) && permitted[key].blank?
+        end
       end
 
       def contact_status?(status)
@@ -146,7 +154,27 @@ module Api
       end
 
       def lead_update_params
-        params.require(:lead).permit(:status, :assigned_agent_id)
+        params.require(:lead).permit(
+          :status,
+          :assigned_agent_id,
+          :lead_type,
+          :name,
+          :email,
+          :phone,
+          :preferred_contact_method,
+          :preferred_time,
+          :preferred_tour_date,
+          :tour_type,
+          :target_price,
+          :message
+        )
+      end
+
+      def notification_params
+        params.require(:notification).permit(:channel, :recipient_role, :event_name, :subject, :title, :body).tap do |permitted|
+          permitted[:channel] = permitted[:channel].presence || "email"
+          permitted[:recipient_role] = permitted[:recipient_role].presence || "consumer"
+        end
       end
     end
   end

@@ -1,6 +1,6 @@
 # Hafa Homes Current Status and Next Steps
 
-_Last updated: 2026-06-05 after broker feedback / Real Geeks research._
+_Last updated: 2026-06-10 after PR #8 merge and requests/scheduling/admin parity branch._
 
 ## Source context
 
@@ -44,8 +44,9 @@ The 2026-06-05 broker feedback added Real Geeks as the key competitor and clarif
 ### Known limitations
 
 - Listings are still seed/demo data, not authorized MLS/Flexmls data.
-- Brokerages/agents are not modeled yet, so lead routing and attribution are still too shallow for the broker-first sales motion.
-- Leads are captured, but there is not yet a broker/agent lead inbox or status workflow.
+- Brokerage/agent tenancy foundation is merged through PR #8.
+- Broker lead inbox/detail, lead status, assigned-agent updates, and staff-editable lead/customer request fields are implemented on web admin.
+- `feature/requests-scheduling-admin-parity` adds consumer request history, showing appointments, responsive admin dashboard/users/showings with compact mobile controls, stricter role scoping, web/mobile listing-detail parity, a collapsible admin sidebar, role-filtered user management, and a safe Resend/ClickSend notification foundation with compose/resend actions, paginated recent-send history, scheduled-showing notifications, Guam phone normalization, guarded consumer-only initial request notifications, and atomic delivery-job claiming to avoid duplicate live sends.
 - Property-management/tenant portal features are not built yet.
 - Latest main should be deployed and submitted to TestFlight after the Local Intel merge.
 - App Store public release metadata/screenshots/privacy answers still need to be completed in App Store Connect.
@@ -92,6 +93,7 @@ Recommended scope:
 - Source tracking.
 - CSV export.
 - Notification settings later.
+- Delivery webhook/receipt sync for Resend and ClickSend after the initial gated notification foundation.
 
 Why it matters:
 
@@ -172,25 +174,24 @@ Add backend models and web admin surfaces for:
 
 ## Suggested immediate sprint
 
-Auth/roles and server-backed saves are now merged in PR #7. The next coding sprint should be **Broker Platform Foundation**.
+PR #8 is merged. The active sprint is **Requests, Showings, Admin, and Public Parity**.
 
 Recommended branch:
 
 ```bash
-feature/broker-platform-foundation
+feature/requests-scheduling-admin-parity
 ```
 
 Scope:
 
-1. Add brokerage, agent, and brokerage membership models.
-2. Associate listings/leads with brokerage/agent.
-3. Seed Hafa Homes demo brokerage plus broker/agent demo data.
-4. Enforce role/tenant scoping for admin lead access.
-5. Improve web/admin lead inbox around broker routing/status.
-6. Add lead detail and basic status/assigned-agent updates.
-7. Keep broker website takeover, full CRM automation, and property-management preview for later PRs.
+1. Add consumer request history on web/mobile.
+2. Add first-class showing appointments and admin scheduling.
+3. Replace thin admin pages with a proper admin shell/dashboard.
+4. Add platform-admin user/role/brokerage membership management.
+5. Tighten agent scoping so agents default to assigned leads only.
+6. Bring web/mobile listing detail functionality into closer parity.
 
-See `docs/product/broker-platform-implementation-plan.md` for the full PR sequence.
+See `docs/product/requests-scheduling-admin-parity-plan.md` for implementation notes.
 
 ## App Store/TestFlight status
 

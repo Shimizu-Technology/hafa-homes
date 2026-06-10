@@ -3,19 +3,27 @@ Rails.application.routes.draw do
 
   namespace :api do
     namespace :v1 do
-      resource :me, only: [:show], controller: :me
+      resource :me, only: [:show], controller: :me do
+        get :leads
+      end
       get "me/saved_listings", to: "saved_listings#index"
       resources :listings, only: [:index, :show] do
         post :save, on: :member, to: "saved_listings#create"
         delete :save, on: :member, to: "saved_listings#destroy"
       end
       resources :villages, only: [:index]
-      resources :leads, only: [:index, :show, :create, :update]
+      resources :leads, only: [:index, :show, :create, :update] do
+        post :notifications, on: :member, to: "leads#send_notification"
+      end
+      resources :showing_appointments, only: [:index, :show, :create, :update]
       resources :saved_searches, only: [:create]
       resources :data_sync_runs, only: [:index]
 
       namespace :admin do
-        resources :users, only: [:index]
+        get "dashboard", to: "dashboard#show"
+        resources :brokerages, only: [:index]
+        resources :agents, only: [:index]
+        resources :users, only: [:index, :update]
       end
     end
   end

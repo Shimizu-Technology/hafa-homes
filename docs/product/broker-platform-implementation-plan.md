@@ -1,6 +1,6 @@
 # Hafa Homes Broker Platform Implementation Plan
 
-_Last updated: 2026-06-06 after PR #7 auth/roles merge._
+_Last updated: 2026-06-09 after PR #8 merge and requests/scheduling/admin parity branch._
 
 ## Purpose
 
@@ -38,8 +38,9 @@ Instead:
 
 1. PR 1 — Broker Platform Foundation.
 2. PR 2 — Broker Branding / Website Foundation.
-3. PR 3 — CRM Expansion and Lead Quality.
-4. PR 4 — Property Management Preview.
+3. PR 3 — Requests, Showing Scheduling, Admin Console, and Public Parity.
+4. PR 4 — CRM Expansion and Lead Quality.
+5. PR 5 — Property Management Preview.
 
 This keeps each PR reviewable while still moving fast.
 
@@ -119,7 +120,31 @@ Do not include yet:
 - payments.
 - real MLS/Flexmls sync.
 
-## PR 2 — Broker Branding / Website Foundation
+## PR 2 — Requests, Showing Scheduling, Admin Console, and Public Parity
+
+Recommended branch:
+
+```bash
+feature/requests-scheduling-admin-parity
+```
+
+Goal:
+
+> Close the product loop after lead capture: consumers can see their own requests, admins can schedule showings, platform admins can manage users/roles, agents are strictly scoped, and public web/mobile listing details have consistent functionality.
+
+Scope:
+
+- `ShowingAppointment` model and staff API.
+- Consumer `GET /api/v1/me/leads` request history.
+- Web `/account/requests`.
+- Mobile `More → My requests`.
+- Web admin dashboard/sidebar shell.
+- Web admin showings page.
+- Web admin users/roles page.
+- Stricter role scoping: agents default to assigned leads only.
+- Web/mobile listing detail parity: Local Intel, photo carousel, mortgage estimate, price alerts, saved homes, listing ID, and consistent request-a-showing copy.
+
+## PR 3 — Broker Branding / Website Foundation
 
 Recommended branch:
 
@@ -143,7 +168,7 @@ Scope:
 - “Powered by Hafa Homes” footer option.
 - app branding configuration plan for future EAS builds.
 
-## PR 3 — CRM Expansion and Lead Quality
+## PR 4 — CRM Expansion and Lead Quality
 
 Recommended branch:
 
@@ -167,7 +192,7 @@ Scope:
 - speed-to-lead reminders.
 - simple saved-search/listing activity score.
 
-## PR 4 — Property Management Preview
+## PR 5 — Property Management Preview
 
 Recommended branch:
 

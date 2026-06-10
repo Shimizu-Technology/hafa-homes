@@ -67,24 +67,24 @@ Showing requests should remain low-friction for lead conversion.
 
 After a signed-out request succeeds, the app can offer a soft CTA to create an account using the same email.
 
-## Phase 2 — future consumer inquiry history
+## Phase 2 — consumer inquiry history
 
-Once broker/admin lead inbox and routing are stable, add consumer-side request history.
+Implemented on `feature/requests-scheduling-admin-parity` after PR #8.
 
-Potential UX:
+UX:
 
-- `My inquiries`
-- `Requested showings`
-- statuses like submitted, contacted, showing scheduled, closed, archived
-- listing context for each inquiry
-- agent/broker contact info once assigned
+- Web: `/account/requests` with `/requests` as a friendly alias
+- Mobile: dedicated bottom-tab `Requests` screen
+- Consumer-safe statuses such as request received, agent follow-up started, showing scheduled, still searching, and request closed.
+- Listing context for each inquiry.
+- Agent/broker contact context once assigned.
+- Showing appointment date/time/location/details when admin schedules a showing.
 
 Backend approach:
 
-- show signed-in users their own `leads.user_id` records
-- optionally claim old signed-out leads when a newly verified Clerk user's email matches prior lead email
-- only auto-link by verified email, not phone alone
-- consider confirmation/audit trail before exposing historical leads
+- `GET /api/v1/me/leads` shows signed-in users their own `leads.user_id` records.
+- The consumer serializer strips internal CRM details and notes.
+- Signed-out historical claiming by verified email remains future work.
 
 Do not block showing requests behind account creation unless abuse/spam becomes a problem. For real estate, low-friction inquiry capture is more valuable than forcing consumer auth too early.
 

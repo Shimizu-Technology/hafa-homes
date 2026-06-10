@@ -23,7 +23,7 @@ import {
   View,
 } from 'react-native'
 
-type TabKey = 'search' | 'map' | 'saved' | 'agents' | 'more'
+type TabKey = 'search' | 'map' | 'saved' | 'requests' | 'more'
 type ListingKind = 'sale' | 'rent'
 
 type Feature = {
@@ -59,6 +59,9 @@ type ListingPhoto = {
 
 type Listing = {
   id: number
+  external_id?: string
+  source?: string
+  status?: string
   title: string
   address: string
   listing_kind: ListingKind
@@ -76,6 +79,35 @@ type Listing = {
   village: Village
   features: Feature[]
   photos?: ListingPhoto[]
+}
+
+type ShowingAppointment = {
+  id: number
+  lead_id: number
+  scheduled_starts_at?: string
+  scheduled_ends_at?: string
+  timezone: string
+  tour_type: 'in_person' | 'virtual'
+  status: 'proposed' | 'confirmed' | 'completed' | 'cancelled' | 'no_show'
+  location?: string
+  consumer_notes?: string
+  listing?: { id: number; title: string; address?: string; primary_photo_url?: string } | null
+  agent?: { id: number; name: string; email?: string; phone?: string } | null
+  brokerage?: { id: number; name: string; phone?: string } | null
+}
+
+type ConsumerLead = {
+  id: number
+  lead_type: string
+  status: string
+  consumer_status_label?: string
+  preferred_contact_method?: string
+  created_at: string
+  message?: string
+  listing?: { id: number; title: string; address?: string; village?: string; primary_photo_url?: string; price?: number; listing_kind?: ListingKind } | null
+  assigned_agent?: { id: number; name: string; phone?: string; email?: string } | null
+  brokerage?: { id: number; name: string; phone?: string } | null
+  latest_showing_appointment?: ShowingAppointment | null
 }
 
 type GetAuthToken = (options?: { template?: string }) => Promise<string | null>
@@ -120,7 +152,7 @@ const tabs: Array<{ key: TabKey; label: string; icon: string }> = [
   { key: 'search', label: 'Search', icon: '⌂' },
   { key: 'map', label: 'Map', icon: '⌖' },
   { key: 'saved', label: 'Saved', icon: '♡' },
-  { key: 'agents', label: 'Agents', icon: '◎' },
+  { key: 'requests', label: 'Requests', icon: '◎' },
   { key: 'more', label: 'More', icon: '☰' },
 ]
 
@@ -209,11 +241,15 @@ async function removeSavedListingForUser(listingId: number, getToken: GetAuthTok
 
 async function createLead(payload: {
   listing_id: number
-  lead_type: 'showing_request'
+  lead_type: 'showing_request' | 'price_tracker'
   name: string
   email: string
   phone: string
   preferred_contact_method: string
+  preferred_time?: string
+  preferred_tour_date?: string
+  tour_type?: string
+  target_price?: string
   message: string
 }, getToken?: GetAuthToken) {
   const response = await fetch(`${API_URL}/api/v1/leads`, {
@@ -223,6 +259,14 @@ async function createLead(payload: {
   })
 
   if (!response.ok) throw new ApiRequestError(await apiErrorMessage(response, 'Unable to send request'), response.status)
+  return response.json()
+}
+
+async function fetchMyLeads(getToken: GetAuthToken): Promise<{ leads: ConsumerLead[] }> {
+  const response = await fetch(`${API_URL}/api/v1/me/leads`, {
+    headers: await authHeaders(getToken),
+  })
+  if (!response.ok) throw new ApiRequestError(await apiErrorMessage(response, 'Unable to load your requests'), response.status)
   return response.json()
 }
 
@@ -549,7 +593,7 @@ function AppContent({ auth }: { auth: AppAuth }) {
           <TextInput
             value={searchQuery}
             onChangeText={setSearchQuery}
-            placeholder="Address, village, or MLS"
+            placeholder="Address, village, or listing ID"
             placeholderTextColor="#53645f"
             returnKeyType="search"
             style={styles.searchInput}
@@ -594,7 +638,11 @@ function AppContent({ auth }: { auth: AppAuth }) {
               ? <CenteredState label="Loading saved homes..." loading />
               : <SavedScreen listings={savedListings} onOpen={setSelectedListing} onToggleSaved={toggleSaved} />
         )}
-        {activeTab === 'agents' && <AgentsScreen listings={listings} />}
+        {activeTab === 'requests' && (
+          !auth.isSignedIn
+            ? <RequestsSignInScreen clerkEnabled={auth.clerkEnabled} onOpenAuth={() => openAuthPrompt({ title: 'Sign in to view your requests', copy: 'Signed-in showing requests and price alerts can show status, agent, and scheduled appointment details.' })} />
+            : <RequestsScreen auth={auth} />
+        )}
         {activeTab === 'more' && <MoreScreen auth={auth} onOpenAuth={openAuthPrompt} />}
       </View>
 
@@ -961,30 +1009,6 @@ function SavedScreen({ listings, onOpen, onToggleSaved }: { listings: Listing[];
   )
 }
 
-function AgentsScreen({ listings }: { listings: Listing[] }) {
-  const agentNames = Array.from(new Set(listings.map((listing) => listing.agent_name).filter((name): name is string => Boolean(name))))
-
-  return (
-    <ScrollView contentContainerStyle={styles.listContent}>
-      <View style={styles.screenIntro}>
-        <Text style={styles.kicker}>Local experts</Text>
-        <Text style={styles.screenTitle}>Agents and brokerages</Text>
-        <Text style={styles.screenCopy}>Connect with Guam real estate professionals for showings, questions, financing guidance, and neighborhood advice.</Text>
-      </View>
-      {(agentNames.length ? agentNames : ['Listing Agent', 'Relocation Specialist', 'Rental Advisor']).slice(0, 6).map((agent, index) => (
-        <View key={agent} style={styles.agentCard}>
-          <View style={styles.agentAvatar}><Text style={styles.agentInitial}>{agent.charAt(0)}</Text></View>
-          <View style={styles.agentInfo}>
-            <Text style={styles.agentName}>{agent}</Text>
-            <Text style={styles.agentMeta}>{index % 2 === 0 ? 'Brokerage partner' : 'Hafa Homes network'}</Text>
-          </View>
-          <Text style={styles.agentCta}>Contact</Text>
-        </View>
-      ))}
-    </ScrollView>
-  )
-}
-
 function MoreScreen({ auth, onOpenAuth }: { auth: AppAuth; onOpenAuth: (prompt?: AuthPrompt) => void }) {
   return (
     <ScrollView contentContainerStyle={styles.listContent}>
@@ -994,13 +1018,136 @@ function MoreScreen({ auth, onOpenAuth }: { auth: AppAuth; onOpenAuth: (prompt?:
         <Text style={styles.screenCopy}>Plan your search with local guidance for neighborhoods, schools, financing, saved homes, and relocation needs.</Text>
       </View>
       {auth.clerkEnabled ? <AccountCard auth={auth} onOpenAuth={onOpenAuth} /> : <AuthUnavailableCard />}
-      {['Mortgage calculator', 'Neighborhood guide', 'School and park nearby info', 'Saved search alerts', 'Military relocation tools'].map((item) => (
+      {['Mortgage calculator', 'Neighborhood guide', 'School and park nearby info', 'Saved search alerts', 'Agent and brokerage contacts', 'Military relocation tools'].map((item) => (
         <View key={item} style={styles.featureRow}>
           <Text style={styles.featureBullet}>✓</Text>
           <Text style={styles.featureText}>{item}</Text>
         </View>
       ))}
     </ScrollView>
+  )
+}
+
+function formatRequestDate(value?: string) {
+  if (!value) return 'Not scheduled'
+  return new Date(value).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+}
+
+function requestNextStep(request: ConsumerLead) {
+  if (request.latest_showing_appointment) return 'Your showing details are below. Contact the assigned agent if you need to reschedule.'
+
+  switch (request.status) {
+    case 'new':
+      return 'The brokerage has received your request and will assign follow-up soon.'
+    case 'contacted':
+      return 'An agent has started follow-up. Watch for a call, text, or email.'
+    case 'showing_scheduled':
+      return 'A showing is being coordinated. Appointment details will appear here once confirmed.'
+    case 'nurturing':
+      return 'The team is keeping this request open while you continue searching.'
+    case 'closed':
+    case 'lost':
+    case 'archived':
+      return 'This request is closed. You can submit a new request from any listing.'
+    default:
+      return 'The Hafa Homes team is reviewing this request.'
+  }
+}
+
+function RequestsSignInScreen({ clerkEnabled, onOpenAuth }: { clerkEnabled: boolean; onOpenAuth: () => void }) {
+  return (
+    <ScrollView contentContainerStyle={styles.listContent}>
+      <View style={styles.screenIntro}>
+        <Text style={styles.kicker}>My requests</Text>
+        <Text style={styles.screenTitle}>Track showings and price alerts</Text>
+        <Text style={styles.screenCopy}>Signed-in requests show status, assigned agent, brokerage contact details, and confirmed appointment information.</Text>
+      </View>
+      <View style={styles.accountCard}>
+        <Text style={styles.accountKicker}>Account required</Text>
+        <Text style={styles.accountTitle}>{clerkEnabled ? 'Sign in to view requests' : 'Sign-in coming online'}</Text>
+        <Text style={styles.accountCopy}>{clerkEnabled ? 'Showing requests stay public, but request history is tied to your Hafa Homes account.' : 'Clerk must be configured before request history can sync.'}</Text>
+        {clerkEnabled && <Pressable style={styles.primaryCta} onPress={onOpenAuth}><Text style={styles.primaryCtaText}>Sign in or create account</Text></Pressable>}
+      </View>
+    </ScrollView>
+  )
+}
+
+function RequestsScreen({ auth }: { auth: AppAuth }) {
+  const [requests, setRequests] = useState<ConsumerLead[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    async function loadRequests() {
+      if (!auth.getToken) return
+      setLoading(true)
+      setError(null)
+      try {
+        const result = await fetchMyLeads(auth.getToken)
+        if (!cancelled) setRequests(result.leads ?? [])
+      } catch (requestError) {
+        console.warn('Unable to load Hafa Homes requests', requestError)
+        if (!cancelled) setError(requestError instanceof Error ? requestError.message : 'Unable to load requests')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    loadRequests()
+    return () => { cancelled = true }
+  }, [auth.getToken])
+
+  return (
+    <FlatList
+      data={requests}
+      keyExtractor={(request) => String(request.id)}
+      contentContainerStyle={styles.listContent}
+      ListHeaderComponent={(
+        <View style={styles.screenIntro}>
+          <Text style={styles.kicker}>My requests</Text>
+          <Text style={styles.screenTitle}>Showing requests and price alerts</Text>
+          <Text style={styles.screenCopy}>See status, agent, brokerage, and appointment details for every signed-in request.</Text>
+        </View>
+      )}
+      ListEmptyComponent={loading ? <CenteredState label="Loading your requests..." loading /> : <CenteredState label="No requests yet. Request a showing or add a price alert from any listing." />}
+      renderItem={({ item }) => <RequestHistoryCard request={item} />}
+      ListFooterComponent={error ? <Text style={styles.requestError}>{error}</Text> : null}
+    />
+  )
+}
+
+function RequestHistoryCard({ request }: { request: ConsumerLead }) {
+  const showing = request.latest_showing_appointment
+  return (
+    <View style={styles.requestHistoryCard}>
+      {request.listing?.primary_photo_url && <Image source={{ uri: request.listing.primary_photo_url }} style={styles.requestHistoryImage} />}
+      <View style={styles.requestHistoryBody}>
+        <View style={styles.requestStatusCard}>
+          <Text style={styles.requestHistoryStatus}>Current status</Text>
+          <Text style={styles.requestStatusTitle}>{request.consumer_status_label || request.status.replace(/_/g, ' ')}</Text>
+          <Text style={styles.requestStatusMeta}>{requestNextStep(request)}</Text>
+        </View>
+        <Text style={styles.requestHistoryTitle}>{request.listing?.title || request.lead_type.replace(/_/g, ' ')}</Text>
+        <Text style={styles.requestHistoryMeta}>Submitted {formatRequestDate(request.created_at)}</Text>
+        <View style={styles.showingSummaryCard}>
+          <Text style={styles.requestHistoryStatus}>Agent and brokerage</Text>
+          <Text style={styles.requestHistoryMeta}>Agent: {request.assigned_agent?.name || 'Pending assignment'}</Text>
+          {request.assigned_agent?.phone && <Text style={styles.requestHistoryMeta}>Agent phone: {request.assigned_agent.phone}</Text>}
+          {request.assigned_agent?.email && <Text style={styles.requestHistoryMeta}>Agent email: {request.assigned_agent.email}</Text>}
+          <Text style={styles.requestHistoryMeta}>Brokerage: {request.brokerage?.name || 'Hafa Homes'}</Text>
+          {request.brokerage?.phone && <Text style={styles.requestHistoryMeta}>Brokerage phone: {request.brokerage.phone}</Text>}
+        </View>
+        {showing && (
+          <View style={styles.showingSummaryCard}>
+            <Text style={styles.requestHistoryStatus}>Showing appointment</Text>
+            <Text style={styles.requestHistoryMeta}>{formatRequestDate(showing.scheduled_starts_at)} · {showing.status.replace(/_/g, ' ')} · {showing.tour_type.replace(/_/g, ' ')}</Text>
+            {showing.location && <Text style={styles.requestHistoryMeta}>{showing.location}</Text>}
+            {showing.consumer_notes && <Text style={styles.requestHistoryMeta}>{showing.consumer_notes}</Text>}
+          </View>
+        )}
+        {request.message && <Text style={styles.requestHistoryMessage}>{request.message}</Text>}
+      </View>
+    </View>
   )
 }
 
@@ -1363,13 +1510,16 @@ function CalculatorInput({ label, value, onChangeText, prefix, suffix }: { label
 function ListingDetailScreen({ listing, saved, auth, onBack, onOpenAuth, onToggleSaved }: { listing: Listing; saved: boolean; auth: AppAuth; onBack: () => void; onOpenAuth: (prompt?: AuthPrompt) => void; onToggleSaved: () => void }) {
   const [detailListing, setDetailListing] = useState(listing)
   const [imageUri, setImageUri] = useState(listing.photos?.[0]?.url || listing.primary_photo_url || FALLBACK_IMAGE)
+  const [photoIndex, setPhotoIndex] = useState(0)
   const [showMortgageCalculator, setShowMortgageCalculator] = useState(false)
   const [showRequestForm, setShowRequestForm] = useState(false)
+  const [showPriceTracker, setShowPriceTracker] = useState(false)
   const [detailError, setDetailError] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
     setDetailListing(listing)
+    setPhotoIndex(0)
     setImageUri(listing.photos?.[0]?.url || listing.primary_photo_url || FALLBACK_IMAGE)
     setDetailError(null)
 
@@ -1377,7 +1527,11 @@ function ListingDetailScreen({ listing, saved, auth, onBack, onOpenAuth, onToggl
 
     fetchListing(listing.id)
       .then((result) => {
-        if (!cancelled) setDetailListing(result)
+        if (!cancelled) {
+          setDetailListing(result)
+          setPhotoIndex(0)
+          setImageUri(result.photos?.[0]?.url || result.primary_photo_url || FALLBACK_IMAGE)
+        }
       })
       .catch((listingDetailError) => {
         console.warn('Unable to load Hafa Homes listing detail', listingDetailError)
@@ -1389,6 +1543,14 @@ function ListingDetailScreen({ listing, saved, auth, onBack, onOpenAuth, onToggl
     }
   }, [listing])
 
+  const photos = detailListing.photos?.length ? detailListing.photos : [{ id: 0, url: detailListing.primary_photo_url || FALLBACK_IMAGE, position: 1, alt_text: detailListing.title }]
+
+  function showPhoto(index: number) {
+    const nextIndex = (index + photos.length) % photos.length
+    setPhotoIndex(nextIndex)
+    setImageUri(photos[nextIndex]?.url || FALLBACK_IMAGE)
+  }
+
   return (
     <SafeAreaView style={styles.shell}>
       <StatusBar style="light" />
@@ -1397,12 +1559,26 @@ function ListingDetailScreen({ listing, saved, auth, onBack, onOpenAuth, onToggl
           <Pressable onPress={onBack} style={styles.backButton}><Text style={styles.backButtonText}>← Back</Text></Pressable>
           <Pressable disabled={Boolean(detailError)} onPress={onToggleSaved} style={[styles.detailSaveButton, saved && styles.saveButtonActive, detailError && styles.ctaDisabled]}><Text style={[styles.saveText, saved && styles.saveTextActive]}>{saved ? '♥' : '♡'}</Text></Pressable>
         </View>
-        <Image source={{ uri: imageUri }} onError={() => setImageUri(FALLBACK_IMAGE)} style={styles.detailImage} />
+        <View style={styles.detailImageWrap}>
+          <Image source={{ uri: imageUri }} onError={() => setImageUri(FALLBACK_IMAGE)} style={styles.detailImage} />
+          {photos.length > 1 && (
+            <>
+              <Pressable onPress={() => showPhoto(photoIndex - 1)} style={[styles.photoNavButton, styles.photoNavLeft]}><Text style={styles.photoNavText}>‹</Text></Pressable>
+              <Pressable onPress={() => showPhoto(photoIndex + 1)} style={[styles.photoNavButton, styles.photoNavRight]}><Text style={styles.photoNavText}>›</Text></Pressable>
+              <View style={styles.photoCountBadge}><Text style={styles.photoCountText}>{photoIndex + 1} of {photos.length}</Text></View>
+            </>
+          )}
+        </View>
         <View style={styles.detailPanel}>
           <Text style={styles.priceLarge}>{currency(detailListing.price, detailListing.listing_kind)}</Text>
           <Text style={styles.detailTitle}>{detailListing.title}</Text>
           <Text style={styles.cardMeta}>{detailListing.village.name} · {detailListing.address}</Text>
           <Text style={styles.detailStats}>{detailListing.beds} beds · {detailListing.baths} baths · {detailListing.square_feet?.toLocaleString() ?? '—'} sqft</Text>
+          <View style={styles.listingFactsCard}>
+            <Text style={styles.factLine}>Listing ID <Text style={styles.factValue}>{detailListing.external_id || `HH-${detailListing.id}`}</Text></Text>
+            <Text style={styles.factLine}>Status <Text style={styles.factValue}>{detailListing.status || 'active'}</Text></Text>
+            <Text style={styles.factLine}>Type <Text style={styles.factValue}>{detailListing.property_type}</Text></Text>
+          </View>
           <Text style={styles.sectionTitle}>Local details</Text>
           <Text style={styles.detailCopy}>{detailListing.description || 'Explore this Guam listing, request a showing, save it for later, or ask an agent for next steps.'}</Text>
           {detailError && <Text style={styles.requestError}>This listing could not be refreshed from the API. Go back to search and reload listings before saving or requesting a showing. Error: {detailError}</Text>}
@@ -1418,6 +1594,12 @@ function ListingDetailScreen({ listing, saved, auth, onBack, onOpenAuth, onToggl
           <Pressable disabled={Boolean(detailError)} style={[styles.primaryCta, detailError && styles.ctaDisabled]} onPress={() => setShowRequestForm(true)}>
             <Text style={styles.primaryCtaText}>Request a showing</Text>
           </Pressable>
+          <Pressable
+            style={styles.secondaryCta}
+            onPress={() => setShowPriceTracker(true)}
+          >
+            <Text style={styles.secondaryCtaText}>Add price alert</Text>
+          </Pressable>
           {detailListing.listing_kind === 'sale' && (
             <>
               <Pressable
@@ -1432,6 +1614,7 @@ function ListingDetailScreen({ listing, saved, auth, onBack, onOpenAuth, onToggl
         </View>
       </ScrollView>
       <ShowingRequestSheet listing={detailListing} auth={auth} open={showRequestForm} onOpenAuth={onOpenAuth} onClose={() => setShowRequestForm(false)} />
+      <PriceAlertSheet listing={detailListing} auth={auth} open={showPriceTracker} onClose={() => setShowPriceTracker(false)} />
     </SafeAreaView>
   )
 }
@@ -1484,8 +1667,10 @@ function LocalIntelList({ title, items, note }: { title: string; items?: string[
 function ShowingRequestSheet({ listing, auth, open, onOpenAuth, onClose }: { listing: Listing; auth: AppAuth; open: boolean; onOpenAuth: (prompt?: AuthPrompt) => void; onClose: () => void }) {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
-  const [phone, setPhone] = useState('')
+  const [phone, setPhone] = useState('+1671')
   const [preferredContact, setPreferredContact] = useState('phone')
+  const [preferredTime, setPreferredTime] = useState('morning')
+  const [tourType, setTourType] = useState('in_person')
   const [message, setMessage] = useState(`I'm interested in ${listing.title}.`)
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
@@ -1519,6 +1704,8 @@ function ShowingRequestSheet({ listing, auth, open, onOpenAuth, onClose }: { lis
         email: email.trim(),
         phone: phone.trim(),
         preferred_contact_method: preferredContact,
+        preferred_time: preferredTime,
+        tour_type: tourType,
         message: `${message.trim()}\n\nListing: ${listing.title} — ${listing.address}, ${listing.village.name}`,
       }, auth.isSignedIn ? auth.getToken : undefined)
       setSubmitted(true)
@@ -1565,12 +1752,28 @@ function ShowingRequestSheet({ listing, auth, open, onOpenAuth, onClose }: { lis
               <View style={styles.requestFieldGroup}>
                 <RequestInput label="Name" value={name} onChangeText={setName} placeholder="Your name" />
                 <RequestInput label="Email" value={email} onChangeText={setEmail} placeholder="you@example.com" keyboardType="email-address" autoCapitalize="none" />
-                <RequestInput label="Phone" value={phone} onChangeText={setPhone} placeholder="(671) 555-0123" keyboardType="phone-pad" />
+                <RequestInput label="Phone" value={phone} onChangeText={setPhone} placeholder="+1671" keyboardType="phone-pad" />
                 <Text style={styles.requestLabel}>Preferred contact</Text>
                 <View style={styles.contactSegmentRow}>
                   {['phone', 'text', 'email'].map((option) => (
                     <Pressable key={option} onPress={() => setPreferredContact(option)} style={[styles.contactSegment, preferredContact === option && styles.contactSegmentActive]}>
                       <Text style={[styles.contactSegmentText, preferredContact === option && styles.contactSegmentTextActive]}>{option}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+                <Text style={styles.requestLabel}>Tour type</Text>
+                <View style={styles.contactSegmentRow}>
+                  {[['in_person', 'in person'], ['virtual', 'virtual']].map(([value, label]) => (
+                    <Pressable key={value} onPress={() => setTourType(value)} style={[styles.contactSegment, tourType === value && styles.contactSegmentActive]}>
+                      <Text style={[styles.contactSegmentText, tourType === value && styles.contactSegmentTextActive]}>{label}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+                <Text style={styles.requestLabel}>Preferred time</Text>
+                <View style={styles.contactSegmentRow}>
+                  {['morning', 'afternoon', 'evening'].map((option) => (
+                    <Pressable key={option} onPress={() => setPreferredTime(option)} style={[styles.contactSegment, preferredTime === option && styles.contactSegmentActive]}>
+                      <Text style={[styles.contactSegmentText, preferredTime === option && styles.contactSegmentTextActive]}>{option}</Text>
                     </Pressable>
                   ))}
                 </View>
@@ -1580,6 +1783,100 @@ function ShowingRequestSheet({ listing, auth, open, onOpenAuth, onClose }: { lis
               {error && <Text style={styles.requestError}>{error}</Text>}
               <Pressable disabled={submitting} style={[styles.primaryCta, submitting && styles.ctaDisabled]} onPress={handleSubmit}>
                 <Text style={styles.primaryCtaText}>{submitting ? 'Sending request...' : 'Send showing request'}</Text>
+              </Pressable>
+            </ScrollView>
+          )}
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  )
+}
+
+function PriceAlertSheet({ listing, auth, open, onClose }: { listing: Listing; auth: AppAuth; open: boolean; onClose: () => void }) {
+  const [name, setName] = useState('')
+  const [email, setEmail] = useState('')
+  const [phone, setPhone] = useState('+1671')
+  const [targetPrice, setTargetPrice] = useState(String(Math.round(listing.price * 0.97)))
+  const [submitting, setSubmitting] = useState(false)
+  const [submitted, setSubmitted] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+    setSubmitted(false)
+    setError(null)
+    setTargetPrice(String(Math.round(listing.price * 0.97)))
+    if (auth.isSignedIn) {
+      setName((current) => current || auth.userName || '')
+      setEmail((current) => current || auth.userEmail || '')
+    }
+  }, [auth.isSignedIn, auth.userEmail, auth.userName, listing.price, open])
+
+  async function handleSubmit() {
+    const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
+    if (!email.trim() || !emailValid) {
+      setError('Please add a valid email for price alerts.')
+      return
+    }
+
+    setSubmitting(true)
+    setError(null)
+    try {
+      await createLead({
+        listing_id: listing.id,
+        lead_type: 'price_tracker',
+        name: name.trim() || 'Hafa Homes user',
+        email: email.trim(),
+        phone: phone.trim(),
+        preferred_contact_method: 'email',
+        target_price: targetPrice.trim(),
+        message: `Target price: ${targetPrice.trim()}\n\nListing: ${listing.title} — ${listing.address}, ${listing.village.name}`,
+      }, auth.isSignedIn ? auth.getToken : undefined)
+      setSubmitted(true)
+    } catch (submitError) {
+      console.warn('Unable to submit price alert', submitError)
+      setError(submitError instanceof Error ? submitError.message : 'We could not save this price alert yet.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <Modal visible={open} transparent animationType="slide" onRequestClose={onClose}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.sheetBackdrop}>
+        <Pressable style={styles.sheetScrim} onPress={onClose} />
+        <View style={styles.requestSheet}>
+          {submitted ? (
+            <View style={styles.requestSuccess}>
+              <Text style={styles.kicker}>Price alert saved</Text>
+              <Text style={styles.requestTitle}>We’ll watch this listing.</Text>
+              <Text style={styles.requestCopy}>The Hafa Homes team can follow up when price activity matters for {listing.title}.</Text>
+              <Pressable style={styles.primaryCta} onPress={onClose}><Text style={styles.primaryCtaText}>Done</Text></Pressable>
+            </View>
+          ) : (
+            <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+              <View style={styles.sheetHandle} />
+              <View style={styles.sheetHeaderRow}>
+                <View style={styles.sheetHeaderCopy}>
+                  <Text style={styles.kicker}>Price alert</Text>
+                  <Text style={styles.requestTitle}>Set a target price</Text>
+                </View>
+                <Pressable onPress={onClose} style={styles.sheetCloseButton}><Text style={styles.sheetCloseText}>×</Text></Pressable>
+              </View>
+              <View style={styles.requestListingSummary}>
+                <Text style={styles.requestListingPrice}>{currency(listing.price, listing.listing_kind)}</Text>
+                <Text numberOfLines={1} style={styles.requestListingTitle}>{listing.title}</Text>
+                <Text numberOfLines={1} style={styles.cardMeta}>{listing.village.name} · {listing.address}</Text>
+              </View>
+              <View style={styles.requestFieldGroup}>
+                <RequestInput label="Target price" value={targetPrice} onChangeText={setTargetPrice} placeholder="750000" keyboardType="number-pad" />
+                <RequestInput label="Email" value={email} onChangeText={setEmail} placeholder="you@example.com" keyboardType="email-address" autoCapitalize="none" />
+                <RequestInput label="Name" value={name} onChangeText={setName} placeholder="Your name" />
+                <RequestInput label="Phone optional" value={phone} onChangeText={setPhone} placeholder="+1671" keyboardType="phone-pad" />
+              </View>
+              {error && <Text style={styles.requestError}>{error}</Text>}
+              <Pressable disabled={submitting} style={[styles.primaryCta, submitting && styles.ctaDisabled]} onPress={handleSubmit}>
+                <Text style={styles.primaryCtaText}>{submitting ? 'Saving alert...' : 'Save price alert'}</Text>
               </Pressable>
             </ScrollView>
           )}
@@ -1763,11 +2060,21 @@ const styles = StyleSheet.create({
   backButton: { backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: 999, paddingHorizontal: 14, paddingVertical: 10 },
   backButtonText: { color: 'white', fontSize: 14, fontWeight: '900' },
   detailSaveButton: { alignItems: 'center', backgroundColor: 'white', borderRadius: 999, height: 42, justifyContent: 'center', width: 42 },
+  detailImageWrap: { backgroundColor: '#dbe8df', position: 'relative' },
   detailImage: { backgroundColor: '#dbe8df', height: 330, width: '100%' },
+  photoNavButton: { alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.92)', borderRadius: 999, height: 44, justifyContent: 'center', position: 'absolute', top: 150, width: 44 },
+  photoNavLeft: { left: 14 },
+  photoNavRight: { right: 14 },
+  photoNavText: { color: colors.green, fontSize: 32, fontWeight: '800', lineHeight: 34 },
+  photoCountBadge: { alignSelf: 'center', backgroundColor: 'rgba(15,61,53,0.72)', borderRadius: 999, bottom: 42, paddingHorizontal: 12, paddingVertical: 7, position: 'absolute' },
+  photoCountText: { color: 'white', fontSize: 12, fontWeight: '900' },
   detailPanel: { backgroundColor: 'white', borderTopLeftRadius: 32, borderTopRightRadius: 32, marginTop: -26, padding: 20 },
   priceLarge: { color: colors.ink, fontSize: 32, fontWeight: '900', letterSpacing: -1.2 },
   detailTitle: { color: colors.ink, fontSize: 25, fontWeight: '900', letterSpacing: -0.8, marginTop: 6 },
   detailStats: { color: '#324640', fontSize: 15, fontWeight: '900', marginTop: 14 },
+  listingFactsCard: { backgroundColor: colors.sand, borderRadius: 20, gap: 7, marginTop: 14, padding: 14 },
+  factLine: { color: colors.muted, fontSize: 13, fontWeight: '800' },
+  factValue: { color: colors.ink, fontWeight: '900' },
   sectionTitle: { color: colors.green, fontSize: 17, fontWeight: '900', marginTop: 24 },
   detailCopy: { color: colors.muted, fontSize: 15, fontWeight: '600', lineHeight: 24, marginTop: 8 },
   primaryCta: { alignItems: 'center', backgroundColor: colors.green, borderRadius: 20, marginTop: 22, padding: 16 },
@@ -1813,4 +2120,15 @@ const styles = StyleSheet.create({
   contactSegmentTextActive: { color: colors.green },
   requestError: { color: '#a33b2f', fontSize: 13, fontWeight: '800', lineHeight: 19, marginTop: 12 },
   requestSuccess: { paddingVertical: 20 },
+  requestHistoryCard: { backgroundColor: 'white', borderRadius: 26, marginTop: 12, overflow: 'hidden', shadowColor: colors.green, shadowOpacity: 0.08, shadowRadius: 18, shadowOffset: { width: 0, height: 8 } },
+  requestHistoryImage: { backgroundColor: '#dbe8df', height: 170, width: '100%' },
+  requestHistoryBody: { padding: 16 },
+  requestHistoryStatus: { color: colors.green2, fontSize: 11, fontWeight: '900', letterSpacing: 1.6, textTransform: 'uppercase' },
+  requestStatusCard: { backgroundColor: colors.green, borderRadius: 18, marginBottom: 14, padding: 14 },
+  requestStatusTitle: { color: 'white', fontSize: 22, fontWeight: '900', letterSpacing: -0.5, marginTop: 5 },
+  requestStatusMeta: { color: 'rgba(255,255,255,0.78)', fontSize: 13, fontWeight: '700', lineHeight: 20, marginTop: 6 },
+  requestHistoryTitle: { color: colors.ink, fontSize: 20, fontWeight: '900', letterSpacing: -0.4, marginTop: 5 },
+  requestHistoryMeta: { color: colors.muted, fontSize: 13, fontWeight: '700', lineHeight: 20, marginTop: 4 },
+  requestHistoryMessage: { color: colors.muted, fontSize: 13, fontWeight: '700', lineHeight: 20, marginTop: 12 },
+  showingSummaryCard: { backgroundColor: colors.sand, borderRadius: 16, marginTop: 10, padding: 12 },
 })
