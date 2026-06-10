@@ -183,7 +183,7 @@ type NotificationDelivery = {
   event_name: string
   subject?: string
   body_preview?: string
-  status: 'queued' | 'sent' | 'skipped' | 'failed'
+  status: 'queued' | 'sending' | 'sent' | 'skipped' | 'failed'
   error_message?: string
   queued_at?: string
   sent_at?: string
@@ -1994,8 +1994,8 @@ function AdminShell({ children, title, kicker, description }: { children: React.
       <div className={`grid min-h-screen transition-[grid-template-columns] duration-200 ${collapsed ? 'lg:grid-cols-[88px_1fr]' : 'lg:grid-cols-[288px_1fr]'}`}>
         {sidebar}
         <section className="min-w-0">
-          <div className="sticky top-0 z-40 border-b border-[#e1d7c7] bg-white/82 px-4 py-3 backdrop-blur">
-            <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
+          <div className="sticky top-0 z-40 border-b border-[#e1d7c7] bg-white/82 px-4 py-3 backdrop-blur sm:px-5">
+            <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 sm:gap-4">
               <div className="flex items-center gap-3">
                 <button onClick={() => setMobileOpen(true)} className="grid h-11 w-11 place-items-center rounded-full border border-[#d7ded9] bg-white text-[#0f3d35] lg:hidden" aria-label="Open admin navigation"><Menu size={18} /></button>
                 <Link to="/" className="text-sm font-bold text-[#0f705e]">View public site</Link>
@@ -2004,9 +2004,9 @@ function AdminShell({ children, title, kicker, description }: { children: React.
             </div>
           </div>
           {title && (
-            <header className="mx-auto max-w-7xl px-5 py-8">
+            <header className="mx-auto max-w-7xl px-4 py-6 sm:px-5 sm:py-8">
               {kicker && <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#0f705e]">{kicker}</p>}
-              <h1 className="mt-2 max-w-4xl text-4xl font-semibold tracking-[-0.06em] md:text-5xl">{title}</h1>
+              <h1 className="mt-2 max-w-4xl text-3xl font-semibold tracking-[-0.06em] sm:text-4xl md:text-5xl">{title}</h1>
               {description && <p className="mt-4 max-w-3xl text-base leading-7 text-[#66746f]">{description}</p>}
             </header>
           )}
@@ -2023,7 +2023,7 @@ function AdminDashboardPage() {
 
   return (
     <AdminShell kicker="Dashboard" title="Today’s broker workspace">
-      <section className="mx-auto max-w-7xl px-5 pb-12">
+      <section className="mx-auto max-w-7xl px-4 pb-12 sm:px-5">
         {isLoading && <StateCard>Loading dashboard...</StateCard>}
         {isError && <StateCard tone="error">Unable to load dashboard.</StateCard>}
         {metrics && (
@@ -2058,11 +2058,11 @@ function AdminDashboardPage() {
 
 function AdminMetric({ label, value, tone = 'light' }: { label: string; value: number; tone?: 'light' | 'dark' | 'warn' }) {
   const classes = tone === 'dark' ? 'bg-[#0f3d35] text-white' : tone === 'warn' ? 'bg-[#fff5d9] text-[#6b4508]' : 'bg-white text-[#17211f]'
-  return <div className={`rounded-[1.5rem] p-5 shadow-sm ${classes}`}><p className="text-xs font-bold uppercase tracking-[0.18em] opacity-60">{label}</p><p className="mt-3 text-4xl font-semibold tracking-[-0.06em]">{value}</p></div>
+  return <div className={`rounded-[1.5rem] p-4 shadow-sm sm:p-5 ${classes}`}><p className="text-xs font-bold uppercase tracking-[0.18em] opacity-60">{label}</p><p className="mt-3 text-3xl font-semibold tracking-[-0.06em] sm:text-4xl">{value}</p></div>
 }
 
 function AdminPanel({ title, children }: { title: string; children: React.ReactNode }) {
-  return <div className="rounded-[2rem] bg-white p-5 shadow-sm"><h2 className="text-2xl font-semibold tracking-[-0.04em]">{title}</h2><div className="mt-4">{children}</div></div>
+  return <div className="rounded-[1.75rem] bg-white p-4 shadow-sm sm:rounded-[2rem] sm:p-5"><h2 className="text-xl font-semibold tracking-[-0.04em] sm:text-2xl">{title}</h2><div className="mt-4">{children}</div></div>
 }
 
 function LeadCompactRow({ lead }: { lead: Lead }) {
@@ -2101,7 +2101,7 @@ function LeadsPage() {
 
   return (
     <AdminShell kicker="Leads" title="Lead inbox">
-      <section className="mx-auto max-w-7xl px-5 pb-10">
+      <section className="mx-auto max-w-7xl px-4 pb-10 sm:px-5">
         <div className="mb-5 grid gap-3 md:grid-cols-3">
           <div className="rounded-[1.75rem] bg-[#0f3d35] p-5 text-white"><p className="text-xs font-bold uppercase tracking-[0.18em] text-white/55">Open leads</p><p className="mt-2 text-4xl font-semibold tracking-[-0.06em]">{openLeads}</p></div>
           <div className="rounded-[1.75rem] bg-white p-5"><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#7b8a84]">New</p><p className="mt-2 text-4xl font-semibold tracking-[-0.06em]">{newLeads}</p></div>
@@ -2112,7 +2112,7 @@ function LeadsPage() {
         {statusMutation.isError && <StateCard tone="error">{displayErrorMessage(statusMutation.error, 'Unable to update lead right now.')}</StateCard>}
         <div className="grid gap-4">
           {leads.map((lead) => (
-            <article key={lead.id} className="rounded-[2rem] bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[#0f3d35]/10">
+            <article key={lead.id} className="rounded-[1.75rem] bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[#0f3d35]/10 sm:rounded-[2rem] sm:p-5">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
                   <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#0f705e]">{lead.lead_type.replaceAll('_', ' ')}</p>
@@ -2166,18 +2166,18 @@ function LeadDetailPage() {
 
   return (
     <AdminShell>
-      <section className="mx-auto max-w-7xl px-5 pb-10">
-        <button onClick={() => navigate('/admin/leads')} className="mb-6 inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-bold text-[#304942]"><ArrowLeft size={16} /> Back to leads</button>
+      <section className="mx-auto max-w-7xl px-4 pb-10 pt-6 sm:px-5">
+        <button onClick={() => navigate('/admin/leads')} className="mb-6 inline-flex min-h-11 items-center gap-2 rounded-full bg-white px-5 text-sm font-bold text-[#304942]"><ArrowLeft size={16} /> Back to leads</button>
         {isLoading && <StateCard>Loading lead...</StateCard>}
         {isError && <StateCard tone="error">Unable to load this lead.</StateCard>}
         {mutation.isError && <StateCard tone="error">{displayErrorMessage(mutation.error, 'Unable to update lead right now.')}</StateCard>}
         {lead && (
-          <div className="grid gap-5 xl:grid-cols-[minmax(0,1.25fr)_minmax(380px,0.75fr)]">
-            <article className="rounded-[2rem] bg-white p-6 shadow-sm">
+          <div className="grid gap-4 sm:gap-5 xl:grid-cols-[minmax(0,1.25fr)_minmax(380px,0.75fr)]">
+            <article className="rounded-[1.75rem] bg-white p-4 shadow-sm sm:rounded-[2rem] sm:p-6">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
                   <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#0f705e]">Lead detail</p>
-                  <h1 className="mt-3 text-4xl font-semibold tracking-[-0.06em] md:text-5xl">{lead.name}</h1>
+                  <h1 className="mt-3 text-3xl font-semibold tracking-[-0.06em] sm:text-4xl md:text-5xl">{lead.name}</h1>
                   <p className="mt-3 text-sm font-semibold text-[#66746f]">Created {formatDateTime(lead.created_at)} · Source {lead.lead_source?.replaceAll('_', ' ') ?? 'Hafa Homes'}</p>
                 </div>
                 <LeadStatusSelect value={lead.status} onChange={(status) => mutation.mutate({ status })} disabled={mutation.isPending} />
@@ -2187,10 +2187,10 @@ function LeadDetailPage() {
             </article>
 
             <aside className="space-y-5">
-              <div className="rounded-[2rem] bg-[#0f3d35] p-6 text-white shadow-xl shadow-[#0f3d35]/15">
+              <div className="rounded-[1.75rem] bg-[#0f3d35] p-4 text-white shadow-xl shadow-[#0f3d35]/15 sm:rounded-[2rem] sm:p-6">
                 <Building2 className="text-[#bdebdc]" />
                 <p className="mt-5 text-xs font-bold uppercase tracking-[0.2em] text-white/55">Brokerage routing</p>
-                <h2 className="mt-2 text-3xl font-semibold tracking-[-0.05em]">{lead.brokerage?.name ?? 'Unassigned brokerage'}</h2>
+                <h2 className="mt-2 text-2xl font-semibold tracking-[-0.05em] sm:text-3xl">{lead.brokerage?.name ?? 'Unassigned brokerage'}</h2>
                 <p className="mt-3 text-sm leading-6 text-white/70">Assigned agent: {lead.assigned_agent?.name ?? 'Not assigned yet'}</p>
                 <label className="mt-5 grid gap-2 text-sm font-semibold text-white/80">
                   Assign agent
@@ -2198,7 +2198,7 @@ function LeadDetailPage() {
                     value={lead.assigned_agent_id ?? ''}
                     onChange={(event) => mutation.mutate({ assigned_agent_id: event.target.value ? Number(event.target.value) : null })}
                     disabled={mutation.isPending || !assignableAgents.length}
-                    className="min-h-12 rounded-2xl border border-white/15 bg-white px-4 text-[#17211f]"
+                    className="min-h-12 w-full min-w-0 rounded-2xl border border-white/15 bg-white px-4 text-[#17211f]"
                   >
                     <option value="">Unassigned</option>
                     {assignableAgents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name} · {agent.brokerage?.name}</option>)}
@@ -2212,7 +2212,7 @@ function LeadDetailPage() {
               <ShowingScheduler lead={lead} assignableAgents={assignableAgents} mutation={showingMutation} />
 
               {lead.listing && (
-                <div className="rounded-[2rem] bg-white p-6 shadow-sm">
+                <div className="rounded-[1.75rem] bg-white p-4 shadow-sm sm:rounded-[2rem] sm:p-6">
                   <Home className="text-[#0f705e]" />
                   <p className="mt-5 text-xs font-bold uppercase tracking-[0.2em] text-[#7b8a84]">Listing interest</p>
                   <h2 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">{lead.listing.title}</h2>
@@ -2275,7 +2275,7 @@ function LeadEditForm({ lead, mutation }: { lead: Lead; mutation: LeadMutation }
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#7b8a84]">Customer details</p>
           <p className="mt-1 text-sm font-semibold text-[#66746f]">Agents can correct contact info and request preferences after a customer call.</p>
         </div>
-        <button disabled={mutation.isPending} className="min-h-10 rounded-full bg-[#0f3d35] px-4 text-sm font-bold text-white disabled:opacity-60">
+        <button disabled={mutation.isPending} className="min-h-11 w-full rounded-full bg-[#0f3d35] px-5 text-sm font-bold text-white disabled:opacity-60 sm:w-auto">
           {mutation.isPending ? 'Saving...' : 'Save changes'}
         </button>
       </div>
@@ -2286,7 +2286,7 @@ function LeadEditForm({ lead, mutation }: { lead: Lead; mutation: LeadMutation }
         <Input name="phone" label="Phone" defaultValue={lead.phone || '+1671'} inputMode="tel" />
         <label className="grid gap-2 text-sm font-semibold text-[#304942]">
           Preferred contact
-          <select name="preferred_contact_method" defaultValue={lead.preferred_contact_method || ''} className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
+          <select name="preferred_contact_method" defaultValue={lead.preferred_contact_method || ''} className="min-h-12 w-full min-w-0 rounded-2xl border border-[#dce5df] bg-white px-4">
             <option value="">Not provided</option>
             <option value="phone">Phone</option>
             <option value="text">Text</option>
@@ -2295,7 +2295,7 @@ function LeadEditForm({ lead, mutation }: { lead: Lead; mutation: LeadMutation }
         </label>
         <label className="grid gap-2 text-sm font-semibold text-[#304942]">
           Request type
-          <select name="lead_type" defaultValue={lead.lead_type} className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
+          <select name="lead_type" defaultValue={lead.lead_type} className="min-h-12 w-full min-w-0 rounded-2xl border border-[#dce5df] bg-white px-4">
             {!['showing_request', 'price_tracker', 'general_inquiry'].includes(lead.lead_type) && <option value={lead.lead_type}>{lead.lead_type.replaceAll('_', ' ')}</option>}
             <option value="showing_request">Showing request</option>
             <option value="price_tracker">Price tracker</option>
@@ -2304,7 +2304,7 @@ function LeadEditForm({ lead, mutation }: { lead: Lead; mutation: LeadMutation }
         </label>
         <label className="grid gap-2 text-sm font-semibold text-[#304942]">
           Tour type
-          <select name="tour_type" defaultValue={lead.tour_type || ''} className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
+          <select name="tour_type" defaultValue={lead.tour_type || ''} className="min-h-12 w-full min-w-0 rounded-2xl border border-[#dce5df] bg-white px-4">
             <option value="">Not requested</option>
             <option value="in_person">In person</option>
             <option value="virtual">Virtual</option>
@@ -2313,7 +2313,7 @@ function LeadEditForm({ lead, mutation }: { lead: Lead; mutation: LeadMutation }
         <Input name="preferred_tour_date" label="Preferred date" defaultValue={lead.preferred_tour_date || ''} type="date" />
         <label className="grid gap-2 text-sm font-semibold text-[#304942]">
           Preferred time
-          <select name="preferred_time" defaultValue={lead.preferred_time || ''} className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
+          <select name="preferred_time" defaultValue={lead.preferred_time || ''} className="min-h-12 w-full min-w-0 rounded-2xl border border-[#dce5df] bg-white px-4">
             <option value="">Not provided</option>
             <option value="morning">Morning</option>
             <option value="afternoon">Afternoon</option>
@@ -2326,7 +2326,7 @@ function LeadEditForm({ lead, mutation }: { lead: Lead; mutation: LeadMutation }
 
       <label className="mt-3 grid gap-2 text-sm font-semibold text-[#304942]">
         Message
-        <textarea name="message" rows={4} defaultValue={lead.message || ''} className="rounded-2xl border border-[#dce5df] bg-white px-4 py-3" />
+        <textarea name="message" rows={4} defaultValue={lead.message || ''} className="w-full min-w-0 rounded-2xl border border-[#dce5df] bg-white px-4 py-3" />
       </label>
       {mutation.isError && <p className="mt-3 text-sm font-semibold text-red-700">{displayErrorMessage(mutation.error, 'Unable to update lead right now.')}</p>}
     </form>
@@ -2392,7 +2392,7 @@ function LeadNotificationPanel({ lead, mutation }: { lead: Lead; mutation: Notif
   }
 
   return (
-    <div className="rounded-[2rem] bg-white p-6 shadow-sm">
+    <div className="rounded-[1.75rem] bg-white p-4 shadow-sm sm:rounded-[2rem] sm:p-6">
       <Bell className="text-[#0f705e]" />
       <p className="mt-5 text-xs font-bold uppercase tracking-[0.2em] text-[#7b8a84]">Notifications</p>
       <h2 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">Send an update</h2>
@@ -2400,7 +2400,7 @@ function LeadNotificationPanel({ lead, mutation }: { lead: Lead; mutation: Notif
       <form onSubmit={handleSubmit} className="mt-5 grid gap-3">
         <label className="grid gap-2 text-sm font-semibold text-[#304942]">
           Send to
-          <select name="send_mode" value={sendMode} onChange={(event) => setSendMode(event.target.value as typeof sendMode)} className="min-h-12 w-full rounded-2xl border border-[#dce5df] px-4">
+          <select name="send_mode" value={sendMode} onChange={(event) => setSendMode(event.target.value as typeof sendMode)} className="min-h-12 w-full min-w-0 rounded-2xl border border-[#dce5df] px-4">
             <option value="consumer_email">Customer email · {lead.email}</option>
             <option value="consumer_sms" disabled={!hasCustomerPhone}>Customer text{lead.phone ? ` · ${lead.phone}` : ' · no phone on file'}</option>
             <option value="agent_email" disabled={!hasAgentEmail}>Agent email{lead.assigned_agent?.email ? ` · ${lead.assigned_agent.email}` : ' · no agent email'}</option>
@@ -2414,7 +2414,7 @@ function LeadNotificationPanel({ lead, mutation }: { lead: Lead; mutation: Notif
         )}
         <label className="grid gap-2 text-sm font-semibold text-[#304942]">
           {isEmail ? 'Message' : 'Text message'}
-          <textarea key={`body-${sendMode}`} name="body" rows={isEmail ? 5 : 4} required defaultValue={defaultBody()} maxLength={sendMode === 'consumer_sms' ? 320 : undefined} className="rounded-2xl border border-[#dce5df] px-4 py-3" />
+          <textarea key={`body-${sendMode}`} name="body" rows={isEmail ? 5 : 4} required defaultValue={defaultBody()} maxLength={sendMode === 'consumer_sms' ? 320 : undefined} className="w-full min-w-0 rounded-2xl border border-[#dce5df] px-4 py-3" />
         </label>
         {sendMode === 'consumer_sms' && <p className="text-xs font-semibold text-[#66746f]">Texts are normalized to Guam +1671 format before ClickSend delivery.</p>}
         {mutation.isError && <p className="text-sm font-semibold text-red-700">{displayErrorMessage(mutation.error, 'Unable to queue notification right now.')}</p>}
@@ -2476,7 +2476,7 @@ function ShowingScheduler({ lead, assignableAgents, mutation }: { lead: Lead; as
   }
 
   return (
-    <div className="rounded-[2rem] bg-white p-6 shadow-sm">
+    <div className="rounded-[1.75rem] bg-white p-4 shadow-sm sm:rounded-[2rem] sm:p-6">
       <Clock3 className="text-[#0f705e]" />
       <p className="mt-5 text-xs font-bold uppercase tracking-[0.2em] text-[#7b8a84]">Showing schedule</p>
       <h2 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">{showing ? 'Update appointment' : 'Schedule appointment'}</h2>
@@ -2520,11 +2520,11 @@ function ShowingScheduler({ lead, assignableAgents, mutation }: { lead: Lead; as
         <Input name="location" label="Location or meeting point" defaultValue={showing?.location || lead.listing?.address || ''} />
         <label className="grid gap-2 text-sm font-semibold text-[#304942]">
           Notes for customer
-          <textarea name="consumer_notes" rows={3} defaultValue={showing?.consumer_notes || ''} className="rounded-2xl border border-[#dce5df] px-4 py-3" />
+          <textarea name="consumer_notes" rows={3} defaultValue={showing?.consumer_notes || ''} className="w-full min-w-0 rounded-2xl border border-[#dce5df] px-4 py-3" />
         </label>
         <label className="grid gap-2 text-sm font-semibold text-[#304942]">
           Internal notes
-          <textarea name="internal_notes" rows={3} defaultValue={showing?.internal_notes || ''} className="rounded-2xl border border-[#dce5df] px-4 py-3" />
+          <textarea name="internal_notes" rows={3} defaultValue={showing?.internal_notes || ''} className="w-full min-w-0 rounded-2xl border border-[#dce5df] px-4 py-3" />
         </label>
         {mutation.isError && <p className="text-sm font-semibold text-red-700">{displayErrorMessage(mutation.error, 'Unable to schedule showing right now.')}</p>}
         <button disabled={mutation.isPending} className="rounded-2xl bg-[#0f3d35] px-4 py-3 text-sm font-bold text-white disabled:opacity-60">
@@ -2541,16 +2541,16 @@ function AdminShowingsPage() {
 
   return (
     <AdminShell kicker="Showings" title="Showing schedule">
-      <section className="mx-auto max-w-7xl px-5 pb-10">
+      <section className="mx-auto max-w-7xl px-4 pb-10 sm:px-5">
         {isLoading && <StateCard>Loading showings...</StateCard>}
         {isError && <StateCard tone="error">Unable to load showings.</StateCard>}
         <div className="grid gap-4">
           {showings.map((showing) => (
-            <Link key={showing.id} to={`/admin/leads/${showing.lead_id}`} className="rounded-[2rem] bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[#0f3d35]/10">
+            <Link key={showing.id} to={`/admin/leads/${showing.lead_id}`} className="rounded-[1.75rem] bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[#0f3d35]/10 sm:rounded-[2rem] sm:p-5">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
                   <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#0f705e]">{showing.status.replaceAll('_', ' ')}</p>
-                  <h2 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">{showing.listing?.title ?? 'Showing appointment'}</h2>
+                  <h2 className="mt-2 text-xl font-semibold tracking-[-0.04em] sm:text-2xl">{showing.listing?.title ?? 'Showing appointment'}</h2>
                   <p className="mt-2 text-sm font-semibold text-[#66746f]">{formatDateTime(showing.scheduled_starts_at)} · {showing.tour_type.replaceAll('_', ' ')}</p>
                 </div>
                 <span className="rounded-full bg-[#f6f1e8] px-4 py-2 text-sm font-bold text-[#0f3d35]">{showing.agent?.name ?? 'Unassigned'}</span>
@@ -2582,7 +2582,7 @@ function AdminUsersPage() {
 
   return (
     <AdminShell kicker="Users" title="Team access">
-      <section className="mx-auto max-w-7xl px-5 pb-10">
+      <section className="mx-auto max-w-7xl px-4 pb-10 sm:px-5">
         {isLoading && <StateCard>Loading users...</StateCard>}
         {isError && <StateCard tone="error">Unable to load users. Platform admin access is required.</StateCard>}
         {mutation.isError && <StateCard tone="error">{displayErrorMessage(mutation.error, 'Unable to update user.')}</StateCard>}
@@ -2596,7 +2596,7 @@ function AdminUsersPage() {
               key={value}
               type="button"
               onClick={() => setFilter(value)}
-              className={`min-h-11 rounded-full px-4 text-sm font-bold transition ${filter === value ? 'bg-[#0f3d35] text-white' : 'text-[#53645f] hover:bg-[#f6f1e8] hover:text-[#0f3d35]'}`}
+              className={`min-h-11 flex-1 rounded-full px-4 text-sm font-bold transition sm:flex-none ${filter === value ? 'bg-[#0f3d35] text-white' : 'text-[#53645f] hover:bg-[#f6f1e8] hover:text-[#0f3d35]'}`}
             >
               {label}
             </button>
@@ -2635,14 +2635,14 @@ function UserRoleCard({ user, brokerages, agents, onSave, saving }: { user: Admi
   const linkedAgent = user.agent_profiles?.[0]
 
   return (
-    <form onSubmit={handleSubmit} className="rounded-[2rem] bg-white p-5 shadow-sm">
+    <form onSubmit={handleSubmit} className="rounded-[1.75rem] bg-white p-4 shadow-sm sm:rounded-[2rem] sm:p-5">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#0f705e]">{user.role.replaceAll('_', ' ')}</p>
-          <h2 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">{user.full_name || user.email}</h2>
+          <h2 className="mt-2 text-xl font-semibold tracking-[-0.04em] sm:text-2xl">{user.full_name || user.email}</h2>
           <p className="mt-1 text-sm font-semibold text-[#66746f]">{user.email}</p>
         </div>
-        <button disabled={saving} className="rounded-full bg-[#0f3d35] px-5 py-3 text-sm font-bold text-white disabled:opacity-60">{saving ? 'Saving...' : 'Save access'}</button>
+        <button disabled={saving} className="w-full rounded-full bg-[#0f3d35] px-5 py-3 text-sm font-bold text-white disabled:opacity-60 sm:w-auto">{saving ? 'Saving...' : 'Save access'}</button>
       </div>
       <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
         <label className="grid gap-2 text-sm font-semibold text-[#304942]">
@@ -2691,9 +2691,9 @@ function UserRoleCard({ user, brokerages, agents, onSave, saving }: { user: Admi
 
 function LeadStatusSelect({ value, onChange, disabled }: { value: LeadStatus; onChange: (value: LeadStatus) => void; disabled?: boolean }) {
   return (
-    <label className="grid gap-2 text-xs font-bold uppercase tracking-[0.16em] text-[#7b8a84]">
+    <label className="grid w-full gap-2 text-xs font-bold uppercase tracking-[0.16em] text-[#7b8a84] sm:w-auto">
       Status
-      <select value={value} onChange={(event) => onChange(event.target.value as LeadStatus)} disabled={disabled} className="min-h-11 rounded-full border border-[#dce5df] bg-white px-4 text-sm font-bold normal-case tracking-normal text-[#0f3d35] disabled:opacity-60">
+      <select value={value} onChange={(event) => onChange(event.target.value as LeadStatus)} disabled={disabled} className="min-h-11 w-full rounded-full border border-[#dce5df] bg-white px-4 text-sm font-bold normal-case tracking-normal text-[#0f3d35] disabled:opacity-60 sm:min-w-[220px]">
         {leadStatuses.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
       </select>
     </label>

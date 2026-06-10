@@ -2,7 +2,7 @@ class NotificationDelivery < ApplicationRecord
   CHANNELS = %w[email sms].freeze
   PROVIDERS = %w[resend clicksend].freeze
   RECIPIENT_ROLES = %w[consumer agent].freeze
-  STATUSES = %w[queued sent skipped failed].freeze
+  STATUSES = %w[queued sending sent skipped failed].freeze
 
   belongs_to :lead, optional: true
   belongs_to :showing_appointment, optional: true

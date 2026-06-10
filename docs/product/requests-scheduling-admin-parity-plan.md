@@ -63,6 +63,7 @@ Added a safe notification foundation for request and showing workflows:
 - Skipped local/dev sends are labeled as “not sent” with clearer configuration messages instead of looking like provider failures.
 - Phone inputs default toward Guam `+1671` formatting; Rails normalizes Guam phone numbers before SMS delivery, including legacy/raw local numbers already on leads.
 - Initial request-received notifications only queue for consumer-initiated API lead creation; staff/scripted lead creation stays quiet unless explicitly opted in.
+- Notification jobs atomically claim queued deliveries before provider calls to avoid duplicate live email/SMS sends if jobs overlap or retry.
 
 This follows the starter-app Resend/ClickSend pattern: important sends should be visible and resendable from the dashboard, while live SMS/email remains opt-in via environment config.
 
@@ -81,7 +82,7 @@ Routes:
 
 Dashboard metrics include open leads, new leads, unassigned leads, upcoming showings, and stale follow-ups.
 
-Lead detail lets staff edit customer/request fields after a call, including name, email, phone, preferred contact method, request type, tour type, preferred date/time, target price, and message.
+Lead detail lets staff edit customer/request fields after a call, including name, email, phone, preferred contact method, request type, tour type, preferred date/time, target price, and message. Admin layouts are tuned for both desktop and mobile web, including the lead detail editor, notification panel, routing panel, lists, and user-management forms.
 
 ### User and role management
 
