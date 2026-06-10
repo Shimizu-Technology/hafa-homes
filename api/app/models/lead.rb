@@ -8,9 +8,13 @@ class Lead < ApplicationRecord
   belongs_to :assigned_agent, class_name: "Agent", optional: true, inverse_of: :assigned_leads
   has_many :showing_appointments, dependent: :destroy
   has_many :notification_deliveries, dependent: :destroy
+  has_many :lead_notes, dependent: :destroy
+  has_many :lead_tasks, dependent: :destroy
+  has_many :lead_activities, dependent: :destroy
 
   attr_accessor :queue_request_received_notification
 
+  after_commit :record_created_activity, on: :create
   after_commit :queue_request_received_notifications, on: :create, if: :queue_request_received_notification?
 
   validates :lead_type, :name, :email, presence: true
@@ -48,6 +52,15 @@ class Lead < ApplicationRecord
 
   def queue_request_received_notification?
     ActiveModel::Type::Boolean.new.cast(queue_request_received_notification)
+  end
+
+  def record_created_activity
+    LeadActivity.record!(
+      lead: self,
+      action: "lead_created",
+      summary: "Lead created",
+      metadata: { lead_type: lead_type, lead_source: lead_source, source_campaign: source_campaign }
+    )
   end
 
   def queue_request_received_notifications

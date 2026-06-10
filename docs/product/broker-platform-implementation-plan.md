@@ -1,6 +1,6 @@
 # Hafa Homes Broker Platform Implementation Plan
 
-_Last updated: 2026-06-09 after PR #8 merge and requests/scheduling/admin parity branch._
+_Last updated: 2026-06-10 after PR #9 merge and broker CRM expansion branch._
 
 ## Purpose
 
@@ -37,9 +37,9 @@ Do **not** combine the full tenancy, CRM, broker website, white-label app, lead 
 Instead:
 
 1. PR 1 — Broker Platform Foundation.
-2. PR 2 — Broker Branding / Website Foundation.
-3. PR 3 — Requests, Showing Scheduling, Admin Console, and Public Parity.
-4. PR 4 — CRM Expansion and Lead Quality.
+2. PR 2 — Requests, Showing Scheduling, Admin Console, and Public Parity.
+3. PR 3 — CRM Expansion and Lead Quality.
+4. PR 4 — Broker Branding / Website Foundation.
 5. PR 5 — Property Management Preview.
 
 This keeps each PR reviewable while still moving fast.
@@ -144,7 +144,31 @@ Scope:
 - Stricter role scoping: agents default to assigned leads only.
 - Web/mobile listing detail parity: Local Intel, photo carousel, mortgage estimate, price alerts, saved homes, listing ID, and consistent request-a-showing copy.
 
-## PR 3 — Broker Branding / Website Foundation
+## PR 3 — CRM Expansion and Lead Quality
+
+Recommended branch:
+
+```bash
+feature/broker-crm-expansion
+```
+
+Goal:
+
+> Start matching the broker value of Real Geeks: follow-up, quality, accountability, and lead conversion.
+
+Scope:
+
+- lead notes.
+- tasks/reminders.
+- activity timeline.
+- source/campaign tracking fields.
+- follow-up due/overdue indicators.
+- basic quality flags using `quality_status`.
+- responsive CRM workspace on lead detail.
+
+See `docs/product/broker-crm-expansion-plan.md`.
+
+## PR 4 — Broker Branding / Website Foundation
 
 Recommended branch:
 
@@ -167,30 +191,6 @@ Scope:
 - compliance/disclaimer blocks.
 - “Powered by Hafa Homes” footer option.
 - app branding configuration plan for future EAS builds.
-
-## PR 4 — CRM Expansion and Lead Quality
-
-Recommended branch:
-
-```bash
-feature/broker-crm-expansion
-```
-
-Goal:
-
-> Start matching the broker value of Real Geeks: follow-up, quality, accountability, and lead conversion.
-
-Scope:
-
-- lead notes.
-- tasks/reminders.
-- activity timeline.
-- source tracking and campaign tags.
-- duplicate detection.
-- email/phone verification or quality badges.
-- SMS/email notifications to agents.
-- speed-to-lead reminders.
-- simple saved-search/listing activity score.
 
 ## PR 5 — Property Management Preview
 

@@ -25,6 +25,7 @@ module Api
         lead = staff_lead_scope.find(showing_params[:lead_id])
         showing = lead.showing_appointments.build(showing_params.except(:lead_id, :agent_id))
         showing.created_by = current_user
+        showing.activity_actor = current_user
         return if apply_agent(showing, showing_params[:agent_id]) == false
 
         if showing.save
@@ -36,6 +37,7 @@ module Api
 
       def update
         @showing_appointment.assign_attributes(showing_params.except(:lead_id, :agent_id))
+        @showing_appointment.activity_actor = current_user
         return if apply_agent(@showing_appointment, showing_params[:agent_id]) == false
 
         if @showing_appointment.save

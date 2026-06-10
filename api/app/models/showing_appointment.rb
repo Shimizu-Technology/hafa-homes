@@ -1,5 +1,5 @@
 class ShowingAppointment < ApplicationRecord
-  attr_accessor :skip_agent_inference
+  attr_accessor :skip_agent_inference, :activity_actor
 
   STATUSES = %w[proposed confirmed completed cancelled no_show].freeze
   TOUR_TYPES = %w[in_person virtual].freeze
@@ -10,6 +10,7 @@ class ShowingAppointment < ApplicationRecord
   belongs_to :agent, optional: true
   belongs_to :created_by, class_name: "User", optional: true
   has_many :notification_deliveries, dependent: :destroy
+  has_many :lead_activities, as: :subject, dependent: :nullify
 
   validates :status, inclusion: { in: STATUSES }
   validates :tour_type, inclusion: { in: TOUR_TYPES }
@@ -19,6 +20,7 @@ class ShowingAppointment < ApplicationRecord
   before_validation :set_defaults
   before_validation :infer_context_from_lead
   after_save :sync_lead_from_schedule
+  after_commit :record_schedule_activity, on: [:create, :update]
   after_commit :queue_schedule_notifications, on: [:create, :update]
 
   scope :upcoming, -> { where("scheduled_starts_at IS NULL OR scheduled_starts_at >= ?", Time.current).order(Arel.sql("scheduled_starts_at ASC NULLS LAST"), created_at: :desc) }
@@ -74,10 +76,36 @@ class ShowingAppointment < ApplicationRecord
     !active_showings.exists?
   end
 
+  def record_schedule_activity
+    return unless crm_activity_relevant?
+
+    LeadActivity.record!(
+      lead: lead,
+      action: "showing_updated",
+      actor: activity_actor || created_by,
+      subject: self,
+      summary: previous_changes.key?("id") ? "Showing appointment created" : "Showing appointment updated",
+      metadata: {
+        status: status,
+        tour_type: tour_type,
+        scheduled_starts_at: scheduled_starts_at,
+        agent_id: agent_id,
+        changes: LeadActivity.change_details(previous_changes, %w[status tour_type scheduled_starts_at scheduled_ends_at location agent_id consumer_notes internal_notes])
+      }
+    )
+  end
+
   def queue_schedule_notifications
     return unless schedule_notification_relevant?
 
     LeadNotificationService.queue_showing_update(self)
+  end
+
+  def crm_activity_relevant?
+    return false unless lead
+    return true if previous_changes.key?("id")
+
+    %w[status scheduled_starts_at scheduled_ends_at location agent_id consumer_notes internal_notes].any? { |attribute| previous_changes.key?(attribute) }
   end
 
   def schedule_notification_relevant?

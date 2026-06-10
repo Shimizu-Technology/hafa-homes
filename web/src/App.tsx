@@ -191,6 +191,68 @@ type NotificationDelivery = {
   created_at: string
 }
 
+type LeadUser = {
+  id: number
+  full_name: string
+  email: string
+  role: string
+}
+
+type LeadNote = {
+  id: number
+  lead_id: number
+  body: string
+  visibility: 'internal'
+  archived_at?: string
+  author?: LeadUser | null
+  archived_by?: LeadUser | null
+  created_at: string
+  updated_at?: string
+}
+
+type LeadTask = {
+  id: number
+  lead_id: number
+  title: string
+  notes?: string
+  status: 'open' | 'completed' | 'cancelled'
+  due_at?: string
+  completed_at?: string
+  archived_at?: string
+  overdue: boolean
+  assigned_to?: LeadUser | null
+  created_by?: LeadUser | null
+  completed_by?: LeadUser | null
+  archived_by?: LeadUser | null
+  created_at: string
+  updated_at?: string
+}
+
+type LeadActivity = {
+  id: number
+  lead_id: number
+  action: string
+  summary?: string
+  metadata?: Record<string, unknown>
+  occurred_at: string
+  actor?: LeadUser | null
+  subject_type?: string
+  subject_id?: number
+  created_at: string
+}
+
+type CrmSummary = {
+  open_task_count: number
+  overdue_task_count: number
+  completed_task_count?: number
+  archived_task_count?: number
+  note_count?: number
+  archived_note_count?: number
+  activity_count?: number
+  next_task_due_at?: string
+  last_activity_at?: string
+}
+
 type ShowingAppointment = {
   id: number
   lead_id: number
@@ -227,6 +289,8 @@ type Lead = {
   status: LeadStatus
   quality_status?: string
   lead_source?: string
+  source_campaign?: string
+  source_url?: string
   last_contacted_at?: string
   listing_id?: number
   user_id?: number
@@ -238,6 +302,10 @@ type Lead = {
   latest_showing_appointment?: ShowingAppointment | null
   showing_appointments?: ShowingAppointment[]
   notification_deliveries?: NotificationDelivery[]
+  lead_notes?: LeadNote[]
+  lead_tasks?: LeadTask[]
+  lead_activities?: LeadActivity[]
+  crm_summary?: CrmSummary
   listing?: { id: number; title: string; address?: string; price: number; listing_kind: 'sale' | 'rent'; property_type?: string; village: string; primary_photo_url?: string; brokerage?: Brokerage | null; agent?: Agent | null } | null
   brokerage?: Brokerage | null
   assigned_agent?: Agent | null
@@ -245,6 +313,10 @@ type Lead = {
 
 type LeadsResponse = { leads: Lead[]; assignable_agents: Agent[] }
 type LeadResponse = { lead: Lead; assignable_agents: Agent[] }
+type PaginationMeta = { page: number; per_page: number; total_count: number; total_pages: number }
+type LeadNotesPageResponse = { lead_notes: LeadNote[]; pagination: PaginationMeta }
+type LeadTasksPageResponse = { lead_tasks: LeadTask[]; pagination: PaginationMeta }
+type LeadActivitiesPageResponse = { lead_activities: LeadActivity[]; pagination: PaginationMeta }
 type MyLeadsResponse = { leads: Lead[] }
 type ShowingAppointmentsResponse = { showing_appointments: ShowingAppointment[] }
 type AdminDashboardResponse = {
@@ -293,6 +365,9 @@ type LeadPayload = {
 type LeadUpdatePayload = Partial<Omit<LeadPayload, 'listing_id'>> & {
   status?: LeadStatus
   assigned_agent_id?: number | null
+  quality_status?: string
+  source_campaign?: string
+  source_url?: string
 }
 
 const quickFilters = [
@@ -395,6 +470,64 @@ async function updateLead(id: number, payload: LeadUpdatePayload): Promise<LeadR
     body: JSON.stringify({ lead: payload }),
   })
   if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to update lead'), response.status)
+  return response.json()
+}
+
+async function createLeadNote(id: number, payload: { body: string }): Promise<{ lead_note: LeadNote; lead: Lead }> {
+  const response = await fetch(`${API_URL}/api/v1/leads/${id}/notes`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+    body: JSON.stringify({ lead_note: payload }),
+  })
+  if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to add note'), response.status)
+  return response.json()
+}
+
+async function updateLeadNote(id: number, payload: Partial<Pick<LeadNote, 'body'>> & { archived?: boolean }): Promise<{ lead_note: LeadNote; lead: Lead }> {
+  const response = await fetch(`${API_URL}/api/v1/lead_notes/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+    body: JSON.stringify({ lead_note: payload }),
+  })
+  if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to update note'), response.status)
+  return response.json()
+}
+
+async function fetchLeadNotesPage(leadId: number, page: number, perPage = 10): Promise<LeadNotesPageResponse> {
+  const response = await fetch(`${API_URL}/api/v1/leads/${leadId}/notes?page=${page}&per_page=${perPage}`, { headers: await authHeaders() })
+  if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to load notes'), response.status)
+  return response.json()
+}
+
+async function fetchLeadTasksPage(leadId: number, status: 'open' | 'completed' | 'archived', page: number, perPage = 10): Promise<LeadTasksPageResponse> {
+  const response = await fetch(`${API_URL}/api/v1/leads/${leadId}/tasks?status=${status}&page=${page}&per_page=${perPage}`, { headers: await authHeaders() })
+  if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to load tasks'), response.status)
+  return response.json()
+}
+
+async function fetchLeadActivitiesPage(leadId: number, page: number, perPage = 10): Promise<LeadActivitiesPageResponse> {
+  const response = await fetch(`${API_URL}/api/v1/leads/${leadId}/activities?page=${page}&per_page=${perPage}`, { headers: await authHeaders() })
+  if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to load activity'), response.status)
+  return response.json()
+}
+
+async function createLeadTask(id: number, payload: { title: string; notes?: string; due_at?: string }): Promise<{ lead_task: LeadTask; lead: Lead }> {
+  const response = await fetch(`${API_URL}/api/v1/leads/${id}/tasks`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+    body: JSON.stringify({ lead_task: payload }),
+  })
+  if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to add task'), response.status)
+  return response.json()
+}
+
+async function updateLeadTask(id: number, payload: Partial<Pick<LeadTask, 'title' | 'notes' | 'status' | 'due_at'>>): Promise<{ lead_task: LeadTask; lead: Lead }> {
+  const response = await fetch(`${API_URL}/api/v1/lead_tasks/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+    body: JSON.stringify({ lead_task: payload }),
+  })
+  if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to update task'), response.status)
   return response.json()
 }
 
@@ -2157,6 +2290,22 @@ function LeadDetailPage() {
     mutationFn: (payload: Partial<ShowingAppointment> & { lead_id: number; id?: number }) => payload.id ? updateShowingAppointment(payload.id, payload) : createShowingAppointment(payload),
     onSuccess: () => refetch(),
   })
+  const noteMutation = useMutation({
+    mutationFn: (payload: { body: string }) => createLeadNote(Number(id), payload),
+    onSuccess: () => refetch(),
+  })
+  const noteUpdateMutation = useMutation({
+    mutationFn: ({ noteId, payload }: { noteId: number; payload: Partial<Pick<LeadNote, 'body'>> & { archived?: boolean } }) => updateLeadNote(noteId, payload),
+    onSuccess: () => refetch(),
+  })
+  const taskMutation = useMutation({
+    mutationFn: (payload: { title: string; notes?: string; due_at?: string }) => createLeadTask(Number(id), payload),
+    onSuccess: () => refetch(),
+  })
+  const taskUpdateMutation = useMutation({
+    mutationFn: ({ taskId, payload }: { taskId: number; payload: Partial<Pick<LeadTask, 'title' | 'notes' | 'status' | 'due_at'>> }) => updateLeadTask(taskId, payload),
+    onSuccess: () => refetch(),
+  })
   const notificationMutation = useMutation({
     mutationFn: (payload: { channel: 'email' | 'sms'; recipient_role: 'consumer' | 'agent'; event_name?: string; subject?: string; title?: string; body?: string }) => sendLeadNotification(Number(id), payload),
     onSuccess: () => refetch(),
@@ -2173,18 +2322,22 @@ function LeadDetailPage() {
         {mutation.isError && <StateCard tone="error">{displayErrorMessage(mutation.error, 'Unable to update lead right now.')}</StateCard>}
         {lead && (
           <div className="grid gap-4 sm:gap-5 xl:grid-cols-[minmax(0,1.25fr)_minmax(380px,0.75fr)]">
-            <article className="rounded-[1.75rem] bg-white p-4 shadow-sm sm:rounded-[2rem] sm:p-6">
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#0f705e]">Lead detail</p>
-                  <h1 className="mt-3 text-3xl font-semibold tracking-[-0.06em] sm:text-4xl md:text-5xl">{lead.name}</h1>
-                  <p className="mt-3 text-sm font-semibold text-[#66746f]">Created {formatDateTime(lead.created_at)} · Source {lead.lead_source?.replaceAll('_', ' ') ?? 'Hafa Homes'}</p>
+            <div className="space-y-4 sm:space-y-5">
+              <article className="rounded-[1.75rem] bg-white p-4 shadow-sm sm:rounded-[2rem] sm:p-6">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#0f705e]">Lead detail</p>
+                    <h1 className="mt-3 text-3xl font-semibold tracking-[-0.06em] sm:text-4xl md:text-5xl">{lead.name}</h1>
+                    <p className="mt-3 text-sm font-semibold text-[#66746f]">Created {formatDateTime(lead.created_at)} · Source {lead.lead_source?.replaceAll('_', ' ') ?? 'Hafa Homes'}</p>
+                  </div>
+                  <LeadStatusSelect value={lead.status} onChange={(status) => mutation.mutate({ status })} disabled={mutation.isPending} />
                 </div>
-                <LeadStatusSelect value={lead.status} onChange={(status) => mutation.mutate({ status })} disabled={mutation.isPending} />
-              </div>
 
-              <LeadEditForm lead={lead} mutation={mutation} />
-            </article>
+                <LeadEditForm lead={lead} mutation={mutation} />
+              </article>
+
+              <LeadCrmPanel lead={lead} noteMutation={noteMutation} noteUpdateMutation={noteUpdateMutation} taskMutation={taskMutation} taskUpdateMutation={taskUpdateMutation} />
+            </div>
 
             <aside className="space-y-5">
               <div className="rounded-[1.75rem] bg-[#0f3d35] p-4 text-white shadow-xl shadow-[#0f3d35]/15 sm:rounded-[2rem] sm:p-6">
@@ -2264,6 +2417,9 @@ function LeadEditForm({ lead, mutation }: { lead: Lead; mutation: LeadMutation }
       preferred_tour_date: String(form.get('preferred_tour_date') || '').trim(),
       preferred_time: String(form.get('preferred_time') || '').trim(),
       target_price: String(form.get('target_price') || '').trim(),
+      quality_status: String(form.get('quality_status') || '').trim(),
+      source_campaign: String(form.get('source_campaign') || '').trim(),
+      source_url: String(form.get('source_url') || '').trim(),
       message: String(form.get('message') || '').trim(),
     })
   }
@@ -2322,6 +2478,18 @@ function LeadEditForm({ lead, mutation }: { lead: Lead; mutation: LeadMutation }
           </select>
         </label>
         <Input name="target_price" label="Target price" defaultValue={lead.target_price ? String(lead.target_price) : ''} type="number" min="0" step="1000" />
+        <label className="grid gap-2 text-sm font-semibold text-[#304942]">
+          Lead quality
+          <select name="quality_status" defaultValue={lead.quality_status || 'unknown'} className="min-h-12 w-full min-w-0 rounded-2xl border border-[#dce5df] bg-white px-4">
+            <option value="unknown">Unknown</option>
+            <option value="verified">Verified</option>
+            <option value="unverified">Unverified</option>
+            <option value="duplicate">Duplicate</option>
+            <option value="spam">Spam</option>
+          </select>
+        </label>
+        <Input name="source_campaign" label="Campaign/source detail" defaultValue={lead.source_campaign || ''} />
+        <Input name="source_url" label="Source URL" defaultValue={lead.source_url || ''} type="url" />
       </div>
 
       <label className="mt-3 grid gap-2 text-sm font-semibold text-[#304942]">
@@ -2331,6 +2499,570 @@ function LeadEditForm({ lead, mutation }: { lead: Lead; mutation: LeadMutation }
       {mutation.isError && <p className="mt-3 text-sm font-semibold text-red-700">{displayErrorMessage(mutation.error, 'Unable to update lead right now.')}</p>}
     </form>
   )
+}
+
+type NoteMutation = {
+  mutate: (payload: { body: string }, options?: { onSuccess?: () => void }) => void
+  isPending: boolean
+  isError: boolean
+  error: unknown
+}
+
+type NoteUpdateMutation = {
+  mutate: (payload: { noteId: number; payload: Partial<Pick<LeadNote, 'body'>> & { archived?: boolean } }, options?: { onSuccess?: () => void }) => void
+  isPending: boolean
+  isError: boolean
+  error: unknown
+}
+
+type TaskMutation = {
+  mutate: (payload: { title: string; notes?: string; due_at?: string }, options?: { onSuccess?: () => void }) => void
+  isPending: boolean
+  isError: boolean
+  error: unknown
+}
+
+type TaskUpdateMutation = {
+  mutate: (payload: { taskId: number; payload: Partial<Pick<LeadTask, 'title' | 'notes' | 'status' | 'due_at'>> }, options?: { onSuccess?: () => void }) => void
+  isPending: boolean
+  isError: boolean
+  error: unknown
+}
+
+function LeadCrmPanel({ lead, noteMutation, noteUpdateMutation, taskMutation, taskUpdateMutation }: { lead: Lead; noteMutation: NoteMutation; noteUpdateMutation: NoteUpdateMutation; taskMutation: TaskMutation; taskUpdateMutation: TaskUpdateMutation }) {
+  const initialNotes = (lead.lead_notes ?? []).filter((note) => !note.archived_at)
+  const initialTasks = (lead.lead_tasks ?? []).filter((task) => task.status !== 'cancelled')
+  const initialActivities = lead.lead_activities ?? []
+  const initialOpenTasks = initialTasks.filter((task) => task.status === 'open')
+  const initialCompletedTasks = initialTasks.filter((task) => task.status === 'completed')
+  const [notes, setNotes] = useState(initialNotes)
+  const [openTasks, setOpenTasks] = useState(initialOpenTasks)
+  const [completedTasks, setCompletedTasks] = useState(initialCompletedTasks)
+  const [activities, setActivities] = useState(initialActivities)
+  const nextTask = openTasks.find((task) => task.due_at) ?? openTasks[0]
+  const noteTotal = lead.crm_summary?.note_count ?? notes.length
+  const openTaskTotal = lead.crm_summary?.open_task_count ?? openTasks.length
+  const completedTaskTotal = lead.crm_summary?.completed_task_count ?? completedTasks.length
+  const activityTotal = lead.crm_summary?.activity_count ?? activities.length
+  const [visibleOpenTaskCount, setVisibleOpenTaskCount] = useState(5)
+  const [visibleCompletedTaskCount, setVisibleCompletedTaskCount] = useState(3)
+  const [visibleNoteCount, setVisibleNoteCount] = useState(4)
+  const [visibleActivityCount, setVisibleActivityCount] = useState(8)
+  const [loadingMore, setLoadingMore] = useState<'open_tasks' | 'completed_tasks' | 'notes' | 'activities' | null>(null)
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setNotes(initialNotes)
+    setOpenTasks(initialOpenTasks)
+    setCompletedTasks(initialCompletedTasks)
+    setActivities(initialActivities)
+    setVisibleOpenTaskCount(5)
+    setVisibleCompletedTaskCount(3)
+    setVisibleNoteCount(4)
+    setVisibleActivityCount(8)
+  }, [lead.id, lead.updated_at, lead.lead_notes, lead.lead_tasks, lead.lead_activities])
+
+  function handleNoteSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const form = event.currentTarget
+    const body = String(new FormData(form).get('body') || '').trim()
+    if (!body) return
+    noteMutation.mutate({ body }, { onSuccess: () => form.reset() })
+  }
+
+  function handleTaskSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const form = event.currentTarget
+    const data = new FormData(form)
+    const title = String(data.get('title') || '').trim()
+    if (!title) return
+
+    taskMutation.mutate({
+      title,
+      due_at: String(data.get('due_at') || '').trim(),
+      notes: String(data.get('notes') || '').trim(),
+    }, { onSuccess: () => form.reset() })
+  }
+
+  async function loadMoreNotes() {
+    if (visibleNoteCount < notes.length) {
+      setVisibleNoteCount((count) => count + 4)
+      return
+    }
+    if (notes.length >= noteTotal) return
+
+    setLoadingMore('notes')
+    setLoadMoreError(null)
+    try {
+      const response = await fetchLeadNotesPage(lead.id, Math.floor(notes.length / 10) + 1, 10)
+      setNotes((current) => appendUniqueById(current, response.lead_notes.filter((note) => !note.archived_at)))
+      setVisibleNoteCount((count) => count + 4)
+    } catch (error) {
+      setLoadMoreError(displayErrorMessage(error, 'Unable to load more notes.'))
+    } finally {
+      setLoadingMore(null)
+    }
+  }
+
+  async function loadMoreOpenTasks() {
+    if (visibleOpenTaskCount < openTasks.length) {
+      setVisibleOpenTaskCount((count) => count + 5)
+      return
+    }
+    if (openTasks.length >= openTaskTotal) return
+
+    setLoadingMore('open_tasks')
+    setLoadMoreError(null)
+    try {
+      const response = await fetchLeadTasksPage(lead.id, 'open', Math.floor(openTasks.length / 10) + 1, 10)
+      setOpenTasks((current) => appendUniqueById(current, response.lead_tasks.filter((task) => task.status === 'open')))
+      setVisibleOpenTaskCount((count) => count + 5)
+    } catch (error) {
+      setLoadMoreError(displayErrorMessage(error, 'Unable to load more open tasks.'))
+    } finally {
+      setLoadingMore(null)
+    }
+  }
+
+  async function loadMoreCompletedTasks() {
+    if (visibleCompletedTaskCount < completedTasks.length) {
+      setVisibleCompletedTaskCount((count) => count + 3)
+      return
+    }
+    if (completedTasks.length >= completedTaskTotal) return
+
+    setLoadingMore('completed_tasks')
+    setLoadMoreError(null)
+    try {
+      const response = await fetchLeadTasksPage(lead.id, 'completed', Math.floor(completedTasks.length / 10) + 1, 10)
+      setCompletedTasks((current) => appendUniqueById(current, response.lead_tasks.filter((task) => task.status === 'completed')))
+      setVisibleCompletedTaskCount((count) => count + 3)
+    } catch (error) {
+      setLoadMoreError(displayErrorMessage(error, 'Unable to load more completed tasks.'))
+    } finally {
+      setLoadingMore(null)
+    }
+  }
+
+  async function loadMoreActivities() {
+    if (visibleActivityCount < activities.length) {
+      setVisibleActivityCount((count) => count + 8)
+      return
+    }
+    if (activities.length >= activityTotal) return
+
+    setLoadingMore('activities')
+    setLoadMoreError(null)
+    try {
+      const response = await fetchLeadActivitiesPage(lead.id, Math.floor(activities.length / 10) + 1, 10)
+      setActivities((current) => appendUniqueById(current, response.lead_activities))
+      setVisibleActivityCount((count) => count + 8)
+    } catch (error) {
+      setLoadMoreError(displayErrorMessage(error, 'Unable to load more activity.'))
+    } finally {
+      setLoadingMore(null)
+    }
+  }
+
+  return (
+    <section className="rounded-[1.75rem] bg-white p-4 shadow-sm sm:rounded-[2rem] sm:p-6">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#0f705e]">CRM workspace</p>
+          <h2 className="mt-2 text-2xl font-semibold tracking-[-0.04em] sm:text-3xl">Follow-up, notes, and activity</h2>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-[#66746f]">Keep agent follow-up visible without exposing internal notes to the consumer request history.</p>
+        </div>
+        <div className="grid grid-cols-3 gap-2 text-center sm:min-w-[300px]">
+          <MiniCrmStat label="Open" value={openTaskTotal} />
+          <MiniCrmStat label="Overdue" value={lead.crm_summary?.overdue_task_count ?? openTasks.filter((task) => task.overdue).length} tone="warn" />
+          <MiniCrmStat label="Notes" value={noteTotal} />
+        </div>
+      </div>
+
+      {loadMoreError && <p className="mt-4 rounded-2xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{loadMoreError}</p>}
+
+      {nextTask && (
+        <div className={`mt-5 rounded-[1.25rem] p-4 ${nextTask.overdue ? 'bg-[#fff5d9] text-[#6b4508]' : 'bg-[#e9f5ef] text-[#0f3d35]'}`}>
+          <p className="text-xs font-bold uppercase tracking-[0.18em] opacity-70">Next follow-up</p>
+          <p className="mt-2 text-sm font-bold">{nextTask.title}</p>
+          <p className="mt-1 text-xs font-semibold opacity-75">{nextTask.due_at ? formatDateTime(nextTask.due_at) : 'No due date set'}</p>
+        </div>
+      )}
+
+      <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
+        <div className="grid gap-4">
+          <form onSubmit={handleTaskSubmit} className="rounded-[1.5rem] border border-[#edf0ec] bg-[#fbfaf6] p-4">
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#7b8a84]">Add task</p>
+            <div className="mt-3 grid gap-3">
+              <Input name="title" label="Task" placeholder="Call back after work" required />
+              <Input name="due_at" label="Due" type="datetime-local" />
+              <label className="grid gap-2 text-sm font-semibold text-[#304942]">
+                Notes optional
+                <textarea name="notes" rows={3} className="w-full min-w-0 rounded-2xl border border-[#dce5df] bg-white px-4 py-3" />
+              </label>
+              {taskMutation.isError && <p className="text-sm font-semibold text-red-700">{displayErrorMessage(taskMutation.error, 'Unable to add task.')}</p>}
+              <button disabled={taskMutation.isPending} className="min-h-11 rounded-2xl bg-[#0f3d35] px-4 text-sm font-bold text-white disabled:opacity-60">
+                {taskMutation.isPending ? 'Adding task...' : 'Add follow-up task'}
+              </button>
+            </div>
+          </form>
+
+          <form onSubmit={handleNoteSubmit} className="rounded-[1.5rem] border border-[#edf0ec] bg-[#fbfaf6] p-4">
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#7b8a84]">Add note</p>
+            <label className="mt-3 grid gap-2 text-sm font-semibold text-[#304942]">
+              Internal note
+              <textarea name="body" rows={4} className="w-full min-w-0 rounded-2xl border border-[#dce5df] bg-white px-4 py-3" required />
+            </label>
+            {noteMutation.isError && <p className="mt-3 text-sm font-semibold text-red-700">{displayErrorMessage(noteMutation.error, 'Unable to add note.')}</p>}
+            {noteUpdateMutation.isError && <p className="mt-3 text-sm font-semibold text-red-700">{displayErrorMessage(noteUpdateMutation.error, 'Unable to update note.')}</p>}
+            <button disabled={noteMutation.isPending} className="mt-3 min-h-11 w-full rounded-2xl border border-[#dce5df] px-4 text-sm font-bold text-[#0f3d35] disabled:opacity-60">
+              {noteMutation.isPending ? 'Adding note...' : 'Save internal note'}
+            </button>
+          </form>
+        </div>
+
+        <div className="grid gap-4">
+          <div className="rounded-[1.5rem] border border-[#edf0ec] p-4">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#7b8a84]">Tasks</p>
+              <span className="rounded-full bg-[#f6f1e8] px-2.5 py-1 text-[11px] font-bold text-[#66746f]">{openTaskTotal}</span>
+            </div>
+            <div className="mt-3 grid gap-2">
+              {openTasks.slice(0, visibleOpenTaskCount).map((task) => (
+                <TaskRow key={task.id} task={task} mutation={taskUpdateMutation} />
+              ))}
+              {openTasks.length === 0 && <p className="rounded-2xl bg-[#f6f1e8] p-3 text-sm font-semibold text-[#66746f]">No open follow-up tasks.</p>}
+              {openTasks.length > 0 && (
+                <SectionPager
+                  label="open tasks"
+                  visibleCount={Math.min(visibleOpenTaskCount, openTasks.length)}
+                  loadedCount={openTasks.length}
+                  totalCount={openTaskTotal}
+                  pageSize={5}
+                  loading={loadingMore === 'open_tasks'}
+                  onMore={() => void loadMoreOpenTasks()}
+                  onReset={() => setVisibleOpenTaskCount(5)}
+                />
+              )}
+              {completedTasks.length > 0 && (
+                <div className="mt-2 border-t border-[#edf0ec] pt-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#7b8a84]">Recently completed</p>
+                    <span className="rounded-full bg-[#f6f1e8] px-2.5 py-1 text-[11px] font-bold text-[#66746f]">{completedTaskTotal}</span>
+                  </div>
+                  <div className="mt-2 grid gap-2">
+                    {completedTasks.slice(0, visibleCompletedTaskCount).map((task) => <TaskRow key={task.id} task={task} mutation={taskUpdateMutation} compact />)}
+                  </div>
+                  <SectionPager
+                    label="completed tasks"
+                    visibleCount={Math.min(visibleCompletedTaskCount, completedTasks.length)}
+                    loadedCount={completedTasks.length}
+                    totalCount={completedTaskTotal}
+                    pageSize={3}
+                    loading={loadingMore === 'completed_tasks'}
+                    onMore={() => void loadMoreCompletedTasks()}
+                    onReset={() => setVisibleCompletedTaskCount(3)}
+                  />
+                </div>
+              )}
+              {(lead.crm_summary?.archived_task_count ?? 0) > 0 && <p className="text-xs font-semibold text-[#7b8a84]">{lead.crm_summary?.archived_task_count} archived task{lead.crm_summary?.archived_task_count === 1 ? '' : 's'} hidden by default.</p>}
+            </div>
+          </div>
+
+          <div className="rounded-[1.5rem] border border-[#edf0ec] p-4">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#7b8a84]">Recent notes</p>
+              <span className="rounded-full bg-[#f6f1e8] px-2.5 py-1 text-[11px] font-bold text-[#66746f]">{noteTotal}</span>
+            </div>
+            <div className="mt-3 grid gap-2">
+              {notes.slice(0, visibleNoteCount).map((note) => <NoteCard key={note.id} note={note} mutation={noteUpdateMutation} />)}
+              {notes.length === 0 && <p className="rounded-2xl bg-[#f6f1e8] p-3 text-sm font-semibold text-[#66746f]">No internal notes yet.</p>}
+              {notes.length > 0 && (
+                <SectionPager
+                  label="notes"
+                  visibleCount={Math.min(visibleNoteCount, notes.length)}
+                  loadedCount={notes.length}
+                  totalCount={noteTotal}
+                  pageSize={4}
+                  loading={loadingMore === 'notes'}
+                  onMore={() => void loadMoreNotes()}
+                  onReset={() => setVisibleNoteCount(4)}
+                />
+              )}
+              {(lead.crm_summary?.archived_note_count ?? 0) > 0 && <p className="text-xs font-semibold text-[#7b8a84]">{lead.crm_summary?.archived_note_count} archived note{lead.crm_summary?.archived_note_count === 1 ? '' : 's'} hidden by default.</p>}
+            </div>
+          </div>
+
+          <div className="rounded-[1.5rem] border border-[#edf0ec] p-4">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#7b8a84]">Activity timeline</p>
+              <span className="rounded-full bg-[#f6f1e8] px-2.5 py-1 text-[11px] font-bold text-[#66746f]">{activityTotal}</span>
+            </div>
+            <div className="mt-4 grid gap-3">
+              {activities.slice(0, visibleActivityCount).map((activity) => <ActivityRow key={activity.id} activity={activity} />)}
+              {activities.length === 0 && <p className="rounded-2xl bg-[#f6f1e8] p-3 text-sm font-semibold text-[#66746f]">No activity recorded yet.</p>}
+              {activities.length > 0 && (
+                <SectionPager
+                  label="activity items"
+                  visibleCount={Math.min(visibleActivityCount, activities.length)}
+                  loadedCount={activities.length}
+                  totalCount={activityTotal}
+                  pageSize={8}
+                  loading={loadingMore === 'activities'}
+                  onMore={() => void loadMoreActivities()}
+                  onReset={() => setVisibleActivityCount(8)}
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function SectionPager({ label, visibleCount, totalCount, pageSize, loading = false, onMore, onReset }: { label: string; visibleCount: number; loadedCount: number; totalCount: number; pageSize: number; loading?: boolean; onMore: () => void; onReset: () => void }) {
+  const hasMore = visibleCount < totalCount
+  const isExpanded = visibleCount > pageSize
+
+  return (
+    <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs font-semibold text-[#7b8a84]">
+      <span>Showing {Math.min(visibleCount, totalCount)} of {totalCount} {label}</span>
+      <div className="flex flex-wrap gap-2">
+        {hasMore && <button type="button" disabled={loading} onClick={onMore} className="rounded-full border border-[#dce5df] bg-white px-3 py-1.5 font-bold text-[#0f3d35] disabled:opacity-60">{loading ? 'Loading...' : 'Show more'}</button>}
+        {isExpanded && <button type="button" onClick={onReset} className="rounded-full border border-[#dce5df] bg-white px-3 py-1.5 font-bold text-[#0f3d35]">Show latest only</button>}
+      </div>
+    </div>
+  )
+}
+
+function appendUniqueById<T extends { id: number }>(current: T[], next: T[]) {
+  const seen = new Set(current.map((item) => item.id))
+  const appended = next.filter((item) => {
+    if (seen.has(item.id)) return false
+    seen.add(item.id)
+    return true
+  })
+  return [...current, ...appended]
+}
+
+function MiniCrmStat({ label, value, tone = 'default' }: { label: string; value: number; tone?: 'default' | 'warn' }) {
+  return (
+    <div className={`rounded-2xl p-3 ${tone === 'warn' ? 'bg-[#fff5d9] text-[#6b4508]' : 'bg-[#f6f1e8] text-[#304942]'}`}>
+      <p className="text-[10px] font-bold uppercase tracking-[0.14em] opacity-65">{label}</p>
+      <p className="mt-1 text-2xl font-semibold tracking-[-0.05em]">{value}</p>
+    </div>
+  )
+}
+
+function NoteCard({ note, mutation }: { note: LeadNote; mutation: NoteUpdateMutation }) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(note.body)
+
+  useEffect(() => {
+    setDraft(note.body)
+  }, [note.body])
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const body = draft.trim()
+    if (!body) return
+    mutation.mutate({ noteId: note.id, payload: { body } }, { onSuccess: () => setEditing(false) })
+  }
+
+  function archiveNote() {
+    if (!window.confirm('Archive this internal note? It will be hidden from the default CRM view.')) return
+    mutation.mutate({ noteId: note.id, payload: { archived: true } })
+  }
+
+  if (editing) {
+    return (
+      <form onSubmit={handleSubmit} className="rounded-2xl bg-[#f6f1e8] p-3">
+        <textarea value={draft} onChange={(event) => setDraft(event.target.value)} rows={4} className="w-full rounded-2xl border border-[#dce5df] bg-white px-3 py-2 text-sm leading-6 text-[#304942]" required />
+        <div className="mt-2 flex flex-wrap justify-end gap-2">
+          <button type="button" onClick={() => { setDraft(note.body); setEditing(false) }} className="rounded-full border border-[#dce5df] bg-white px-3 py-1.5 text-xs font-bold text-[#0f3d35]">Cancel</button>
+          <button disabled={mutation.isPending} className="rounded-full bg-[#0f3d35] px-3 py-1.5 text-xs font-bold text-white disabled:opacity-60">Save note</button>
+        </div>
+      </form>
+    )
+  }
+
+  return (
+    <div className="rounded-2xl bg-[#f6f1e8] p-3">
+      <p className="text-sm leading-6 text-[#304942]">{note.body}</p>
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs font-semibold text-[#66746f]">{note.author?.full_name ?? 'Team'} · {formatDateTime(note.created_at)}</p>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => setEditing(true)} className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-[#0f3d35]">Edit</button>
+          <button type="button" disabled={mutation.isPending} onClick={archiveNote} className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-[#8a4b0f] disabled:opacity-60">Archive</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function TaskRow({ task, mutation, compact = false }: { task: LeadTask; mutation: TaskUpdateMutation; compact?: boolean }) {
+  const completed = task.status === 'completed'
+  const [editing, setEditing] = useState(false)
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const data = new FormData(event.currentTarget)
+    const title = String(data.get('title') || '').trim()
+    if (!title) return
+
+    mutation.mutate({
+      taskId: task.id,
+      payload: {
+        title,
+        due_at: String(data.get('due_at') || '').trim(),
+        notes: String(data.get('notes') || '').trim(),
+      },
+    }, { onSuccess: () => setEditing(false) })
+  }
+
+  function archiveTask() {
+    if (!window.confirm('Archive this task? It will be hidden from the default CRM view.')) return
+    mutation.mutate({ taskId: task.id, payload: { status: 'cancelled' } })
+  }
+
+  if (editing) {
+    return (
+      <form onSubmit={handleSubmit} className="rounded-2xl bg-[#f6f1e8] p-3">
+        <div className="grid gap-2 sm:grid-cols-2">
+          <Input name="title" label="Task" defaultValue={task.title} required />
+          <Input name="due_at" label="Due" type="datetime-local" defaultValue={datetimeLocalValue(task.due_at)} />
+        </div>
+        <label className="mt-2 grid gap-2 text-sm font-semibold text-[#304942]">
+          Notes
+          <textarea name="notes" rows={3} defaultValue={task.notes || ''} className="w-full rounded-2xl border border-[#dce5df] bg-white px-3 py-2 text-sm leading-6 text-[#304942]" />
+        </label>
+        <div className="mt-2 flex flex-wrap justify-end gap-2">
+          <button type="button" onClick={() => setEditing(false)} className="rounded-full border border-[#dce5df] bg-white px-3 py-1.5 text-xs font-bold text-[#0f3d35]">Cancel</button>
+          <button disabled={mutation.isPending} className="rounded-full bg-[#0f3d35] px-3 py-1.5 text-xs font-bold text-white disabled:opacity-60">Save task</button>
+        </div>
+      </form>
+    )
+  }
+
+  return (
+    <div className={`rounded-2xl ${completed ? 'bg-[#f6f1e8]/70' : task.overdue ? 'bg-[#fff5d9]' : 'bg-[#f6f1e8]'} p-3`}>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <p className={`text-sm font-bold ${completed ? 'text-[#66746f] line-through' : 'text-[#304942]'}`}>{task.title}</p>
+          {!compact && task.notes && <p className="mt-1 text-xs leading-5 text-[#66746f]">{task.notes}</p>}
+          <p className="mt-1 text-xs font-semibold text-[#66746f]">{task.due_at ? formatDateTime(task.due_at) : 'No due date'}{task.overdue ? ' · overdue' : ''}</p>
+        </div>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          {completed ? (
+            <button type="button" disabled={mutation.isPending} onClick={() => mutation.mutate({ taskId: task.id, payload: { status: 'open' } })} className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-[#0f3d35] disabled:opacity-60">
+              Reopen
+            </button>
+          ) : (
+            <button type="button" disabled={mutation.isPending} onClick={() => mutation.mutate({ taskId: task.id, payload: { status: 'completed' } })} className="rounded-full bg-[#0f3d35] px-3 py-1.5 text-xs font-bold text-white disabled:opacity-60">
+              Done
+            </button>
+          )}
+          <button type="button" onClick={() => setEditing(true)} className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-[#0f3d35]">Edit</button>
+          <button type="button" disabled={mutation.isPending} onClick={archiveTask} className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-[#8a4b0f] disabled:opacity-60">Archive</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ActivityRow({ activity }: { activity: LeadActivity }) {
+  const [expanded, setExpanded] = useState(false)
+  const changes = activityChanges(activity)
+  const details = activityDetailRows(activity)
+  const hasDetails = changes.length > 0 || details.length > 0
+
+  return (
+    <div className="relative pl-5">
+      <span className="absolute left-0 top-1.5 h-2.5 w-2.5 rounded-full bg-[#0f705e]" />
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <p className="text-sm font-bold text-[#304942]">{activity.summary || activity.action.replaceAll('_', ' ')}</p>
+          <p className="mt-1 text-xs font-semibold text-[#66746f]">{activity.actor?.full_name ?? 'System'} · {formatDateTime(activity.occurred_at)}</p>
+        </div>
+        {hasDetails && (
+          <button type="button" onClick={() => setExpanded((value) => !value)} className="rounded-full border border-[#dce5df] bg-white px-3 py-1.5 text-xs font-bold text-[#0f3d35]">
+            {expanded ? 'Hide details' : 'Details'}
+          </button>
+        )}
+      </div>
+      {expanded && hasDetails && (
+        <div className="mt-3 rounded-2xl bg-[#f6f1e8] p-3">
+          {changes.length > 0 && (
+            <div className="grid gap-2">
+              {changes.map((change, index) => (
+                <div key={`${String(change.field ?? index)}-${index}`} className="rounded-xl bg-white p-3">
+                  <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#7b8a84]">{String(change.label ?? change.field ?? 'Field')}</p>
+                  <p className="mt-1 text-xs font-semibold text-[#304942]">
+                    <span className="text-[#66746f]">From</span> {formatActivityValue(change.from)} <span className="text-[#66746f]">to</span> {formatActivityValue(change.to)}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+          {details.length > 0 && (
+            <div className={`${changes.length > 0 ? 'mt-3 border-t border-[#dce5df] pt-3' : ''} grid gap-1.5`}>
+              {details.map((detail) => (
+                <p key={detail.label} className="text-xs font-semibold text-[#66746f]"><span className="text-[#304942]">{detail.label}:</span> {detail.value}</p>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+type ActivityChange = {
+  field?: unknown
+  label?: unknown
+  from?: unknown
+  to?: unknown
+}
+
+function activityChanges(activity: LeadActivity): ActivityChange[] {
+  const changes = activity.metadata?.changes
+  if (!Array.isArray(changes)) return []
+  return changes.filter((change): change is ActivityChange => Boolean(change) && typeof change === 'object')
+}
+
+function activityDetailRows(activity: LeadActivity) {
+  const metadata = activity.metadata ?? {}
+  const rows: Array<{ label: string; value: string }> = []
+  const keys: Array<[string, string]> = [
+    ['body_preview', 'Preview'],
+    ['due_at', 'Due'],
+    ['channel', 'Channel'],
+    ['recipient_role', 'Recipient'],
+    ['event_name', 'Event'],
+    ['error_message', 'Error'],
+  ]
+
+  keys.forEach(([key, label]) => {
+    const value = metadata[key]
+    if (value === undefined || value === null || value === '') return
+    rows.push({ label, value: formatActivityValue(value) })
+  })
+
+  return rows
+}
+
+function formatActivityValue(value: unknown): string {
+  if (value === undefined || value === null || value === '') return 'Blank'
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No'
+  if (typeof value === 'number') return String(value)
+  if (typeof value === 'string') {
+    const parsed = new Date(value)
+    if (value.includes('T') && !Number.isNaN(parsed.getTime())) return formatDateTime(value)
+    return value.replaceAll('_', ' ')
+  }
+
+  return JSON.stringify(value)
 }
 
 function notificationStatusLabel(status: NotificationDelivery['status']) {

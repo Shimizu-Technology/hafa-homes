@@ -1,6 +1,6 @@
 # Hafa Homes Current Status and Next Steps
 
-_Last updated: 2026-06-10 after PR #8 merge and requests/scheduling/admin parity branch._
+_Last updated: 2026-06-10 after requests/scheduling/admin parity merge and broker CRM expansion branch._
 
 ## Source context
 
@@ -46,7 +46,8 @@ The 2026-06-05 broker feedback added Real Geeks as the key competitor and clarif
 - Listings are still seed/demo data, not authorized MLS/Flexmls data.
 - Brokerage/agent tenancy foundation is merged through PR #8.
 - Broker lead inbox/detail, lead status, assigned-agent updates, and staff-editable lead/customer request fields are implemented on web admin.
-- `feature/requests-scheduling-admin-parity` adds consumer request history, showing appointments, responsive admin dashboard/users/showings with compact mobile controls, stricter role scoping, web/mobile listing-detail parity, a collapsible admin sidebar, role-filtered user management, and a safe Resend/ClickSend notification foundation with compose/resend actions, paginated recent-send history, scheduled-showing notifications, Guam phone normalization, guarded consumer-only initial request notifications, and atomic delivery-job claiming to avoid duplicate live sends.
+- PR #9 added consumer request history, showing appointments, responsive admin dashboard/users/showings with compact mobile controls, stricter role scoping, web/mobile listing-detail parity, a collapsible admin sidebar, role-filtered user management, and a safe Resend/ClickSend notification foundation with compose/resend actions, paginated recent-send history, scheduled-showing notifications, Guam phone normalization, guarded consumer-only initial request notifications, and atomic delivery-job claiming to avoid duplicate live sends.
+- `feature/broker-crm-expansion` adds CRM notes, tasks, edit/archive CRM controls, server-counted CRM summary metrics, paginated staff history endpoints, expandable activity change details, source/campaign tracking fields, and a mobile/desktop responsive CRM workspace on lead detail.
 - Property-management/tenant portal features are not built yet.
 - Latest main should be deployed and submitted to TestFlight after the Local Intel merge.
 - App Store public release metadata/screenshots/privacy answers still need to be completed in App Store Connect.
@@ -81,7 +82,7 @@ Why it matters:
 
 Build a focused real estate CRM before attempting to copy every Real Geeks feature.
 
-Recommended scope:
+Implemented/in progress:
 
 - Broker/agent lead inbox.
 - Lead statuses: new, contacted, showing scheduled, nurturing, closed, lost, spam/archived.
@@ -90,7 +91,13 @@ Recommended scope:
 - Notes.
 - Tasks/reminders.
 - Basic activity timeline.
-- Source tracking.
+- Source/campaign tracking fields.
+
+Recommended next CRM scope:
+
+- Duplicate lead detection.
+- Verified email/phone badges.
+- Saved-search/listing activity scoring.
 - CSV export.
 - Notification settings later.
 - Delivery webhook/receipt sync for Resend and ClickSend after the initial gated notification foundation.
