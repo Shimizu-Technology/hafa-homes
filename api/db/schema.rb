@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_10_070000) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_10_120100) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -30,6 +30,29 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_10_070000) do
     t.index ["brokerage_id"], name: "index_agents_on_brokerage_id"
     t.index ["status"], name: "index_agents_on_status"
     t.index ["user_id"], name: "index_agents_on_user_id"
+  end
+
+  create_table "audit_events", force: :cascade do |t|
+    t.string "action", null: false
+    t.string "actor_email"
+    t.bigint "actor_id"
+    t.bigint "brokerage_id"
+    t.jsonb "changes", default: {}, null: false
+    t.datetime "created_at", null: false
+    t.string "ip_address"
+    t.bigint "lead_id"
+    t.jsonb "metadata", default: {}, null: false
+    t.bigint "target_id"
+    t.string "target_label"
+    t.string "target_type"
+    t.datetime "updated_at", null: false
+    t.string "user_agent"
+    t.index ["action"], name: "index_audit_events_on_action"
+    t.index ["actor_id"], name: "index_audit_events_on_actor_id"
+    t.index ["brokerage_id"], name: "index_audit_events_on_brokerage_id"
+    t.index ["created_at"], name: "index_audit_events_on_created_at"
+    t.index ["lead_id"], name: "index_audit_events_on_lead_id"
+    t.index ["target_type", "target_id"], name: "index_audit_events_on_target_type_and_target_id"
   end
 
   create_table "brokerage_memberships", force: :cascade do |t|
@@ -319,6 +342,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_10_070000) do
 
   create_table "users", force: :cascade do |t|
     t.datetime "accepted_at"
+    t.datetime "archived_at"
+    t.bigint "archived_by_id"
     t.string "clerk_id", null: false
     t.string "clerk_invitation_id"
     t.datetime "created_at", null: false
@@ -329,9 +354,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_10_070000) do
     t.bigint "invited_by_id"
     t.string "last_name"
     t.datetime "last_sign_in_at"
+    t.string "phone"
+    t.string "preferred_contact_method"
     t.string "role", default: "consumer", null: false
     t.datetime "updated_at", null: false
     t.index "lower((email)::text)", name: "index_users_on_lower_email", unique: true
+    t.index ["archived_at"], name: "index_users_on_archived_at"
+    t.index ["archived_by_id"], name: "index_users_on_archived_by_id"
     t.index ["clerk_id"], name: "index_users_on_clerk_id", unique: true
     t.index ["invited_by_id"], name: "index_users_on_invited_by_id"
     t.index ["role"], name: "index_users_on_role"
@@ -352,6 +381,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_10_070000) do
 
   add_foreign_key "agents", "brokerages"
   add_foreign_key "agents", "users"
+  add_foreign_key "audit_events", "brokerages"
+  add_foreign_key "audit_events", "leads"
+  add_foreign_key "audit_events", "users", column: "actor_id"
   add_foreign_key "brokerage_memberships", "brokerages"
   add_foreign_key "brokerage_memberships", "users"
   add_foreign_key "lead_activities", "leads"
@@ -384,5 +416,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_10_070000) do
   add_foreign_key "showing_appointments", "leads"
   add_foreign_key "showing_appointments", "listings"
   add_foreign_key "showing_appointments", "users", column: "created_by_id"
+  add_foreign_key "users", "users", column: "archived_by_id"
   add_foreign_key "users", "users", column: "invited_by_id"
 end

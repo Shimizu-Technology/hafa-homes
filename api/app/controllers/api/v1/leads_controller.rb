@@ -35,6 +35,7 @@ module Api
         lead.queue_request_received_notification = true
 
         if lead.save
+          record_audit_event(action: "lead_created", target: lead, lead: lead, metadata: { lead_type: lead.lead_type, source: lead.lead_source })
           render json: { lead: LeadSerializer.summary(lead) }, status: :created
         else
           render json: { errors: lead.errors.full_messages }, status: :unprocessable_entity
@@ -46,6 +47,7 @@ module Api
 
         if @lead.save
           record_lead_update_activity
+          record_global_lead_update_audit
           render json: {
             lead: LeadSerializer.detail(@lead),
             assignable_agents: assignable_agents_for(@lead).map(&:as_api_json)
@@ -151,6 +153,17 @@ module Api
         "Updated #{labels.first(labels.length - 1).join(', ')} and #{labels.last}"
       end
 
+      def record_global_lead_update_audit
+        trackable_fields = %w[
+          status assigned_agent_id quality_status lead_type name email phone preferred_contact_method
+          preferred_time preferred_tour_date tour_type target_price message source_campaign source_url
+        ]
+        changes = AuditLogger.change_details(@lead.previous_changes, trackable_fields)
+        return if changes.empty?
+
+        record_audit_event(action: "lead_updated", target: @lead, lead: @lead, changes: changes)
+      end
+
       def contact_status?(status)
         %w[contacted showing_scheduled nurturing closed lost].include?(status)
       end
@@ -167,6 +180,8 @@ module Api
           :tour_type,
           :target_price,
           :message,
+          :source_campaign,
+          :source_url,
           :listing_id
         )
       end

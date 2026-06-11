@@ -112,6 +112,19 @@ type ConsumerLead = {
 
 type GetAuthToken = (options?: { template?: string }) => Promise<string | null>
 
+type CurrentUser = {
+  id: number
+  email: string
+  first_name?: string
+  last_name?: string
+  full_name: string
+  phone?: string
+  preferred_contact_method?: 'phone' | 'text' | 'email'
+  role: 'platform_admin' | 'brokerage_admin' | 'agent' | 'consumer'
+  is_staff: boolean
+  is_platform_admin: boolean
+}
+
 type AppAuth = {
   clerkEnabled: boolean
   isSignedIn: boolean
@@ -137,6 +150,19 @@ const CLERK_JWT_TEMPLATE = process.env.EXPO_PUBLIC_CLERK_JWT_TEMPLATE
 const FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1600047509807-ba8f99d2cdde?auto=format&fit=crop&w=1200&q=80'
 const LEGACY_SAVED_LISTING_IDS_KEY = 'hafaHomes:savedListingIds'
 const LEGACY_SAVED_LISTINGS_KEY = 'hafaHomes:savedListings'
+
+const preferredTimeOptions = [
+  { value: 'morning', label: 'Morning' },
+  { value: 'afternoon', label: 'Afternoon' },
+  { value: 'evening', label: 'Evening' },
+  { value: 'flexible', label: 'Flexible' },
+]
+
+const preferredContactOptions = [
+  { value: 'phone', label: 'Phone' },
+  { value: 'text', label: 'Text' },
+  { value: 'email', label: 'Email' },
+]
 
 class ApiRequestError extends Error {
   status: number
@@ -250,6 +276,8 @@ async function createLead(payload: {
   preferred_tour_date?: string
   tour_type?: string
   target_price?: string
+  source_campaign?: string
+  source_url?: string
   message: string
 }, getToken?: GetAuthToken) {
   const response = await fetch(`${API_URL}/api/v1/leads`, {
@@ -267,6 +295,24 @@ async function fetchMyLeads(getToken: GetAuthToken): Promise<{ leads: ConsumerLe
     headers: await authHeaders(getToken),
   })
   if (!response.ok) throw new ApiRequestError(await apiErrorMessage(response, 'Unable to load your requests'), response.status)
+  return response.json()
+}
+
+async function fetchMe(getToken: GetAuthToken): Promise<{ user: CurrentUser }> {
+  const response = await fetch(`${API_URL}/api/v1/me`, {
+    headers: await authHeaders(getToken),
+  })
+  if (!response.ok) throw new ApiRequestError(await apiErrorMessage(response, 'Unable to load profile'), response.status)
+  return response.json()
+}
+
+async function updateProfile(payload: Partial<Pick<CurrentUser, 'first_name' | 'last_name' | 'phone' | 'preferred_contact_method'>>, getToken: GetAuthToken): Promise<{ user: CurrentUser }> {
+  const response = await fetch(`${API_URL}/api/v1/me`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...(await authHeaders(getToken)) },
+    body: JSON.stringify({ user: payload }),
+  })
+  if (!response.ok) throw new ApiRequestError(await apiErrorMessage(response, 'Unable to update profile'), response.status)
   return response.json()
 }
 
@@ -333,6 +379,21 @@ function AppContent({ auth }: { auth: AppAuth }) {
   useEffect(() => {
     if (activeTab !== 'map' && fullMapOpen) setFullMapOpen(false)
   }, [activeTab, fullMapOpen])
+
+  useEffect(() => {
+    function handleUrl(url: string | null) {
+      if (!url) return
+      const parsed = Linking.parse(url)
+      const path = parsed.path ? `/${parsed.path}` : '/'
+      if (path.startsWith('/account/requests') || path.startsWith('/requests')) setActiveTab('requests')
+      if (path.startsWith('/saved')) setActiveTab('saved')
+      if (path.startsWith('/account')) setActiveTab('more')
+    }
+
+    Linking.getInitialURL().then(handleUrl).catch((linkError) => console.warn('Unable to parse initial link', linkError))
+    const subscription = Linking.addEventListener('url', ({ url }) => handleUrl(url))
+    return () => subscription.remove()
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -1171,9 +1232,57 @@ function AuthUnavailableCard() {
 }
 
 function AccountCard({ auth, onOpenAuth }: { auth: AppAuth; onOpenAuth: (prompt?: AuthPrompt) => void }) {
+  const [profile, setProfile] = useState<CurrentUser | null>(null)
+  const [profileLoading, setProfileLoading] = useState(false)
+  const [profileSaving, setProfileSaving] = useState(false)
+  const [profileError, setProfileError] = useState<string | null>(null)
+  const [firstName, setFirstName] = useState('')
+  const [lastName, setLastName] = useState('')
+  const [phone, setPhone] = useState('')
+  const [preferredContact, setPreferredContact] = useState<'phone' | 'text' | 'email'>('email')
   const [deletingAccount, setDeletingAccount] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const deletingAccountRef = useRef(false)
+
+  useEffect(() => {
+    let cancelled = false
+    async function loadProfile() {
+      if (!auth.isSignedIn || !auth.getToken) return
+      setProfileLoading(true)
+      setProfileError(null)
+      try {
+        const result = await fetchMe(auth.getToken)
+        if (!cancelled) {
+          setProfile(result.user)
+          setFirstName(result.user.first_name || '')
+          setLastName(result.user.last_name || '')
+          setPhone(result.user.phone || '')
+          setPreferredContact(result.user.preferred_contact_method || 'email')
+        }
+      } catch (error) {
+        if (!cancelled) setProfileError(error instanceof Error ? error.message : 'Unable to load profile')
+      } finally {
+        if (!cancelled) setProfileLoading(false)
+      }
+    }
+    loadProfile()
+    return () => { cancelled = true }
+  }, [auth.getToken, auth.isSignedIn])
+
+  async function handleSaveProfile() {
+    if (!auth.getToken || profileSaving) return
+    setProfileSaving(true)
+    setProfileError(null)
+    try {
+      const result = await updateProfile({ first_name: firstName.trim(), last_name: lastName.trim(), phone: phone.trim(), preferred_contact_method: preferredContact }, auth.getToken)
+      setProfile(result.user)
+      Alert.alert('Profile saved', 'Your contact settings were updated.')
+    } catch (error) {
+      setProfileError(error instanceof Error ? error.message : 'Unable to update profile')
+    } finally {
+      setProfileSaving(false)
+    }
+  }
 
   async function handleDeleteAccount() {
     if (!auth.getToken || deletingAccountRef.current) return
@@ -1211,9 +1320,27 @@ function AccountCard({ auth, onOpenAuth }: { auth: AppAuth; onOpenAuth: (prompt?
   if (auth.isSignedIn) {
     return (
       <View style={styles.accountCard}>
-        <Text style={styles.accountKicker}>Account</Text>
-        <Text style={styles.accountTitle}>{auth.userName || auth.userEmail || 'Hafa Homes account'}</Text>
-        <Text style={styles.accountCopy}>You are signed in. Saved homes now sync to this account; request history stays available across devices.</Text>
+        <Text style={styles.accountKicker}>Profile & settings</Text>
+        <Text style={styles.accountTitle}>{profile?.full_name || auth.userName || auth.userEmail || 'Hafa Homes account'}</Text>
+        <Text style={styles.accountCopy}>Keep your phone and preferred contact method current so showing requests are easier to complete.</Text>
+        {profileLoading && <ActivityIndicator color={colors.green} style={{ marginTop: 12 }} />}
+        <View style={styles.profileForm}>
+          <RequestInput label="First name" value={firstName} onChangeText={setFirstName} />
+          <RequestInput label="Last name" value={lastName} onChangeText={setLastName} />
+          <RequestInput label="Phone" value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
+          <Text style={styles.fieldLabel}>Preferred contact</Text>
+          <View style={styles.segmentRow}>
+            {preferredContactOptions.map((option) => (
+              <Pressable key={option.value} style={[styles.segmentOption, preferredContact === option.value && styles.segmentOptionActive]} onPress={() => setPreferredContact(option.value as 'phone' | 'text' | 'email')}>
+                <Text style={[styles.segmentOptionText, preferredContact === option.value && styles.segmentOptionTextActive]}>{option.label}</Text>
+              </Pressable>
+            ))}
+          </View>
+          {profileError && <Text style={styles.dangerError}>{profileError}</Text>}
+          <Pressable style={[styles.primaryCta, profileSaving && styles.ctaDisabled]} onPress={handleSaveProfile} disabled={profileSaving}>
+            <Text style={styles.primaryCtaText}>{profileSaving ? 'Saving profile...' : 'Save profile'}</Text>
+          </Pressable>
+        </View>
         <Pressable style={styles.secondaryCta} onPress={() => auth.signOut?.()} disabled={deletingAccount}><Text style={styles.secondaryCtaText}>Sign out</Text></Pressable>
         <View style={styles.dangerZone}>
           <Text style={styles.dangerTitle}>Delete account</Text>
@@ -1723,7 +1850,7 @@ function ShowingRequestSheet({ listing, auth, open, onOpenAuth, onClose }: { lis
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('+1671')
   const [preferredContact, setPreferredContact] = useState('phone')
-  const [preferredTime, setPreferredTime] = useState('morning')
+  const [preferredTime, setPreferredTime] = useState('flexible')
   const [tourType, setTourType] = useState('in_person')
   const [message, setMessage] = useState(`I'm interested in ${listing.title}.`)
   const [submitting, setSubmitting] = useState(false)
@@ -1738,8 +1865,18 @@ function ShowingRequestSheet({ listing, auth, open, onOpenAuth, onClose }: { lis
     if (auth.isSignedIn) {
       setName((current) => current || auth.userName || '')
       setEmail((current) => current || auth.userEmail || '')
+      if (auth.getToken) {
+        fetchMe(auth.getToken)
+          .then((result) => {
+            setName(result.user.full_name || auth.userName || '')
+            setEmail(result.user.email || auth.userEmail || '')
+            setPhone(result.user.phone || '+1671')
+            setPreferredContact(result.user.preferred_contact_method || 'phone')
+          })
+          .catch((profileError) => console.warn('Unable to prefill showing request profile', profileError))
+      }
     }
-  }, [auth.isSignedIn, auth.userEmail, auth.userName, listing.title, open])
+  }, [auth.getToken, auth.isSignedIn, auth.userEmail, auth.userName, listing.title, open])
 
   async function handleSubmit() {
     const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
@@ -1760,6 +1897,7 @@ function ShowingRequestSheet({ listing, auth, open, onOpenAuth, onClose }: { lis
         preferred_contact_method: preferredContact,
         preferred_time: preferredTime,
         tour_type: tourType,
+        source_url: `hafahomes:///listings/${listing.id}`,
         message: `${message.trim()}\n\nListing: ${listing.title} — ${listing.address}, ${listing.village.name}`,
       }, auth.isSignedIn ? auth.getToken : undefined)
       setSubmitted(true)
@@ -1809,9 +1947,9 @@ function ShowingRequestSheet({ listing, auth, open, onOpenAuth, onClose }: { lis
                 <RequestInput label="Phone" value={phone} onChangeText={setPhone} placeholder="+1671" keyboardType="phone-pad" />
                 <Text style={styles.requestLabel}>Preferred contact</Text>
                 <View style={styles.contactSegmentRow}>
-                  {['phone', 'text', 'email'].map((option) => (
-                    <Pressable key={option} onPress={() => setPreferredContact(option)} style={[styles.contactSegment, preferredContact === option && styles.contactSegmentActive]}>
-                      <Text style={[styles.contactSegmentText, preferredContact === option && styles.contactSegmentTextActive]}>{option}</Text>
+                  {preferredContactOptions.map((option) => (
+                    <Pressable key={option.value} onPress={() => setPreferredContact(option.value)} style={[styles.contactSegment, preferredContact === option.value && styles.contactSegmentActive]}>
+                      <Text style={[styles.contactSegmentText, preferredContact === option.value && styles.contactSegmentTextActive]}>{option.label}</Text>
                     </Pressable>
                   ))}
                 </View>
@@ -1825,9 +1963,9 @@ function ShowingRequestSheet({ listing, auth, open, onOpenAuth, onClose }: { lis
                 </View>
                 <Text style={styles.requestLabel}>Preferred time</Text>
                 <View style={styles.contactSegmentRow}>
-                  {['morning', 'afternoon', 'evening'].map((option) => (
-                    <Pressable key={option} onPress={() => setPreferredTime(option)} style={[styles.contactSegment, preferredTime === option && styles.contactSegmentActive]}>
-                      <Text style={[styles.contactSegmentText, preferredTime === option && styles.contactSegmentTextActive]}>{option}</Text>
+                  {preferredTimeOptions.map((option) => (
+                    <Pressable key={option.value} onPress={() => setPreferredTime(option.value)} style={[styles.contactSegment, preferredTime === option.value && styles.contactSegmentActive]}>
+                      <Text style={[styles.contactSegmentText, preferredTime === option.value && styles.contactSegmentTextActive]}>{option.label}</Text>
                     </Pressable>
                   ))}
                 </View>
@@ -1863,8 +2001,17 @@ function PriceAlertSheet({ listing, auth, open, onClose }: { listing: Listing; a
     if (auth.isSignedIn) {
       setName((current) => current || auth.userName || '')
       setEmail((current) => current || auth.userEmail || '')
+      if (auth.getToken) {
+        fetchMe(auth.getToken)
+          .then((result) => {
+            setName(result.user.full_name || auth.userName || '')
+            setEmail(result.user.email || auth.userEmail || '')
+            setPhone(result.user.phone || '+1671')
+          })
+          .catch((profileError) => console.warn('Unable to prefill price alert profile', profileError))
+      }
     }
-  }, [auth.isSignedIn, auth.userEmail, auth.userName, listing.price, open])
+  }, [auth.getToken, auth.isSignedIn, auth.userEmail, auth.userName, listing.price, open])
 
   async function handleSubmit() {
     const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
@@ -1884,6 +2031,7 @@ function PriceAlertSheet({ listing, auth, open, onClose }: { listing: Listing; a
         phone: phone.trim(),
         preferred_contact_method: 'email',
         target_price: targetPrice.trim(),
+        source_url: `hafahomes:///listings/${listing.id}`,
         message: `Target price: ${targetPrice.trim()}\n\nListing: ${listing.title} — ${listing.address}, ${listing.village.name}`,
       }, auth.isSignedIn ? auth.getToken : undefined)
       setSubmitted(true)
@@ -2066,6 +2214,13 @@ const styles = StyleSheet.create({
   accountKicker: { color: colors.mint, fontSize: 12, fontWeight: '900', letterSpacing: 1.8, textTransform: 'uppercase' },
   accountTitle: { color: 'white', fontSize: 22, fontWeight: '900', letterSpacing: -0.5 },
   accountCopy: { color: 'rgba(255,255,255,0.78)', fontSize: 14, fontWeight: '700', lineHeight: 21 },
+  profileForm: { backgroundColor: 'rgba(255,255,255,0.08)', borderColor: 'rgba(255,255,255,0.14)', borderRadius: 22, borderWidth: 1, gap: 10, padding: 14 },
+  fieldLabel: { color: colors.mint, fontSize: 11, fontWeight: '900', letterSpacing: 1.1, marginTop: 2, textTransform: 'uppercase' },
+  segmentRow: { backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 18, flexDirection: 'row', gap: 6, padding: 5 },
+  segmentOption: { alignItems: 'center', borderRadius: 14, flex: 1, paddingVertical: 10 },
+  segmentOptionActive: { backgroundColor: 'white' },
+  segmentOptionText: { color: 'rgba(255,255,255,0.72)', fontSize: 13, fontWeight: '900' },
+  segmentOptionTextActive: { color: colors.green },
   dangerZone: { backgroundColor: 'rgba(255,255,255,0.08)', borderColor: 'rgba(255,255,255,0.14)', borderRadius: 22, borderWidth: 1, gap: 8, marginTop: 6, padding: 14 },
   dangerTitle: { color: '#fee2e2', fontSize: 16, fontWeight: '900' },
   dangerCopy: { color: 'rgba(255,255,255,0.74)', fontSize: 13, fontWeight: '700', lineHeight: 19 },

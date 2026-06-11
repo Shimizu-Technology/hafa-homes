@@ -1,6 +1,6 @@
 # Hafa Homes Broker Platform Implementation Plan
 
-_Last updated: 2026-06-10 after PR #10 broker CRM expansion merged._
+_Last updated: 2026-06-10 after PR #11 account deletion/App Store resubmission and admin/notification QA findings._
 
 ## Purpose
 
@@ -88,13 +88,101 @@ Do **not** combine broker-branded websites, app build profiles, MLS integration,
 
 Recommended next sequence:
 
-1. PR 4 — Broker-Branded Website/App Foundation.
-2. PR 5 — Lead Quality / CRM Automation Follow-up.
-3. PR 6 — Property Management Preview.
-4. PR 7 — Production Deployment + Demo Hardening.
-5. PR 8 — MLS/Flexmls Adapter Skeleton once authorization path is clear.
+1. PR 4 — Consumer Profile/Settings + Form Parity.
+2. PR 5 — Notification Link/Copy Polish.
+3. PR 6 — Admin User Lifecycle.
+4. PR 7 — Global Admin Audit Log.
+5. PR 8 — Broker-Branded Website/App Foundation.
+6. PR 9 — Lead Quality / CRM Automation Follow-up.
+7. PR 10 — Property Management Preview.
+8. PR 11 — Production Deployment + Demo Hardening.
+9. PR 12 — MLS/Flexmls Adapter Skeleton once authorization path is clear.
 
-## PR 4 — Domain-First Broker-Branded Website/App Foundation
+See `docs/product/admin-ops-notification-hardening-plan.md` for PRs 4–7.
+
+## PR 4 — Consumer Profile/Settings + Form Parity
+
+Recommended branch:
+
+```bash
+feature/consumer-profile-settings
+```
+
+Goal:
+
+> Make account/profile behavior feel complete and use signed-in profile data to reduce friction in showing/contact forms.
+
+Scope:
+
+- Dedicated mobile Profile & settings screen.
+- Matching web `/account` settings page.
+- Safe `PATCH /api/v1/me` profile update endpoint.
+- User profile phone/preferred-contact fields.
+- Signed-in lead form prefill from profile.
+- Consumer/admin preferred-time parity, including `Flexible`.
+- Account deletion remains in a danger zone.
+
+## PR 5 — Notification Link/Copy Polish
+
+Recommended branch:
+
+```bash
+feature/notification-link-polish
+```
+
+Goal:
+
+> Make customer notification links and content production-grade.
+
+Scope:
+
+- Fix duplicate greeting in manual notification emails.
+- Centralize notification CTA link generation.
+- Use HTTPS universal/app links for app-first behavior with web fallback.
+- Add mobile deep-link handling for request history and listing detail.
+
+## PR 6 — Admin User Lifecycle
+
+Recommended branch:
+
+```bash
+feature/admin-user-lifecycle
+```
+
+Goal:
+
+> Let platform admins create, invite, edit, archive, and reactivate staff/consumer users from the admin dashboard.
+
+Scope:
+
+- `POST /api/v1/admin/users`.
+- Clerk-backed invitation or pending-user acceptance flow.
+- Create admins, agents, brokerage admins, and consumers.
+- Edit roles/memberships/linked agent profiles.
+- Archive/reactivate/revoke lifecycle.
+- Resend invite action if Clerk invitations are used.
+
+## PR 7 — Global Admin Audit Log
+
+Recommended branch:
+
+```bash
+feature/admin-audit-log
+```
+
+Goal:
+
+> Give platform/brokerage admins trustworthy history across users, leads, showings, notifications, and account actions.
+
+Scope:
+
+- `AuditEvent` model/table.
+- `AuditLogger.record!` service.
+- `GET /api/v1/admin/audit_events` with filters.
+- Admin audit UI page.
+- Tenant-scoped visibility for brokerage users.
+
+## PR 8 — Domain-First Broker-Branded Website/App Foundation
 
 Recommended branch:
 
@@ -122,7 +210,7 @@ Scope:
 
 See `docs/product/broker-branded-layer-plan.md`.
 
-### Out of scope for PR 4
+### Out of scope for PR 8
 
 - real MLS/Flexmls integration.
 - production DNS automation for many broker domains.
@@ -131,7 +219,7 @@ See `docs/product/broker-branded-layer-plan.md`.
 - full CMS/page builder.
 - full property-management module.
 
-## PR 5 — Lead Quality / CRM Automation Follow-up
+## PR 9 — Lead Quality / CRM Automation Follow-up
 
 Recommended branch:
 
@@ -154,7 +242,7 @@ Scope:
 - agent follow-up reporting.
 - delivery webhook/receipt sync for Resend and ClickSend if needed.
 
-## PR 6 — Property Management Preview
+## PR 10 — Property Management Preview
 
 Recommended branch:
 
@@ -176,7 +264,7 @@ Scope:
 - owner/tenant portal concept.
 - property-management CTA from broker-branded pages.
 
-## PR 7 — Production Deployment + Demo Hardening
+## PR 11 — Production Deployment + Demo Hardening
 
 Recommended branch:
 
@@ -199,7 +287,7 @@ Scope:
 - prepare demo accounts and seed/demo data.
 - update App Store/TestFlight notes.
 
-## PR 8 — MLS/Flexmls Adapter Skeleton
+## PR 12 — MLS/Flexmls Adapter Skeleton
 
 Only start after broker/Flexmls/GAR discovery clarifies the authorized path.
 

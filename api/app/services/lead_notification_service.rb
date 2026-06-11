@@ -153,8 +153,9 @@ class LeadNotificationService
       lead = delivery.lead
       showing = delivery.showing_appointment || lead&.showing_appointments&.order(Arel.sql("scheduled_starts_at DESC NULLS LAST"), created_at: :desc)&.first
       greeting = delivery.recipient_role == "agent" ? (lead&.assigned_agent&.name || showing&.agent&.name || "Team") : (lead&.name.presence || "there")
-      cta_url = delivery.recipient_role == "agent" ? "#{frontend_url}/admin/leads/#{lead&.id}" : "#{frontend_url}/account/requests"
-      body = email_body_copy(delivery, showing)
+      cta_path = delivery.recipient_role == "agent" ? "/admin/leads/#{lead&.id}" : "/account/requests"
+      cta_url = delivery.recipient_role == "agent" ? "#{frontend_url}#{cta_path}" : app_link_url(cta_path)
+      body = email_body_copy(delivery, showing, greeting: greeting)
 
       <<~HTML
         <!doctype html>
@@ -209,9 +210,9 @@ class LeadNotificationService
       delivery.metadata["title"].presence || email_subject(delivery)
     end
 
-    def email_body_copy(delivery, showing)
+    def email_body_copy(delivery, showing, greeting: nil)
       custom_body = delivery.metadata["body"].presence
-      return custom_body if custom_body
+      return strip_leading_greeting(custom_body, greeting) if custom_body
 
       case delivery.event_name
       when "request_received"
@@ -286,9 +287,9 @@ class LeadNotificationService
 
       case delivery.event_name
       when "showing_update"
-        "Hafa Homes: #{showing&.status.to_s.humanize} showing for #{listing}. #{format_time(showing&.scheduled_starts_at, timezone: showing&.timezone)}. View details: #{frontend_url}/account/requests"
+        "Hafa Homes: #{showing&.status.to_s.humanize} showing for #{listing}. #{format_time(showing&.scheduled_starts_at, timezone: showing&.timezone)}. View details: #{app_link_url('/account/requests')}"
       else
-        "Hafa Homes: update for #{listing}. View details: #{frontend_url}/account/requests"
+        "Hafa Homes: update for #{listing}. View details: #{app_link_url('/account/requests')}"
       end
     end
 
@@ -301,6 +302,18 @@ class LeadNotificationService
 
     def from_email
       ENV["RESEND_FROM_EMAIL"].presence || ENV["MAILER_FROM_EMAIL"].presence
+    end
+
+    def app_link_url(path)
+      "#{frontend_url}/open?target=#{CGI.escape(path)}"
+    end
+
+    def strip_leading_greeting(body, greeting)
+      normalized = body.to_s.strip
+      return normalized if greeting.blank?
+
+      escaped = Regexp.escape(greeting.to_s.strip)
+      normalized.sub(/\A(?:hi|hello|hafa|håfa)\s+#{escaped}\s*,?\s*/i, "").strip.presence || normalized
     end
 
     def frontend_url

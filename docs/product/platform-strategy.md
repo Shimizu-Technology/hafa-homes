@@ -1,6 +1,6 @@
 # Hafa Homes Platform Strategy
 
-_Last updated: 2026-06-10 after PR #10 broker CRM expansion merged._
+_Last updated: 2026-06-10 after PR #11 account deletion, iOS build `1.0.1 (9)` submission, and admin/notification QA findings._
 
 ## Current direction
 
@@ -38,6 +38,10 @@ credible broker-platform demo
 
 Still missing before a full Real Geeks-style sales claim:
 
+- proper consumer profile/settings with phone/preferred-contact prefill;
+- admin-created user/invite/archive lifecycle;
+- global admin audit logs/history;
+- notification/deep-link polish;
 - domain-first broker-branded public website/app layer;
 - real MLS/Flexmls authorization and sync;
 - lead verification/scoring/automation;
@@ -171,17 +175,21 @@ Build toward a broker-first platform while keeping the existing consumer demo po
 
 Next major product capabilities:
 
-1. Domain-first broker-branded website/app configuration and public pages.
-2. `BrokerageDomain` host-based tenant resolution with slug preview fallback.
-3. Brokerage-scoped listing/search surfaces.
-4. Agent roster/profile pages.
-5. Lead forms routed from broker-branded surfaces to the correct brokerage.
-6. Lead quality follow-up: duplicate detection, verification badges, saved-search/listing activity scoring, speed-to-lead reminders.
-7. MLS/Flexmls sync adapter skeleton once a broker authorizes access.
-8. Property-management / tenant portal preview for premium package.
-9. Production deployment/demo hardening.
-10. Native broker-branded app build profiles and App Store strategy.
-11. Map/search polish and SEO-oriented public content pages.
+1. Consumer profile/settings with phone/preferred-contact fields and signed-in form prefill.
+2. Notification/form parity polish: `Flexible` preferred time, no duplicate email greetings, app-first notification links with web fallback.
+3. Admin user lifecycle: create/invite, edit, archive/reactivate/revoke users across admins, agents, and consumers.
+4. Global audit log/history for user, lead, showing, notification, and account actions.
+5. Domain-first broker-branded website/app configuration and public pages.
+6. `BrokerageDomain` host-based tenant resolution with slug preview fallback.
+7. Brokerage-scoped listing/search surfaces.
+8. Agent roster/profile pages.
+9. Lead forms routed from broker-branded surfaces to the correct brokerage.
+10. Lead quality follow-up: duplicate detection, verification badges, saved-search/listing activity scoring, speed-to-lead reminders.
+11. MLS/Flexmls sync adapter skeleton once a broker authorizes access.
+12. Property-management / tenant portal preview for premium package.
+13. Production deployment/demo hardening.
+14. Native broker-branded app build profiles and App Store strategy.
+15. Map/search polish and SEO-oriented public content pages.
 
 ## Meeting source
 

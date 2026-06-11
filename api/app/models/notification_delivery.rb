@@ -49,13 +49,23 @@ class NotificationDelivery < ApplicationRecord
   private
 
   def record_queued_activity
+    metadata = { channel: channel, recipient_role: recipient_role, event_name: event_name }
+
     LeadActivity.record!(
       lead: lead,
       action: "notification_queued",
       actor: sent_by,
       subject: self,
       summary: "#{channel.humanize} queued to #{recipient_role}",
-      metadata: { channel: channel, recipient_role: recipient_role, event_name: event_name }
+      metadata: metadata
+    )
+
+    AuditLogger.record!(
+      action: "notification_queued",
+      actor: sent_by,
+      target: self,
+      lead: lead,
+      metadata: metadata
     )
   end
 
@@ -67,13 +77,23 @@ class NotificationDelivery < ApplicationRecord
              end
     return unless action
 
+    metadata = { channel: channel, recipient_role: recipient_role, event_name: event_name, error_message: error_message }
+
     LeadActivity.record!(
       lead: lead,
       action: action,
       actor: sent_by,
       subject: self,
       summary: "#{channel.humanize} #{status} for #{recipient_role}",
-      metadata: { channel: channel, recipient_role: recipient_role, event_name: event_name, error_message: error_message }
+      metadata: metadata
+    )
+
+    AuditLogger.record!(
+      action: action,
+      actor: sent_by,
+      target: self,
+      lead: lead,
+      metadata: metadata
     )
   end
 end

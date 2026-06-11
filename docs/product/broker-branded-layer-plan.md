@@ -1,6 +1,6 @@
 # Domain-First Broker-Branded Website/App Layer Plan
 
-_Last updated: 2026-06-10 after PR #10 broker CRM expansion merged._
+_Last updated: 2026-06-10 after PR #11 account deletion/App Store resubmission and admin/notification QA findings._
 
 ## Decision
 
@@ -31,6 +31,8 @@ Goal:
 > Prove that one shared Hafa Homes platform can power broker-owned domains and broker-branded app experiences while keeping the Rails backend, React web app, and Expo mobile app shared.
 
 This directly follows the Mike/John feedback that brokers may want their actual website/app experience powered by Hafa Homes, not only a generic Hafa Homes marketplace profile.
+
+Post-submission QA added an adjacent hardening step before serious broker demos: profile/settings polish, admin-created users, global audit logs, notification link/copy polish, and consumer/admin form parity. See `docs/product/admin-ops-notification-hardening-plan.md`. Broker branding remains the next major platform differentiator after those operational gaps are addressed.
 
 ## Target architecture
 

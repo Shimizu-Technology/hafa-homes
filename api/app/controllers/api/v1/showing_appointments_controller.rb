@@ -29,6 +29,7 @@ module Api
         return if apply_agent(showing, showing_params[:agent_id]) == false
 
         if showing.save
+          record_audit_event(action: "showing_created", target: showing, lead: lead, metadata: { status: showing.status, tour_type: showing.tour_type })
           render json: { showing_appointment: ShowingAppointmentSerializer.summary(showing), lead: LeadSerializer.detail(lead.reload) }, status: :created
         else
           render json: { errors: showing.errors.full_messages }, status: :unprocessable_entity
@@ -41,6 +42,8 @@ module Api
         return if apply_agent(@showing_appointment, showing_params[:agent_id]) == false
 
         if @showing_appointment.save
+          changes = AuditLogger.change_details(@showing_appointment.previous_changes, %w[status scheduled_starts_at scheduled_ends_at location agent_id consumer_notes internal_notes])
+          record_audit_event(action: "showing_updated", target: @showing_appointment, lead: @showing_appointment.lead, changes: changes) if changes.any?
           render json: { showing_appointment: ShowingAppointmentSerializer.summary(@showing_appointment), lead: LeadSerializer.detail(@showing_appointment.lead.reload) }
         else
           render json: { errors: @showing_appointment.errors.full_messages }, status: :unprocessable_entity

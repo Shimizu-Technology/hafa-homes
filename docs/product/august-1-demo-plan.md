@@ -1,6 +1,6 @@
 # Hafa Homes August 1 Demo Plan
 
-_Last updated: 2026-06-10 after PR #10 broker CRM expansion merged._
+_Last updated: 2026-06-10 after PR #11 account deletion/App Store resubmission and admin/notification QA findings._
 
 ## Goal
 
@@ -35,7 +35,11 @@ credible broker-platform demo
 
 Still needed for a stronger August broker pitch:
 
-- latest API/mobile deployment and Apple/TestFlight refresh;
+- App Store review monitoring for iOS `1.0.1 (9)` and TestFlight availability;
+- consumer profile/settings polish with phone/preferred-contact prefill;
+- admin user lifecycle management;
+- global admin audit log/history;
+- notification/deep-link polish;
 - domain-first broker-branded website/app foundation;
 - property-management preview;
 - production deploy/demo hardening;
@@ -44,9 +48,26 @@ Still needed for a stronger August broker pitch:
 
 ## Strategic priorities from here
 
-### 1. Domain-first broker-branded website/app story
+### 1. Account/admin/notification hardening
 
-This is the next product priority.
+This is the immediate product hardening priority after the App Store resubmission.
+
+Add:
+
+- Profile & settings with phone/preferred-contact profile fields.
+- Signed-in showing/contact form prefill.
+- Consumer/admin preferred-time parity, including `Flexible`.
+- Notification duplicate-greeting fix.
+- App-first notification/deep-link strategy with web fallback.
+- Admin-created users/invites for admins, agents, and consumers.
+- User edit/archive/reactivate/revoke lifecycle.
+- Global admin audit log/history.
+
+See `docs/product/admin-ops-notification-hardening-plan.md`.
+
+### 2. Domain-first broker-branded website/app story
+
+This remains the next major platform differentiator.
 
 Show that Hafa Homes is not only one consumer app. It is the demo/reference implementation for broker-owned domains, broker-specific websites, and broker-branded app builds.
 
@@ -63,7 +84,7 @@ Add:
 
 See `docs/product/broker-branded-layer-plan.md`.
 
-### 2. Production demo hardening
+### 3. Production demo hardening
 
 Before serious broker demos, verify latest merged features in production:
 
@@ -75,7 +96,7 @@ Before serious broker demos, verify latest merged features in production:
 - refresh TestFlight/mobile config if needed;
 - set up demo users/data.
 
-### 3. Property-management preview
+### 4. Property-management preview
 
 For August, build a premium-tier demo surface only:
 
@@ -88,7 +109,7 @@ For August, build a premium-tier demo surface only:
 
 Do not build full payments or maintenance workflows yet.
 
-### 4. Broker pitch and package docs
+### 5. Broker pitch and package docs
 
 Mike and John need:
 
@@ -101,7 +122,7 @@ Mike and John need:
 - Real Geeks competitive positioning.
 - White-label brokerage website/app explanation.
 
-### 5. MLS/Flexmls discovery
+### 6. MLS/Flexmls discovery
 
 By August 1, the team should know or have a credible answer for:
 
@@ -112,7 +133,7 @@ By August 1, the team should know or have a credible answer for:
 - What refresh cadence is required?
 - Can leads route to listing agent, selected agent, or broker?
 
-### 6. Lead quality / CRM automation follow-up
+### 7. Lead quality / CRM automation follow-up
 
 After broker branding, improve the Real Geeks comparison:
 
@@ -127,17 +148,18 @@ After broker branding, improve the Real Geeks comparison:
 
 ### June 10–June 21
 
-- Deploy latest API/migrations for mobile dependencies.
-- Build and submit latest iOS/TestFlight build.
-- Then build domain-first broker-branded website/app foundation.
-- Update demo data/branding.
+- Monitor iOS `1.0.1 (9)` App Store review and TestFlight availability.
+- Build consumer profile/settings with phone/preferred-contact prefill.
+- Fix preferred-time parity and duplicate notification greeting.
+- Start admin user lifecycle and audit-log hardening.
 - Continue broker/MLS discovery.
 - Draft package/pricing outline.
 
 ### June 22–July 5
 
-- Add lead quality quick wins if time allows.
-- Build property-management preview surface.
+- Finish admin user lifecycle and global audit log/history.
+- Build domain-first broker-branded website/app foundation.
+- Update demo data/branding.
 - Prepare broker demo script.
 - Continue Carl/Clare/Bawar conversations.
 
@@ -155,15 +177,21 @@ After broker branding, improve the Real Geeks comparison:
 - Decide first 3–5 broker discovery/pilot targets.
 - Demo with Mike/John and then trusted broker contacts.
 
-## Recommended next branch
+## Recommended next branches
 
 ```bash
-feature/broker-branded-sites-apps
+feature/consumer-profile-settings
+feature/notification-link-polish
+feature/admin-user-lifecycle
+feature/admin-audit-log
+feature/broker-domain-foundation
 ```
 
 ## Definition of done for August 1
 
 - Public demo feels polished on web/mobile.
+- Account/profile settings feel complete enough for consumers.
+- Admin user lifecycle and audit history are demoable.
 - Domain-first broker-branded website/app story is demoable.
 - Broker/admin CRM workflow is demoable end-to-end.
 - Showing request/scheduling flow is demoable end-to-end.

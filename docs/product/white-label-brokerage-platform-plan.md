@@ -1,6 +1,6 @@
 # Hafa Homes White-Label Brokerage Platform Plan
 
-_Last updated: 2026-06-10 after PR #10 broker CRM expansion merged._
+_Last updated: 2026-06-10 after PR #11 account deletion/App Store resubmission and admin/notification QA findings._
 
 ## Strategic decision
 
@@ -350,11 +350,37 @@ Included:
 - paginated CRM history endpoints.
 - responsive CRM workspace on lead detail.
 
-### Phase 2 — broker branding / website foundation
+### Phase 1.8 — account/admin/notification hardening
 
-Recommended next branch:
+Recommended next branches:
 
 ```bash
+feature/consumer-profile-settings
+feature/notification-link-polish
+feature/admin-user-lifecycle
+feature/admin-audit-log
+```
+
+Scope:
+
+- profile/settings with phone and preferred contact.
+- signed-in showing/contact form prefill.
+- consumer/admin form parity, including `Flexible` preferred time.
+- notification duplicate-greeting fix.
+- app-first notification links with web fallback.
+- admin-created users/invites for admins, agents, and consumers.
+- user edit/archive/reactivate/revoke lifecycle.
+- global admin audit log/history.
+
+See `docs/product/admin-ops-notification-hardening-plan.md`.
+
+### Phase 2 — broker branding / website foundation
+
+Recommended branch:
+
+```bash
+feature/broker-domain-foundation
+# or broader:
 feature/broker-branded-sites-apps
 ```
 

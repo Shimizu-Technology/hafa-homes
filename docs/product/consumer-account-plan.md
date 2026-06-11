@@ -1,6 +1,6 @@
 # Consumer Account, Saves, and Inquiry Plan
 
-_Last updated: 2026-06-10 after PR #11 self-service account deletion work._
+_Last updated: 2026-06-10 after PR #11 self-service account deletion work and post-submission account/profile QA._
 
 ## Product principle
 
@@ -26,7 +26,7 @@ Mobile uses one shared Clerk sign-in/sign-up modal for:
 - More/account screen
 - post-inquiry account CTA
 
-Email sign-up collects first/last name so showing requests and future broker workflows have a real contact name. Google SSO uses Clerk's native SSO flow. iOS includes native Sign in with Apple through Clerk Expo and Expo Apple Authentication, with `ios.usesAppleSignIn` enabled for EAS builds. On native mobile, provider buttons are custom UI wired to Clerk strategies rather than Clerk's web drop-in components automatically rendering every enabled provider.
+Email sign-up collects first/last name so showing requests and future broker workflows have a real contact name. A follow-up should collect optional phone/preferred contact either during sign-up or immediately after account creation through Profile & settings, then use those fields to prefill showing/contact forms. Google SSO uses Clerk's native SSO flow. iOS includes native Sign in with Apple through Clerk Expo and Expo Apple Authentication, with `ios.usesAppleSignIn` enabled for EAS builds. On native mobile, provider buttons are custom UI wired to Clerk strategies rather than Clerk's web drop-in components automatically rendering every enabled provider.
 
 For Clerk Apple OAuth, custom credentials are not required for initial testing, but should be configured before a polished public production release if we want app-owned Apple OAuth/native credential behavior instead of Clerk-managed/shared OAuth behavior.
 
@@ -61,7 +61,7 @@ Mobile behavior:
 Showing requests should remain low-friction for lead conversion.
 
 - Signed-out users can still submit name/email/phone/message.
-- Signed-in users get name/email prefilled from Clerk. If Clerk has no name, the name field stays editable instead of falling back to email.
+- Signed-in users get name/email prefilled from Clerk today. The next profile/settings follow-up should also prefill phone and preferred contact from Rails user profile fields.
 - If a signed-in user submits, Rails attaches `lead.user_id`.
 - If signed out, the lead remains contact-info based with `user_id = nil`.
 
@@ -142,15 +142,19 @@ Profile/settings scope:
 Backend/API likely needed:
 
 - `PATCH /api/v1/me` for consumer-safe profile fields only.
+- Add user profile columns for `phone` and `preferred_contact_method`; consider `notification_preferences` JSON later.
+- Normalize Guam phone numbers consistently with lead/SMS handling.
 - Do not allow role, brokerage membership, agent assignment, or tenant fields through this endpoint.
 - Decide whether email changes should be handled only through Clerk user settings, not Rails.
-- Consider adding user profile columns for phone/preferred contact/notification preferences instead of overloading leads.
+- Do not overload lead contact fields as the source of truth for account profile data.
 
 Acceptance criteria:
 
 - Signed-in mobile users can reach account deletion from More → Profile & settings → Delete account.
 - Signed-in web users can reach deletion from `/account`.
 - Users can update safe profile fields without affecting Clerk roles or broker tenancy.
+- Signed-in lead/showing forms prefill name, email, phone, and preferred contact from profile data.
+- Consumer preferred-time options match admin options, including `Flexible`.
 - Public browsing remains unauthenticated.
 - Saved homes and request history continue to require sign-in.
 - API, web build, mobile typecheck, and mobile doctor pass.

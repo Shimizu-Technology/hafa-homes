@@ -83,6 +83,7 @@ The web app uses `VITE_API_URL`; the mobile app uses `EXPO_PUBLIC_API_URL`. Both
 - [Broker Platform Implementation Plan](docs/product/broker-platform-implementation-plan.md)
 - [Broker CRM Expansion Plan](docs/product/broker-crm-expansion-plan.md)
 - [Broker-Branded Website/App Layer Plan](docs/product/broker-branded-layer-plan.md)
+- [Admin Operations, Audit, and Notification Hardening Plan](docs/product/admin-ops-notification-hardening-plan.md)
 - [August 1 Demo Plan](docs/product/august-1-demo-plan.md)
 - [Auth and Roles Plan](docs/product/auth-roles-plan.md)
 - [Consumer Account Plan](docs/product/consumer-account-plan.md)

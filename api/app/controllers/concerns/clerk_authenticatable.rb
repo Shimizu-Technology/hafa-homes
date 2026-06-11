@@ -15,13 +15,19 @@ module ClerkAuthenticatable
       render_unauthorized("Unable to authenticate user")
       return
     end
+
+    if @current_user.archived?
+      render_forbidden("This account is archived. Contact Hafa Homes support if this looks wrong.")
+      return
+    end
   end
 
   def authenticate_user_optional
     decoded = decoded_clerk_token
     return unless decoded
 
-    @current_user = find_or_create_user_from_clerk(decoded)
+    user = find_or_create_user_from_clerk(decoded)
+    @current_user = user unless user&.archived?
   end
 
   def current_user
@@ -78,6 +84,7 @@ module ClerkAuthenticatable
 
     if email.present?
       invited_user = User.find_by("LOWER(email) = ?", email.downcase)
+      return nil if invited_user&.archived?
       return accept_invited_user(invited_user, clerk_id:, first_name:, last_name:) if invited_user
     else
       Rails.logger.warn("[ClerkAuth] No email resolved for Clerk user #{clerk_id}; refusing to create a local user without a verified email.")
