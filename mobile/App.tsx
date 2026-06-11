@@ -713,7 +713,7 @@ function AppContent({ auth }: { auth: AppAuth }) {
             ? <RequestsSignInScreen clerkEnabled={auth.clerkEnabled} onOpenAuth={() => openAuthPrompt({ title: 'Sign in to view your requests', copy: 'Signed-in showing requests and price alerts can show status, agent, and scheduled appointment details.' })} />
             : <RequestsScreen auth={auth} />
         )}
-        {activeTab === 'more' && <MoreScreen auth={auth} onOpenAuth={openAuthPrompt} />}
+        {activeTab === 'more' && <MoreScreen auth={auth} onOpenAuth={openAuthPrompt} onNavigateTab={setActiveTab} />}
       </View>
 
       {!(activeTab === 'map' && fullMapOpen) && <View style={styles.tabBar}>
@@ -1079,21 +1079,97 @@ function SavedScreen({ listings, onOpen, onToggleSaved }: { listings: Listing[];
   )
 }
 
-function MoreScreen({ auth, onOpenAuth }: { auth: AppAuth; onOpenAuth: (prompt?: AuthPrompt) => void }) {
+function MoreScreen({ auth, onOpenAuth, onNavigateTab }: { auth: AppAuth; onOpenAuth: (prompt?: AuthPrompt) => void; onNavigateTab: (tab: TabKey) => void }) {
+  const [page, setPage] = useState<'home' | 'profile'>('home')
+  const [profileFirstName, setProfileFirstName] = useState<string | null>(null)
+  const firstName = profileFirstName || auth.userName?.split(' ')[0]
+
+  useEffect(() => {
+    let cancelled = false
+    async function loadProfileName() {
+      if (!auth.isSignedIn || !auth.getToken || page !== 'home') return
+      try {
+        const result = await fetchMe(auth.getToken)
+        const name = result.user.first_name || result.user.full_name?.split(' ')[0]
+        if (!cancelled) setProfileFirstName(name || null)
+      } catch (profileError) {
+        console.warn('Unable to load More profile name', profileError)
+      }
+    }
+    loadProfileName()
+    return () => { cancelled = true }
+  }, [auth.getToken, auth.isSignedIn, page])
+
+  if (page === 'profile') {
+    return <ProfileSettingsScreen auth={auth} onOpenAuth={onOpenAuth} onBack={() => setPage('home')} />
+  }
+
   return (
     <ScrollView contentContainerStyle={styles.listContent}>
       <View style={styles.screenIntro}>
-        <Text style={styles.kicker}>Resources</Text>
-        <Text style={styles.screenTitle}>Island home search tools</Text>
-        <Text style={styles.screenCopy}>Plan your search with local guidance for neighborhoods, schools, financing, saved homes, and relocation needs.</Text>
+        <Text style={styles.kicker}>More</Text>
+        <Text style={styles.screenTitle}>Your Hafa Homes hub</Text>
+        <Text style={styles.screenCopy}>Manage your account, jump into saved homes, track requests, and open island search resources as the app grows.</Text>
+      </View>
+
+      <View style={styles.moreHeroCard}>
+        <Text style={styles.moreHeroKicker}>Account</Text>
+        <Text style={styles.moreHeroTitle}>{auth.isSignedIn ? `${firstName || 'Your'} profile is ready` : 'Create your Guam home profile'}</Text>
+        <Text style={styles.moreHeroCopy}>{auth.isSignedIn ? 'Keep your contact details current so showings and price alerts are easier to coordinate.' : 'Sign in to sync saved homes, request history, and showing details across devices.'}</Text>
+        <Pressable
+          style={styles.moreHeroCta}
+          onPress={() => auth.isSignedIn ? setPage('profile') : onOpenAuth({ title: 'Create your Hafa Homes account', initialMode: 'sign-up' })}
+        >
+          <Text style={styles.moreHeroCtaText}>{auth.isSignedIn ? 'Open profile & settings' : 'Sign in or create account'}</Text>
+        </Pressable>
+      </View>
+
+      <View style={styles.moreMenuSection}>
+        <MoreMenuItem title="Profile & settings" copy="Edit name, phone, contact preference, sign out, or delete account." label="Account" onPress={() => auth.isSignedIn ? setPage('profile') : onOpenAuth()} />
+        <MoreMenuItem title="Saved homes" copy="Return to homes you saved from web or mobile." label="Saved" onPress={() => onNavigateTab('saved')} />
+        <MoreMenuItem title="Request history" copy="Track showing requests, agents, brokerage details, and appointment status." label="CRM" onPress={() => onNavigateTab('requests')} />
+      </View>
+
+      <View style={styles.moreMenuSection}>
+        <Text style={styles.moreSectionLabel}>Coming next</Text>
+        {['Saved search alerts', 'Neighborhood guide', 'Mortgage tools', 'Military relocation resources', 'Agent and brokerage contacts'].map((item) => (
+          <View key={item} style={styles.resourceRow}>
+            <View style={styles.resourceBullet} />
+            <Text style={styles.resourceText}>{item}</Text>
+          </View>
+        ))}
+      </View>
+    </ScrollView>
+  )
+}
+
+function MoreMenuItem({ title, copy, label, onPress }: { title: string; copy: string; label: string; onPress: () => void }) {
+  return (
+    <Pressable style={styles.moreMenuItem} onPress={onPress} accessibilityRole="button">
+      <View style={styles.moreMenuMark}><Text style={styles.moreMenuMarkText}>{label.slice(0, 2).toUpperCase()}</Text></View>
+      <View style={styles.moreMenuCopy}>
+        <Text style={styles.moreMenuTitle}>{title}</Text>
+        <Text style={styles.moreMenuDescription}>{copy}</Text>
+      </View>
+      <Text style={styles.moreMenuArrow}>›</Text>
+    </Pressable>
+  )
+}
+
+function ProfileSettingsScreen({ auth, onOpenAuth, onBack }: { auth: AppAuth; onOpenAuth: (prompt?: AuthPrompt) => void; onBack: () => void }) {
+  const firstName = auth.userName?.split(' ')[0]
+
+  return (
+    <ScrollView contentContainerStyle={styles.listContent}>
+      <View style={styles.profileScreenHeader}>
+        <Pressable style={styles.profileBackButton} onPress={onBack} accessibilityRole="button">
+          <Text style={styles.profileBackText}>Back</Text>
+        </Pressable>
+        <Text style={styles.kicker}>Profile & settings</Text>
+        <Text style={styles.screenTitle}>{firstName ? `${firstName}'s profile & settings` : 'Profile & settings'}</Text>
+        <Text style={styles.screenCopy}>Edit your account details, choose how agents should contact you, or manage account deletion.</Text>
       </View>
       {auth.clerkEnabled ? <AccountCard auth={auth} onOpenAuth={onOpenAuth} /> : <AuthUnavailableCard />}
-      {['Mortgage calculator', 'Neighborhood guide', 'School and park nearby info', 'Saved search alerts', 'Agent and brokerage contacts', 'Military relocation tools'].map((item) => (
-        <View key={item} style={styles.featureRow}>
-          <Text style={styles.featureBullet}>✓</Text>
-          <Text style={styles.featureText}>{item}</Text>
-        </View>
-      ))}
     </ScrollView>
   )
 }
@@ -1317,17 +1393,19 @@ function AccountCard({ auth, onOpenAuth }: { auth: AppAuth; onOpenAuth: (prompt?
     )
   }
 
+  const profileTitle = [firstName, lastName].filter(Boolean).join(' ').trim() || profile?.full_name || auth.userName || auth.userEmail || 'Hafa Homes account'
+
   if (auth.isSignedIn) {
     return (
       <View style={styles.accountCard}>
         <Text style={styles.accountKicker}>Profile & settings</Text>
-        <Text style={styles.accountTitle}>{profile?.full_name || auth.userName || auth.userEmail || 'Hafa Homes account'}</Text>
+        <Text style={styles.accountTitle}>{profileTitle}</Text>
         <Text style={styles.accountCopy}>Keep your phone and preferred contact method current so showing requests are easier to complete.</Text>
         {profileLoading && <ActivityIndicator color={colors.green} style={{ marginTop: 12 }} />}
         <View style={styles.profileForm}>
-          <RequestInput label="First name" value={firstName} onChangeText={setFirstName} />
-          <RequestInput label="Last name" value={lastName} onChangeText={setLastName} />
-          <RequestInput label="Phone" value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
+          <RequestInput label="First name" value={firstName} onChangeText={setFirstName} labelStyle={styles.profileFieldLabel} />
+          <RequestInput label="Last name" value={lastName} onChangeText={setLastName} labelStyle={styles.profileFieldLabel} />
+          <RequestInput label="Phone" value={phone} onChangeText={setPhone} keyboardType="phone-pad" labelStyle={styles.profileFieldLabel} />
           <Text style={styles.fieldLabel}>Preferred contact</Text>
           <View style={styles.segmentRow}>
             {preferredContactOptions.map((option) => (
@@ -1372,6 +1450,7 @@ function AuthModal({ open, prompt, onClose }: { open: boolean; prompt: AuthPromp
   const [mode, setMode] = useState<'sign-in' | 'sign-up'>('sign-in')
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
+  const [signupPhone, setSignupPhone] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [code, setCode] = useState('')
@@ -1385,6 +1464,7 @@ function AuthModal({ open, prompt, onClose }: { open: boolean; prompt: AuthPromp
     setMode(prompt?.initialMode ?? 'sign-in')
     setFirstName('')
     setLastName('')
+    setSignupPhone('')
     setEmail('')
     setPassword('')
     setCode('')
@@ -1484,6 +1564,7 @@ function AuthModal({ open, prompt, onClose }: { open: boolean; prompt: AuthPromp
           password,
           firstName: firstName.trim(),
           lastName: lastName.trim() || undefined,
+          unsafeMetadata: signupPhone.trim() ? { phone: signupPhone.trim() } : undefined,
         })
         await signUp.prepareEmailAddressVerification({ strategy: 'email_code' })
         setPendingVerification(true)
@@ -1580,6 +1661,7 @@ function AuthModal({ open, prompt, onClose }: { open: boolean; prompt: AuthPromp
                     <>
                       <RequestInput label="First name" value={firstName} onChangeText={setFirstName} placeholder="Leon" />
                       <RequestInput label="Last name" value={lastName} onChangeText={setLastName} placeholder="Shimizu" />
+                      <RequestInput label="Phone" value={signupPhone} onChangeText={setSignupPhone} keyboardType="phone-pad" placeholder="671-555-1234" />
                     </>
                   )}
                   <RequestInput label="Email" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" placeholder="you@example.com" />
@@ -2088,10 +2170,10 @@ function PriceAlertSheet({ listing, auth, open, onClose }: { listing: Listing; a
   )
 }
 
-function RequestInput({ label, value, onChangeText, placeholder = '', keyboardType, autoCapitalize, secureTextEntry }: { label: string; value: string; onChangeText: (value: string) => void; placeholder?: string; keyboardType?: 'default' | 'email-address' | 'phone-pad' | 'number-pad'; autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters'; secureTextEntry?: boolean }) {
+function RequestInput({ label, value, onChangeText, placeholder = '', keyboardType, autoCapitalize, secureTextEntry, labelStyle }: { label: string; value: string; onChangeText: (value: string) => void; placeholder?: string; keyboardType?: 'default' | 'email-address' | 'phone-pad' | 'number-pad'; autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters'; secureTextEntry?: boolean; labelStyle?: object }) {
   return (
     <View>
-      <Text style={styles.requestLabel}>{label}</Text>
+      <Text style={[styles.requestLabel, labelStyle]}>{label}</Text>
       <TextInput value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor="#7b8a84" keyboardType={keyboardType} autoCapitalize={autoCapitalize} secureTextEntry={secureTextEntry} style={styles.requestInput} />
     </View>
   )
@@ -2210,12 +2292,34 @@ const styles = StyleSheet.create({
   featureRow: { alignItems: 'center', backgroundColor: 'white', borderRadius: 18, flexDirection: 'row', gap: 10, padding: 14 },
   featureBullet: { color: colors.green2, fontSize: 16, fontWeight: '900' },
   featureText: { color: colors.ink, fontSize: 15, fontWeight: '800' },
+  moreHeroCard: { backgroundColor: colors.green, borderRadius: 30, gap: 10, padding: 20, shadowColor: colors.green, shadowOpacity: 0.18, shadowRadius: 20, shadowOffset: { width: 0, height: 10 } },
+  moreHeroKicker: { color: colors.mint, fontSize: 11, fontWeight: '900', letterSpacing: 1.8, textTransform: 'uppercase' },
+  moreHeroTitle: { color: 'white', fontSize: 28, fontWeight: '900', letterSpacing: -0.8 },
+  moreHeroCopy: { color: 'rgba(255,255,255,0.76)', fontSize: 14, fontWeight: '700', lineHeight: 21 },
+  moreHeroCta: { alignItems: 'center', backgroundColor: 'white', borderRadius: 22, marginTop: 8, paddingVertical: 14 },
+  moreHeroCtaText: { color: colors.green, fontSize: 15, fontWeight: '900' },
+  moreMenuSection: { gap: 10, marginTop: 16 },
+  moreMenuItem: { alignItems: 'center', backgroundColor: 'white', borderRadius: 24, flexDirection: 'row', gap: 14, padding: 16, shadowColor: colors.green, shadowOpacity: 0.05, shadowRadius: 14, shadowOffset: { width: 0, height: 6 } },
+  moreMenuMark: { alignItems: 'center', backgroundColor: colors.mint, borderRadius: 16, height: 46, justifyContent: 'center', width: 46 },
+  moreMenuMarkText: { color: colors.green2, fontSize: 11, fontWeight: '900', letterSpacing: 0.4 },
+  moreMenuCopy: { flex: 1, gap: 4 },
+  moreMenuTitle: { color: colors.ink, fontSize: 18, fontWeight: '900', letterSpacing: -0.3 },
+  moreMenuDescription: { color: colors.muted, fontSize: 13, fontWeight: '700', lineHeight: 18 },
+  moreMenuArrow: { color: colors.green2, fontSize: 32, fontWeight: '300', lineHeight: 34 },
+  moreSectionLabel: { color: colors.green2, fontSize: 11, fontWeight: '900', letterSpacing: 1.7, marginBottom: 2, textTransform: 'uppercase' },
+  resourceRow: { alignItems: 'center', backgroundColor: 'white', borderRadius: 20, flexDirection: 'row', gap: 12, padding: 15 },
+  resourceBullet: { backgroundColor: colors.green2, borderRadius: 999, height: 9, width: 9 },
+  resourceText: { color: colors.ink, fontSize: 16, fontWeight: '900' },
+  profileScreenHeader: { gap: 8, marginBottom: 4 },
+  profileBackButton: { alignSelf: 'flex-start', backgroundColor: 'white', borderRadius: 999, paddingHorizontal: 16, paddingVertical: 10 },
+  profileBackText: { color: colors.green, fontSize: 14, fontWeight: '900' },
   accountCard: { backgroundColor: colors.green, borderRadius: 26, gap: 10, marginBottom: 12, padding: 18 },
   accountKicker: { color: colors.mint, fontSize: 12, fontWeight: '900', letterSpacing: 1.8, textTransform: 'uppercase' },
   accountTitle: { color: 'white', fontSize: 22, fontWeight: '900', letterSpacing: -0.5 },
   accountCopy: { color: 'rgba(255,255,255,0.78)', fontSize: 14, fontWeight: '700', lineHeight: 21 },
   profileForm: { backgroundColor: 'rgba(255,255,255,0.08)', borderColor: 'rgba(255,255,255,0.14)', borderRadius: 22, borderWidth: 1, gap: 10, padding: 14 },
   fieldLabel: { color: colors.mint, fontSize: 11, fontWeight: '900', letterSpacing: 1.1, marginTop: 2, textTransform: 'uppercase' },
+  profileFieldLabel: { color: colors.mint },
   segmentRow: { backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 18, flexDirection: 'row', gap: 6, padding: 5 },
   segmentOption: { alignItems: 'center', borderRadius: 14, flex: 1, paddingVertical: 10 },
   segmentOptionActive: { backgroundColor: 'white' },

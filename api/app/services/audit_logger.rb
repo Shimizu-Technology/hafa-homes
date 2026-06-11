@@ -16,7 +16,7 @@ class AuditLogger
         ip_address: request&.remote_ip,
         user_agent: request&.user_agent,
         metadata: sanitize_hash(metadata),
-        changes: sanitize_hash(changes)
+        field_changes: sanitize_hash(changes)
       )
     rescue StandardError => e
       Rails.logger.warn("[AuditLogger] Unable to record #{action}: #{e.class} #{e.message}")

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_10_120100) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_10_120200) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -37,8 +37,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_10_120100) do
     t.string "actor_email"
     t.bigint "actor_id"
     t.bigint "brokerage_id"
-    t.jsonb "changes", default: {}, null: false
     t.datetime "created_at", null: false
+    t.jsonb "field_changes", default: {}, null: false
     t.string "ip_address"
     t.bigint "lead_id"
     t.jsonb "metadata", default: {}, null: false

@@ -20,7 +20,7 @@ class AuditEvent < ApplicationRecord
       brokerage_id: brokerage_id,
       lead_id: lead_id,
       metadata: metadata || {},
-      changes: changes || {},
+      changes: field_changes || {},
       ip_address: ip_address,
       user_agent: user_agent,
       created_at: created_at

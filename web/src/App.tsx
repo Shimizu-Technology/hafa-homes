@@ -3617,6 +3617,7 @@ function AdminUsersPage() {
         {mutation.isError && <StateCard tone="error">{displayErrorMessage(mutation.error, 'Unable to update user.')}</StateCard>}
         {createMutation.isError && <StateCard tone="error">{displayErrorMessage(createMutation.error, 'Unable to create user.')}</StateCard>}
         <InviteUserForm brokerages={brokerages} saving={createMutation.isPending} onCreate={(payload) => createMutation.mutate(payload)} />
+        <RoleMatrix />
         <div className="mb-5 mt-5 overflow-x-auto rounded-[1.25rem] bg-white p-1.5 shadow-sm sm:rounded-[1.5rem] sm:p-2">
           <div className="flex min-w-max items-center gap-1.5 sm:min-w-0 sm:flex-wrap sm:gap-2">
             {filterTabs.map((tab) => (
@@ -3643,28 +3644,83 @@ function AdminUsersPage() {
   )
 }
 
+function RoleMatrix() {
+  const roles = [
+    {
+      role: 'Consumer',
+      bestFor: 'Public buyers, renters, owners, and saved-home users.',
+      access: 'Browse, save homes, manage profile, view their own request history.',
+      notes: 'No admin access. Public lead forms remain low-friction.',
+    },
+    {
+      role: 'Agent',
+      bestFor: 'Individual agents who should work assigned leads.',
+      access: 'Staff inbox for their assigned leads/showings, CRM notes/tasks within scope.',
+      notes: 'Requires brokerage. Creates an assignable agent profile automatically.',
+    },
+    {
+      role: 'Brokerage admin',
+      bestFor: 'Broker/manager running a brokerage workspace.',
+      access: 'Brokerage-scoped leads, showings, users, agents, and audit history.',
+      notes: 'Use when they manage the office, not just their own leads.',
+    },
+    {
+      role: 'Platform admin',
+      bestFor: 'Hafa Homes operators and Shimizu support.',
+      access: 'All brokerages, global audit history, platform user lifecycle.',
+      notes: 'Highest-trust role. Keep limited to core operators.',
+    },
+  ]
+
+  return (
+    <section className="mt-5 rounded-[2rem] bg-white p-5 shadow-sm">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#0f705e]">Role matrix</p>
+          <h2 className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-[#17211f]">Choose the smallest role that gets the job done.</h2>
+        </div>
+        <p className="max-w-2xl text-sm leading-6 text-[#66746f]">Non-consumer roles whitelist the email for staff access after Clerk sign-in. Brokerage roles should be paired with a brokerage membership so tenant scope is clear.</p>
+      </div>
+      <div className="mt-5 grid gap-3 xl:grid-cols-4">
+        {roles.map((item) => (
+          <article key={item.role} className="rounded-3xl border border-[#dce5df] bg-[#fbfaf7] p-4">
+            <h3 className="text-lg font-bold tracking-[-0.03em] text-[#17211f]">{item.role}</h3>
+            <p className="mt-2 text-xs font-bold uppercase tracking-[0.16em] text-[#0f705e]">Best for</p>
+            <p className="mt-1 text-sm leading-6 text-[#53645f]">{item.bestFor}</p>
+            <p className="mt-3 text-xs font-bold uppercase tracking-[0.16em] text-[#0f705e]">Can access</p>
+            <p className="mt-1 text-sm leading-6 text-[#53645f]">{item.access}</p>
+            <p className="mt-3 rounded-2xl bg-[#e9f5ef] p-3 text-xs font-semibold leading-5 text-[#0f3d35]">{item.notes}</p>
+          </article>
+        ))}
+      </div>
+    </section>
+  )
+}
+
 function InviteUserForm({ brokerages, onCreate, saving }: { brokerages: Brokerage[]; onCreate: (payload: Record<string, unknown>) => void; saving: boolean }) {
+  const [role, setRole] = useState('agent')
+
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const form = new FormData(event.currentTarget)
     const brokerageId = String(form.get('brokerage_id') || '')
-    const role = String(form.get('role') || 'agent')
+    const selectedRole = String(form.get('role') || role)
     const payload: Record<string, unknown> = {
       email: String(form.get('email') || '').trim(),
       first_name: String(form.get('first_name') || '').trim(),
       last_name: String(form.get('last_name') || '').trim(),
       phone: String(form.get('phone') || '').trim(),
       preferred_contact_method: String(form.get('preferred_contact_method') || 'email'),
-      role,
+      role: selectedRole,
       brokerage_membership: brokerageId ? {
         brokerage_id: Number(brokerageId),
-        role: role === 'brokerage_admin' ? 'brokerage_admin' : 'agent',
+        role: selectedRole === 'brokerage_admin' ? 'brokerage_admin' : 'agent',
         status: 'invited',
       } : undefined,
-      agent_profile: {
-        create: form.get('create_agent_profile') === 'on',
+      agent_profile: selectedRole === 'agent' ? {
+        create: true,
         brokerage_id: brokerageId ? Number(brokerageId) : undefined,
-      },
+      } : undefined,
     }
     onCreate(payload)
   }
@@ -3674,8 +3730,8 @@ function InviteUserForm({ brokerages, onCreate, saving }: { brokerages: Brokerag
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#bdebdc]">Invite-only access</p>
-          <h2 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">Create a pending user record.</h2>
-          <p className="mt-2 text-sm leading-6 text-white/70">Use this before sending a Clerk invite so the first sign-in inherits the right Hafa Homes role and brokerage scope.</p>
+          <h2 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">Whitelist a user before they sign in.</h2>
+          <p className="mt-2 text-sm leading-6 text-white/70">Creating a staff record here lets that email accept a Clerk invite and inherit the correct Hafa Homes role. Agent users also get an assignable agent profile automatically.</p>
         </div>
         <button disabled={saving} className="rounded-full bg-white px-5 py-3 text-sm font-bold text-[#0f3d35] disabled:opacity-60">{saving ? 'Creating...' : 'Create invite'}</button>
       </div>
@@ -3698,7 +3754,7 @@ function InviteUserForm({ brokerages, onCreate, saving }: { brokerages: Brokerag
         </label>
         <label className="grid gap-2 text-sm font-semibold text-white/86">
           Product role
-          <select name="role" defaultValue="agent" className="min-h-12 rounded-2xl border border-white/10 bg-[#174c43] px-4 text-white outline-none focus:border-[#bdebdc]">
+          <select name="role" value={role} onChange={(event) => setRole(event.target.value)} className="min-h-12 rounded-2xl border border-white/10 bg-[#174c43] px-4 text-white outline-none focus:border-[#bdebdc]">
             <option value="agent">Agent</option>
             <option value="brokerage_admin">Brokerage admin</option>
             <option value="platform_admin">Platform admin</option>
@@ -3718,10 +3774,10 @@ function InviteUserForm({ brokerages, onCreate, saving }: { brokerages: Brokerag
             {preferredContactOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
         </label>
-        <label className="flex min-h-12 items-center gap-3 self-end rounded-2xl border border-white/10 bg-white/8 px-4 text-sm font-semibold text-white/86">
-          <input name="create_agent_profile" type="checkbox" className="h-4 w-4 rounded border-white/20" />
-          Create agent profile
-        </label>
+        <div className="self-end rounded-2xl border border-white/10 bg-white/8 px-4 py-3 text-sm leading-6 text-white/76">
+          <strong className="block text-white">Agent profile</strong>
+          Agent role creates one automatically so the user can be assigned leads and showings.
+        </div>
       </div>
     </form>
   )
@@ -3815,7 +3871,8 @@ function UserRoleCard({ user, brokerages, agents, onSave, saving }: { user: Admi
           </select>
         </label>
         <label className="grid gap-2 text-sm font-semibold text-[#304942]">
-          Agent profile
+          Assignable agent profile
+          <span className="text-xs font-medium leading-5 text-[#66746f]">Only needed when this user should be assigned leads/showings.</span>
           <select name="agent_id" defaultValue={linkedAgent?.id ?? ''} className="min-h-12 w-full min-w-0 rounded-2xl border border-[#dce5df] px-4">
             <option value="">No linked agent</option>
             {agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name} · {agent.brokerage?.name}</option>)}

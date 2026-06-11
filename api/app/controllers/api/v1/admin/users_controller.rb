@@ -6,7 +6,7 @@ module Api
 
         DEFAULT_LIMIT = 150
         MAX_LIMIT = 500
-        USER_AUDIT_FIELDS = %w[role first_name last_name phone preferred_contact_method invitation_status archived_at archived_by_id].freeze
+        USER_AUDIT_FIELDS = %w[role first_name last_name phone preferred_contact_method invitation_status].freeze
 
         before_action :authenticate_user!
         before_action :require_platform_admin!
@@ -35,7 +35,7 @@ module Api
             user.save!
             membership&.save!
             apply_agent_profile(user, permitted[:agent_id]) if permitted.key?(:agent_id)
-            maybe_create_agent_profile(user, permitted[:agent_profile], membership)
+            ensure_agent_profile_for_user(user, permitted[:agent_profile], membership)
           end
 
           record_audit_event(
@@ -56,15 +56,16 @@ module Api
           @user.assign_attributes(base_user_attributes(permitted).except(:email))
           membership = apply_brokerage_membership(@user, permitted[:brokerage_membership]) if permitted[:brokerage_membership].present?
 
+          user_changes = {}
           User.transaction do
             @user.save!
+            user_changes = AuditLogger.change_details(@user.previous_changes, USER_AUDIT_FIELDS)
             membership&.save!
             apply_agent_profile(@user, permitted[:agent_id]) if permitted.key?(:agent_id)
             apply_archived_state(@user, permitted[:archived]) if permitted.key?(:archived)
           end
 
-          changes = AuditLogger.change_details(@user.previous_changes, USER_AUDIT_FIELDS)
-          record_audit_event(action: "user_updated", target: @user, changes: changes) if changes.any?
+          record_audit_event(action: "user_updated", target: @user, changes: user_changes) if user_changes.any?
 
           render json: { user: serialize_user(@user.reload) }
         rescue ActiveRecord::RecordInvalid => e
@@ -139,26 +140,35 @@ module Api
           agent.save!
         end
 
-        def maybe_create_agent_profile(user, agent_profile_params, membership)
-          return unless ActiveModel::Type::Boolean.new.cast(agent_profile_params&.fetch(:create, false))
+        def ensure_agent_profile_for_user(user, agent_profile_params, membership)
+          requested = ActiveModel::Type::Boolean.new.cast(agent_profile_params&.fetch(:create, false))
+          should_create = requested || user.agent?
+          return unless should_create
+          return if user.agent_profiles.exists?
 
-          brokerage_id = agent_profile_params[:brokerage_id].presence || membership&.brokerage_id
+          brokerage_id = agent_profile_params&.fetch(:brokerage_id, nil).presence || membership&.brokerage_id
           brokerage = Brokerage.find_by(id: brokerage_id)
           unless brokerage
-            user.errors.add(:base, "Brokerage is required to create an agent profile")
+            user.errors.add(:base, "Brokerage is required to create an assignable agent profile")
             raise ActiveRecord::RecordInvalid, user
           end
 
-          agent = Agent.create!(
-            brokerage: brokerage,
+          agent_email = agent_profile_params&.fetch(:email, nil).presence || user.email
+          agent = Agent.find_or_initialize_by(brokerage: brokerage, email: agent_email)
+          if agent.persisted? && agent.user.present? && agent.user != user
+            user.errors.add(:base, "An agent profile with this email is already linked to another user")
+            raise ActiveRecord::RecordInvalid, user
+          end
+
+          agent.assign_attributes(
             user: user,
-            name: agent_profile_params[:name].presence || user.full_name,
-            email: agent_profile_params[:email].presence || user.email,
-            phone: agent_profile_params[:phone].presence || user.phone,
-            license_number: agent_profile_params[:license_number].presence,
+            name: agent_profile_params&.fetch(:name, nil).presence || agent.name || user.full_name,
+            phone: agent_profile_params&.fetch(:phone, nil).presence || agent.phone || user.phone,
+            license_number: agent_profile_params&.fetch(:license_number, nil).presence || agent.license_number,
             status: "active"
           )
-          record_audit_event(action: "agent_profile_created", target: agent, brokerage: brokerage, metadata: { user_id: user.id })
+          agent.save!
+          record_audit_event(action: "agent_profile_created", target: agent, brokerage: brokerage, metadata: { user_id: user.id, automatic: user.agent? && !requested })
         end
 
         def apply_archived_state(user, archived)
