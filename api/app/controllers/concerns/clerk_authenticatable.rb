@@ -74,7 +74,7 @@ module ClerkAuthenticatable
     email = email_from_claims(decoded)
     first_name = decoded["first_name"] || decoded.dig("user", "first_name")
     last_name = decoded["last_name"] || decoded.dig("user", "last_name")
-    phone = phone_from_claims(decoded)
+    phone = normalized_clerk_phone(phone_from_claims(decoded), clerk_id: clerk_id)
     clerk_profile = nil
 
     user = User.find_by(clerk_id: clerk_id)
@@ -93,7 +93,7 @@ module ClerkAuthenticatable
       email ||= clerk_profile&.dig(:email)
       first_name ||= clerk_profile&.dig(:first_name)
       last_name ||= clerk_profile&.dig(:last_name)
-      phone ||= clerk_profile&.dig(:phone)
+      phone ||= normalized_clerk_phone(clerk_profile&.dig(:phone), clerk_id: clerk_id)
     end
 
     if email.present?
@@ -118,11 +118,12 @@ module ClerkAuthenticatable
   end
 
   def accept_invited_user(user, clerk_id:, first_name:, last_name:, phone: nil)
+    normalized_phone = normalized_clerk_phone(phone, clerk_id: clerk_id)
     user.update!(
       clerk_id: clerk_id,
       first_name: user.first_name.presence || first_name,
       last_name: user.last_name.presence || last_name,
-      phone: user.phone.presence || phone,
+      phone: user.phone.presence || normalized_phone,
       invitation_status: "accepted",
       accepted_at: user.accepted_at || Time.current,
       last_sign_in_at: Time.current
@@ -141,13 +142,14 @@ module ClerkAuthenticatable
 
   def create_public_user!(clerk_id:, email:, first_name:, last_name:, phone: nil)
     resolved_email = email.to_s.strip.downcase
+    normalized_phone = normalized_clerk_phone(phone, clerk_id: clerk_id)
 
     User.create!(
       clerk_id: clerk_id,
       email: resolved_email,
       first_name: first_name,
       last_name: last_name,
-      phone: phone,
+      phone: normalized_phone,
       role: default_role_for(resolved_email),
       invitation_status: "accepted",
       accepted_at: Time.current,
@@ -162,6 +164,16 @@ module ClerkAuthenticatable
     end
 
     admin_email.present? && email.to_s.downcase == admin_email.downcase ? "platform_admin" : "consumer"
+  end
+
+  def normalized_clerk_phone(phone, clerk_id:)
+    return nil if phone.blank?
+
+    normalized = ClicksendClient.normalize_phone(phone)
+    return normalized if normalized.present?
+
+    Rails.logger.warn("[ClerkAuth] Ignoring invalid Clerk phone for #{clerk_id}")
+    nil
   end
 
   def phone_from_claims(decoded)
