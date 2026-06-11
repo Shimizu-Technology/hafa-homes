@@ -1,6 +1,6 @@
 # Native Mobile App Plan
 
-_Last updated: 2026-06-10 after PR #11 account deletion work._
+_Last updated: 2026-06-10 after PR #11 account deletion work, iOS build `1.0.1 (9)` submission, and mobile QA findings._
 
 ## Decision direction
 
@@ -53,6 +53,7 @@ The web app remains useful for:
 - Historical TestFlight build was created and installed on a real phone.
 - Mobile now has consumer browse/detail/map/saved/request flows plus request history.
 - Clerk auth, server-backed saved homes, and self-service account deletion are implemented.
+- iOS build `1.0.1 (9)` has been submitted to App Store Connect and is waiting for review.
 - Mobile staff/admin mode is intentionally not the main CRM surface yet; web admin remains primary.
 
 Use `npm run typecheck` and `npm run doctor` before mobile changes are pushed.
@@ -147,15 +148,16 @@ Still future:
 - Flexmls/MLS sync adapters after authorization
 - neighborhood/school/amenity data beyond current Local Intel
 
-## Current TestFlight status
+## Current TestFlight/App Store status
 
-Updated 2026-05-26:
+Updated 2026-06-10:
 
 - `/mobile` Expo app exists and is linked to EAS.
-- First iOS production build reached TestFlight and was installed on a real phone.
 - Production app env points to `https://hafa-homes.onrender.com`.
 - App Store Connect app exists for `com.shimizutechnology.hafahomes`.
-- Public App Store release still needs metadata, screenshots, privacy answers, and review submission.
+- iOS version `1.0.1`, build `9`, has been submitted to App Store Connect and is waiting for review.
+- Build `9` includes self-service account deletion.
+- Next App Store risk to monitor: production `CLERK_SECRET_KEY` must remain configured so deletion works during review.
 
 ## Authentication status
 
@@ -172,7 +174,10 @@ Implemented:
 Still future:
 
 - proper Profile & settings screen from More.
-- editable safe consumer profile fields.
+- editable safe consumer profile fields, including phone and preferred contact.
+- prefill showing/contact forms from signed-in profile data.
+- consumer/admin form option parity, including `Flexible` preferred time.
+- app-first deep links/universal links from emails/SMS into Requests/listings with web fallback.
 - saved searches/alerts.
 - notification preferences.
 - public App Store auth hardening with production Apple credentials.
@@ -192,16 +197,20 @@ Recommended behavior:
 
 ## Recommended next steps
 
-1. Merge/deploy account deletion, verify `CLERK_SECRET_KEY`, and submit a replacement iOS build if App Review requires account deletion.
-2. Build a proper mobile Profile & settings screen reached from More, with edit profile, sign out, privacy links, and delete account in a danger zone.
-3. Keep `/web` live as the demo/admin/web/SEO surface.
-4. Build domain-first broker-branded website/app configuration in the shared platform.
-5. Consider `EXPO_PUBLIC_DEFAULT_BROKERAGE_SLUG` or equivalent config for broker-branded builds; web should resolve tenants primarily by broker-owned domains.
-6. Improve map loading and zoom-aware marker behavior.
-7. Add native marker preview bottom sheet.
-8. Add saved searches/alerts after broker-branded foundation.
-9. Validate Flexmls/MLS access and display rules before app-store launch with real listing data.
-10. Complete App Store Connect metadata/screenshots/privacy answers for public release.
+1. Monitor App Store review for iOS `1.0.1 (9)` and keep production `CLERK_SECRET_KEY` configured.
+2. Build a proper mobile Profile & settings screen reached from More, with edit profile, phone/preferred-contact fields, sign out, privacy links, and delete account in a danger zone.
+3. Prefill showing/contact forms from signed-in profile data.
+4. Add `Flexible` to consumer preferred-time options so mobile/web/admin stay in parity.
+5. Fix notification copy so manual emails do not duplicate greetings.
+6. Add app-first notification link handling: universal links for installed app, web fallback for everyone else.
+7. Keep `/web` live as the demo/admin/web/SEO surface.
+8. Build admin user lifecycle and audit-log hardening for broker demos.
+9. Build domain-first broker-branded website/app configuration in the shared platform.
+10. Consider `EXPO_PUBLIC_DEFAULT_BROKERAGE_SLUG` or equivalent config for broker-branded builds; web should resolve tenants primarily by broker-owned domains.
+11. Improve map loading and zoom-aware marker behavior.
+12. Add native marker preview bottom sheet.
+13. Add saved searches/alerts after broker-branded foundation.
+14. Validate Flexmls/MLS access and display rules before app-store launch with real listing data.
 
 ## Open questions
 

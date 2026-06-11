@@ -46,6 +46,10 @@ class ClerkAuth
     end
 
     def fetch_user_email(clerk_user_id)
+      fetch_user_profile(clerk_user_id)&.dig(:email)
+    end
+
+    def fetch_user_profile(clerk_user_id)
       secret_key = ENV.fetch("CLERK_SECRET_KEY", nil)
       return nil unless secret_key.present? && clerk_user_id.present?
 
@@ -61,9 +65,20 @@ class ClerkAuth
       primary_id = data.dig("primary_email_address_id")
       addresses = data["email_addresses"] || []
       primary = addresses.find { |address| address["id"] == primary_id } || addresses.first
-      primary&.dig("email_address")
+      phone_numbers = data["phone_numbers"] || []
+      primary_phone_id = data["primary_phone_number_id"]
+      primary_phone = phone_numbers.find { |phone| phone["id"] == primary_phone_id } || phone_numbers.first
+      unsafe_metadata = data["unsafe_metadata"] || {}
+      public_metadata = data["public_metadata"] || {}
+
+      {
+        email: primary&.dig("email_address"),
+        first_name: data["first_name"].presence,
+        last_name: data["last_name"].presence,
+        phone: primary_phone&.dig("phone_number").presence || unsafe_metadata["phone"].presence || public_metadata["phone"].presence
+      }
     rescue HTTParty::Error, Timeout::Error => e
-      Rails.logger.warn("Clerk API email fetch failed for #{clerk_user_id}: #{e.message}")
+      Rails.logger.warn("Clerk API profile fetch failed for #{clerk_user_id}: #{e.message}")
       nil
     end
 

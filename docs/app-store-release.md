@@ -1,6 +1,6 @@
 # App Store / TestFlight Release Notes
 
-_Last updated: 2026-06-10 after PR #10 broker CRM expansion merged._
+_Last updated: 2026-06-10 after PR #11 account deletion merged and iOS build `1.0.1 (9)` was submitted._
 
 ## Current status
 
@@ -11,6 +11,8 @@ _Last updated: 2026-06-10 after PR #10 broker CRM expansion merged._
 - First iOS production build previously uploaded to TestFlight.
 - Build previously tested on Leon's phone through TestFlight.
 - App Store version `1.0.0` is already approved/ready for distribution, so new TestFlight/App Store builds must use a higher marketing version such as `1.0.1`.
+- iOS build `1.0.1 (9)` was built from `main` commit `3155df9` and submitted to App Store Connect.
+- Current App Store Connect status: `1.0.1 Waiting for Review` with build `9` selected.
 - Production API env is configured in EAS: `EXPO_PUBLIC_API_URL=https://hafa-homes.onrender.com`
 - Production Mapbox token is configured in EAS as a sensitive variable.
 
@@ -58,7 +60,21 @@ Apple closes a pre-release train once that app version has been approved/release
 
 then bump `expo.version` in `mobile/app.json`, for example from `1.0.0` to `1.0.1`, commit it, rebuild, and submit again. EAS `autoIncrement` handles the internal iOS build number; it does not replace the need to bump the public app version after Apple closes the previous train.
 
-## Recommended next mobile release sequence
+## Current submitted build
+
+```text
+Version: 1.0.1
+Build number: 9
+EAS build ID: f0487a94-3bfc-4500-ae5c-0d4ee718d311
+Submission ID: 4aab42b3-7e1a-4bd0-bb4d-2e161c6a1b5f
+Status: Waiting for Review in App Store Connect
+```
+
+This is the build with account deletion. If Apple asks for an account-deletion path, use build `9` as the reference.
+
+## Recommended future replacement-build sequence
+
+Use this sequence if another replacement build is needed after App Review feedback or the next mobile feature branch.
 
 ### 1. Verify production API readiness
 

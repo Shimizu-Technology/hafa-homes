@@ -22,6 +22,7 @@ module Api
         task.assigned_to ||= current_user if current_user.agent? && task.assigned_to.blank?
 
         if task.save
+          record_audit_event(action: "lead_task_created", target: task, lead: lead, metadata: { status: task.status, due_at: task.due_at })
           render json: { lead_task: Api::V1::LeadTaskSerializer.summary(task), lead: LeadSerializer.detail(lead.reload) }, status: :created
         else
           render json: { errors: task.errors.full_messages }, status: :unprocessable_entity
@@ -37,6 +38,9 @@ module Api
         apply_completion_actor(task)
 
         if task.save
+          changes = AuditLogger.change_details(task.previous_changes, %w[title notes due_at status assigned_to_id completed_at completed_by_id archived_at archived_by_id])
+          action = task.status == "completed" && changes.key?("status") ? "lead_task_completed" : "lead_task_updated"
+          record_audit_event(action: action, target: task, lead: task.lead, changes: changes) if changes.any?
           render json: { lead_task: Api::V1::LeadTaskSerializer.summary(task), lead: LeadSerializer.detail(task.lead.reload) }
         else
           render json: { errors: task.errors.full_messages }, status: :unprocessable_entity

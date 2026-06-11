@@ -9,6 +9,18 @@ module Api
         render json: { user: current_user.as_api_json }
       end
 
+      def update
+        current_user.assign_attributes(me_params)
+
+        if current_user.save
+          changes = AuditLogger.change_details(current_user.previous_changes, %w[first_name last_name phone preferred_contact_method])
+          record_audit_event(action: "profile_updated", target: current_user, changes: changes) if changes.any?
+          render json: { user: current_user.as_api_json }
+        else
+          render json: { errors: current_user.errors.full_messages }, status: :unprocessable_entity
+        end
+      end
+
       def leads
         leads = current_user.leads
           .includes(:brokerage, :assigned_agent, { showing_appointments: [:listing, :brokerage, :agent, :created_by] }, listing: [:village, :brokerage, :agent])
@@ -27,9 +39,11 @@ module Api
 
         user_id = current_user.id
         clerk_id = current_user.clerk_id
+        audit_actor_email = current_user.email
 
         begin
           ActiveRecord::Base.transaction do
+            record_audit_event(action: "account_deleted", target: current_user, metadata: { email: audit_actor_email })
             current_user.destroy!
           end
         rescue ActiveRecord::ActiveRecordError => e
@@ -49,6 +63,13 @@ module Api
       end
 
       private
+
+      def me_params
+        params.require(:user).permit(:first_name, :last_name, :phone, :preferred_contact_method).tap do |permitted|
+          permitted[:preferred_contact_method] = nil if permitted.key?(:preferred_contact_method) && permitted[:preferred_contact_method].blank?
+          permitted[:phone] = nil if permitted.key?(:phone) && permitted[:phone].blank?
+        end
+      end
 
       def account_deletion_failure_status(status)
         status == :not_configured ? :service_unavailable : :bad_gateway

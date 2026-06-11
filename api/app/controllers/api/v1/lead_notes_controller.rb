@@ -23,6 +23,7 @@ module Api
         note.author = current_user
 
         if note.save
+          record_audit_event(action: "lead_note_created", target: note, lead: lead)
           render json: { lead_note: Api::V1::LeadNoteSerializer.summary(note), lead: LeadSerializer.detail(lead.reload) }, status: :created
         else
           render json: { errors: note.errors.full_messages }, status: :unprocessable_entity
@@ -35,6 +36,8 @@ module Api
         apply_note_update(note)
 
         if note.save
+          changes = AuditLogger.change_details(note.previous_changes, %w[body archived_at archived_by_id])
+          record_audit_event(action: note.archived? ? "lead_note_archived" : "lead_note_updated", target: note, lead: note.lead, changes: changes) if changes.any?
           render json: { lead_note: Api::V1::LeadNoteSerializer.summary(note), lead: LeadSerializer.detail(note.lead.reload) }
         else
           render json: { errors: note.errors.full_messages }, status: :unprocessable_entity

@@ -1,6 +1,6 @@
 # Hafa Homes Current Status and Next Steps
 
-_Last updated: 2026-06-10 after PR #10 (broker CRM expansion) merged to `main`._
+_Last updated: 2026-06-10 after PR #11 account deletion merged, iOS build `1.0.1 (9)` submitted, and post-submission QA findings were reviewed._
 
 ## Source context
 
@@ -37,12 +37,23 @@ Hafa Homes is no longer just a cool listing demo. The latest `main` has a real b
 - staff/admin scheduling
 - safe notification logging/sending foundation
 - broker/admin CRM notes, tasks, and activity timeline
+- self-service account deletion for App Store account-lifecycle compliance
 
-Current main commit after PR #10:
+Current main commit after PR #11:
 
 ```text
-7b35050 Merge pull request #10 from Shimizu-Technology/feature/broker-crm-expansion
+3155df9 Merge pull request #11 from Shimizu-Technology/feature/account-deletion
 ```
+
+Current iOS App Store Connect status:
+
+```text
+version 1.0.1
+build 9
+status: Waiting for Review
+```
+
+Build `1.0.1 (9)` is the current review build and includes account deletion.
 
 ## Shipped / working
 
@@ -165,8 +176,9 @@ Future follow-up:
 
 ### App Store
 
-- TestFlight exists historically, but current backend/web/mobile parity should be revalidated before a new broker demo build.
-- Public App Store release still needs metadata, screenshots, privacy answers, and final submission.
+- iOS build `1.0.1 (9)` has been submitted to App Store Connect and is waiting for review.
+- Build `9` includes self-service account deletion; build `8` did not.
+- Production API must keep `CLERK_SECRET_KEY` configured so Apple can test deletion if they sign in/create an account.
 - Broker-specific iOS apps may trigger Apple white-label/template scrutiny. Broker-branded apps may need materially distinct branding and/or broker-owned Apple developer accounts.
 
 ## Strategic assessment
@@ -206,90 +218,65 @@ Not yet:
 fully sellable Real Geeks alternative
 ```
 
-## Immediate operational next step
+## Immediate operational status
 
-### Merge and deploy account deletion before the next App Store build
+### App Store review monitoring
 
-PR #11 adds self-service account deletion for Apple account-creation compliance.
+PR #11 is merged, the production API responded correctly to account-deletion route checks, and iOS build `1.0.1 (9)` has been submitted for review.
 
-Recommended order:
+Keep watching:
 
-1. Merge PR #11 after review.
-2. Deploy latest Rails API.
-3. Confirm production `CLERK_SECRET_KEY` is configured on the API.
-4. Verify authenticated `DELETE /api/v1/me` with a disposable test account.
-5. Build a replacement iOS app with EAS so mobile account deletion is included.
-6. Submit the replacement build to App Store Connect if the current review has not already completed.
-
-See `docs/app-store-release.md`.
-
-### Refresh mobile/TestFlight after deploying API
-
-Leon’s preferred operational move is to keep the App Store/TestFlight build current before starting the broker-branded build.
-
-Important dependency:
-
-> The mobile app points at the production Rails API, so the production API should be deployed and migrated before submitting a new mobile build for serious review/testing.
-
-Recommended order:
-
-1. Deploy latest Rails API.
-2. Run production migrations.
-3. Verify production listing/saved/request/account-deletion endpoints.
-4. Verify mobile locally against production API.
-5. Build iOS with EAS.
-6. Submit latest build to App Store Connect/TestFlight.
-7. Add Mike/John/testers and testing notes.
+1. App Store review result for `1.0.1 (9)`.
+2. Production API `CLERK_SECRET_KEY` remains configured.
+3. Disposable-account deletion smoke test if possible before or during review.
+4. TestFlight processing/availability for Mike/John/testers once Apple finishes processing.
 
 See `docs/app-store-release.md`.
 
 ## Recommended next product priority
 
-### Next sprint: consumer profile/settings polish, then domain-first broker-branded foundation
+### Next sprint: account/profile polish, admin operations hardening, then domain-first broker branding
 
-Recommended immediate branch after PR #11:
+Post-submission QA surfaced legitimate gaps that should be handled before or alongside broker demos:
 
-```bash
-feature/consumer-profile-settings
-```
+- admins need to create, edit, archive/reactivate, and invite users;
+- admins need a proper global audit log/history, not only lead-specific activity;
+- consumer and admin lead options must stay in parity, including preferred time `Flexible`;
+- notification links should open the native app first when installed and fall back to web;
+- manual notification emails should not duplicate greetings;
+- account creation/profile should support optional phone and preferred contact so lead forms can prefill more than name/email.
 
-Recommended profile/settings scope:
+Recommended sequence:
 
-- Mobile More tab gets a clear **Profile & settings** entry instead of treating the More card as the long-term account surface.
-- Dedicated mobile settings screen with profile summary, safe editable fields, sign out, privacy links, and delete account in a danger zone.
-- Web `/account` becomes the matching settings page.
-- Add `PATCH /api/v1/me` for safe consumer profile fields only if needed.
-- Do not expose role, brokerage, agent, tenant, or internal CRM controls through consumer profile editing.
+1. `feature/consumer-profile-settings`
+   - dedicated mobile Profile & settings screen;
+   - matching web `/account` settings;
+   - safe profile fields: first name, last name, phone, preferred contact;
+   - signed-in lead-form prefill;
+   - delete account in a clear danger zone.
+2. `feature/notification-link-polish`
+   - add `Flexible` to consumer preferred-time options;
+   - remove duplicate email greeting behavior;
+   - add canonical notification links and app-first/deep-link plan.
+3. `feature/admin-user-lifecycle`
+   - admin-created users/invites for admins, agents, and consumers;
+   - edit roles/memberships/agent links;
+   - archive/reactivate/revoke lifecycle;
+   - Clerk-backed invitation or safe pending-user acceptance flow.
+4. `feature/admin-audit-log`
+   - global `AuditEvent` model/API/admin page;
+   - actor/action/target/change metadata;
+   - tenant-scoped visibility for brokerage staff.
+5. `feature/broker-domain-foundation` or `feature/broker-branded-sites-apps`
+   - `BrokerageDomain` and host-based tenant resolution;
+   - brokerage branding/config;
+   - broker-owned public homepage/search/listings/agents;
+   - broker-routed lead/showing forms.
 
-After that, continue the broker-branded foundation.
+See:
 
-Recommended branch:
-
-```bash
-feature/broker-branded-sites-apps
-```
-
-Why broker branding remains the next major product priority:
-
-- Mike/John notes imply brokerages may want their own owned-domain website/app experience, not just a listing or slug inside generic Hafa Homes.
-- Broker feedback/Real Geeks research says website + app + CRM is the sellable bundle.
-- CRM depth is now credible enough to support the broker pitch.
-- The next gap is proving the shared platform can power a brokerage-specific public experience.
-
-Recommended PR scope:
-
-- `BrokerageDomain` and host-based tenant resolution.
-- Brokerage branding config.
-- Brokerage public homepage/profile on broker-owned domains.
-- Brokerage-scoped listing/search pages.
-- Agent roster/profile pages.
-- Brokerage-routed lead/showing forms.
-- Slug preview fallback for local/dev/demo only.
-- “Powered by Hafa Homes” footer option.
-- Expo/EAS broker-branded app configuration plan.
-- Documentation for shared backend/shared codebases.
-
-See `docs/product/broker-branded-layer-plan.md`.
+- `docs/product/admin-ops-notification-hardening-plan.md`
+- `docs/product/broker-branded-layer-plan.md`
 
 ## After broker branding
 

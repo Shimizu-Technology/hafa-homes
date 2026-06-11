@@ -1,6 +1,6 @@
 # Broker CRM Expansion Plan
 
-_Last updated: 2026-06-10 after PR #10 merged._
+_Last updated: 2026-06-10 after PR #10 merged and admin/audit QA follow-up was documented._
 
 ## Purpose
 
@@ -69,6 +69,8 @@ The layout is tuned for both desktop and mobile admin use.
 
 ## Still future / follow-up
 
+### CRM and lead quality
+
 - Richer duplicate lead detection.
 - Verified email/phone badge workflow.
 - Saved-search/listing activity scoring.
@@ -78,3 +80,18 @@ The layout is tuned for both desktop and mobile admin use.
 - CSV export.
 - Automated speed-to-lead reminders.
 - Agent performance reporting.
+
+### Admin operations and audit hardening
+
+Post-submission QA confirmed that lead-specific `LeadActivity` is useful but not enough for a broker/admin platform.
+
+Needed:
+
+- admin-created user/invite flow for admins, agents, and consumers;
+- user edit/archive/reactivate/revoke lifecycle;
+- safe Clerk-backed invitation or pending-user acceptance flow;
+- global `AuditEvent` model/API/admin page;
+- tenant-scoped audit visibility for brokerage admins and agents;
+- audit events for user lifecycle, role/membership changes, lead changes, showing changes, notes/tasks, notifications, saved-listing actions, profile updates, and account deletion.
+
+See `docs/product/admin-ops-notification-hardening-plan.md`.

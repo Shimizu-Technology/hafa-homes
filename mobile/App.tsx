@@ -112,6 +112,19 @@ type ConsumerLead = {
 
 type GetAuthToken = (options?: { template?: string }) => Promise<string | null>
 
+type CurrentUser = {
+  id: number
+  email: string
+  first_name?: string
+  last_name?: string
+  full_name: string
+  phone?: string
+  preferred_contact_method?: 'phone' | 'text' | 'email'
+  role: 'platform_admin' | 'brokerage_admin' | 'agent' | 'consumer'
+  is_staff: boolean
+  is_platform_admin: boolean
+}
+
 type AppAuth = {
   clerkEnabled: boolean
   isSignedIn: boolean
@@ -137,6 +150,19 @@ const CLERK_JWT_TEMPLATE = process.env.EXPO_PUBLIC_CLERK_JWT_TEMPLATE
 const FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1600047509807-ba8f99d2cdde?auto=format&fit=crop&w=1200&q=80'
 const LEGACY_SAVED_LISTING_IDS_KEY = 'hafaHomes:savedListingIds'
 const LEGACY_SAVED_LISTINGS_KEY = 'hafaHomes:savedListings'
+
+const preferredTimeOptions = [
+  { value: 'morning', label: 'Morning' },
+  { value: 'afternoon', label: 'Afternoon' },
+  { value: 'evening', label: 'Evening' },
+  { value: 'flexible', label: 'Flexible' },
+]
+
+const preferredContactOptions = [
+  { value: 'phone', label: 'Phone' },
+  { value: 'text', label: 'Text' },
+  { value: 'email', label: 'Email' },
+]
 
 class ApiRequestError extends Error {
   status: number
@@ -250,6 +276,8 @@ async function createLead(payload: {
   preferred_tour_date?: string
   tour_type?: string
   target_price?: string
+  source_campaign?: string
+  source_url?: string
   message: string
 }, getToken?: GetAuthToken) {
   const response = await fetch(`${API_URL}/api/v1/leads`, {
@@ -267,6 +295,24 @@ async function fetchMyLeads(getToken: GetAuthToken): Promise<{ leads: ConsumerLe
     headers: await authHeaders(getToken),
   })
   if (!response.ok) throw new ApiRequestError(await apiErrorMessage(response, 'Unable to load your requests'), response.status)
+  return response.json()
+}
+
+async function fetchMe(getToken: GetAuthToken): Promise<{ user: CurrentUser }> {
+  const response = await fetch(`${API_URL}/api/v1/me`, {
+    headers: await authHeaders(getToken),
+  })
+  if (!response.ok) throw new ApiRequestError(await apiErrorMessage(response, 'Unable to load profile'), response.status)
+  return response.json()
+}
+
+async function updateProfile(payload: Partial<Pick<CurrentUser, 'first_name' | 'last_name' | 'phone' | 'preferred_contact_method'>>, getToken: GetAuthToken): Promise<{ user: CurrentUser }> {
+  const response = await fetch(`${API_URL}/api/v1/me`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...(await authHeaders(getToken)) },
+    body: JSON.stringify({ user: payload }),
+  })
+  if (!response.ok) throw new ApiRequestError(await apiErrorMessage(response, 'Unable to update profile'), response.status)
   return response.json()
 }
 
@@ -333,6 +379,21 @@ function AppContent({ auth }: { auth: AppAuth }) {
   useEffect(() => {
     if (activeTab !== 'map' && fullMapOpen) setFullMapOpen(false)
   }, [activeTab, fullMapOpen])
+
+  useEffect(() => {
+    function handleUrl(url: string | null) {
+      if (!url) return
+      const parsed = Linking.parse(url)
+      const path = parsed.path ? `/${parsed.path}` : '/'
+      if (path.startsWith('/account/requests') || path.startsWith('/requests')) setActiveTab('requests')
+      if (path.startsWith('/saved')) setActiveTab('saved')
+      if (path.startsWith('/account')) setActiveTab('more')
+    }
+
+    Linking.getInitialURL().then(handleUrl).catch((linkError) => console.warn('Unable to parse initial link', linkError))
+    const subscription = Linking.addEventListener('url', ({ url }) => handleUrl(url))
+    return () => subscription.remove()
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -652,7 +713,7 @@ function AppContent({ auth }: { auth: AppAuth }) {
             ? <RequestsSignInScreen clerkEnabled={auth.clerkEnabled} onOpenAuth={() => openAuthPrompt({ title: 'Sign in to view your requests', copy: 'Signed-in showing requests and price alerts can show status, agent, and scheduled appointment details.' })} />
             : <RequestsScreen auth={auth} />
         )}
-        {activeTab === 'more' && <MoreScreen auth={auth} onOpenAuth={openAuthPrompt} />}
+        {activeTab === 'more' && <MoreScreen auth={auth} onOpenAuth={openAuthPrompt} onNavigateTab={setActiveTab} />}
       </View>
 
       {!(activeTab === 'map' && fullMapOpen) && <View style={styles.tabBar}>
@@ -1018,21 +1079,65 @@ function SavedScreen({ listings, onOpen, onToggleSaved }: { listings: Listing[];
   )
 }
 
-function MoreScreen({ auth, onOpenAuth }: { auth: AppAuth; onOpenAuth: (prompt?: AuthPrompt) => void }) {
+function MoreScreen({ auth, onOpenAuth, onNavigateTab }: { auth: AppAuth; onOpenAuth: (prompt?: AuthPrompt) => void; onNavigateTab: (tab: TabKey) => void }) {
+  const [page, setPage] = useState<'home' | 'profile'>('home')
+
+  if (page === 'profile') {
+    return <ProfileSettingsScreen auth={auth} onOpenAuth={onOpenAuth} onBack={() => setPage('home')} />
+  }
+
   return (
     <ScrollView contentContainerStyle={styles.listContent}>
       <View style={styles.screenIntro}>
-        <Text style={styles.kicker}>Resources</Text>
-        <Text style={styles.screenTitle}>Island home search tools</Text>
-        <Text style={styles.screenCopy}>Plan your search with local guidance for neighborhoods, schools, financing, saved homes, and relocation needs.</Text>
+        <Text style={styles.kicker}>More</Text>
+        <Text style={styles.screenTitle}>Your Hafa Homes hub</Text>
+        <Text style={styles.screenCopy}>Manage your account, jump into saved homes, track requests, and open island search resources as the app grows.</Text>
+      </View>
+
+
+      <View style={styles.moreMenuSection}>
+        <MoreMenuItem title="Profile & settings" copy="Edit name, phone, contact preference, sign out, or delete account." label="Account" onPress={() => auth.isSignedIn ? setPage('profile') : onOpenAuth()} />
+        <MoreMenuItem title="Saved homes" copy="Return to homes you saved from web or mobile." label="Saved" onPress={() => onNavigateTab('saved')} />
+        <MoreMenuItem title="Request history" copy="Track showing requests, agents, brokerage details, and appointment status." label="CRM" onPress={() => onNavigateTab('requests')} />
+      </View>
+
+      <View style={styles.moreMenuSection}>
+        <Text style={styles.moreSectionLabel}>Coming next</Text>
+        {['Saved search alerts', 'Neighborhood guide', 'Mortgage tools', 'Military relocation resources', 'Agent and brokerage contacts'].map((item) => (
+          <View key={item} style={styles.resourceRow}>
+            <View style={styles.resourceBullet} />
+            <Text style={styles.resourceText}>{item}</Text>
+          </View>
+        ))}
+      </View>
+    </ScrollView>
+  )
+}
+
+function MoreMenuItem({ title, copy, label, onPress }: { title: string; copy: string; label: string; onPress: () => void }) {
+  return (
+    <Pressable style={styles.moreMenuItem} onPress={onPress} accessibilityRole="button">
+      <View style={styles.moreMenuMark}><Text style={styles.moreMenuMarkText}>{label.slice(0, 2).toUpperCase()}</Text></View>
+      <View style={styles.moreMenuCopy}>
+        <Text style={styles.moreMenuTitle}>{title}</Text>
+        <Text style={styles.moreMenuDescription}>{copy}</Text>
+      </View>
+      <Text style={styles.moreMenuArrow}>›</Text>
+    </Pressable>
+  )
+}
+
+function ProfileSettingsScreen({ auth, onOpenAuth, onBack }: { auth: AppAuth; onOpenAuth: (prompt?: AuthPrompt) => void; onBack: () => void }) {
+  return (
+    <ScrollView contentContainerStyle={styles.listContent}>
+      <View style={styles.profileScreenHeader}>
+        <Pressable style={styles.profileBackButton} onPress={onBack} accessibilityRole="button">
+          <Text style={styles.profileBackText}>Back</Text>
+        </Pressable>
+        <Text style={styles.kicker}>Profile & settings</Text>
+        <Text style={styles.screenCopy}>Edit your account details, choose how agents should contact you, or manage account deletion.</Text>
       </View>
       {auth.clerkEnabled ? <AccountCard auth={auth} onOpenAuth={onOpenAuth} /> : <AuthUnavailableCard />}
-      {['Mortgage calculator', 'Neighborhood guide', 'School and park nearby info', 'Saved search alerts', 'Agent and brokerage contacts', 'Military relocation tools'].map((item) => (
-        <View key={item} style={styles.featureRow}>
-          <Text style={styles.featureBullet}>✓</Text>
-          <Text style={styles.featureText}>{item}</Text>
-        </View>
-      ))}
     </ScrollView>
   )
 }
@@ -1171,9 +1276,57 @@ function AuthUnavailableCard() {
 }
 
 function AccountCard({ auth, onOpenAuth }: { auth: AppAuth; onOpenAuth: (prompt?: AuthPrompt) => void }) {
+  const [profile, setProfile] = useState<CurrentUser | null>(null)
+  const [profileLoading, setProfileLoading] = useState(false)
+  const [profileSaving, setProfileSaving] = useState(false)
+  const [profileError, setProfileError] = useState<string | null>(null)
+  const [firstName, setFirstName] = useState('')
+  const [lastName, setLastName] = useState('')
+  const [phone, setPhone] = useState('')
+  const [preferredContact, setPreferredContact] = useState<'phone' | 'text' | 'email'>('email')
   const [deletingAccount, setDeletingAccount] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const deletingAccountRef = useRef(false)
+
+  useEffect(() => {
+    let cancelled = false
+    async function loadProfile() {
+      if (!auth.isSignedIn || !auth.getToken) return
+      setProfileLoading(true)
+      setProfileError(null)
+      try {
+        const result = await fetchMe(auth.getToken)
+        if (!cancelled) {
+          setProfile(result.user)
+          setFirstName(result.user.first_name || '')
+          setLastName(result.user.last_name || '')
+          setPhone(result.user.phone || '')
+          setPreferredContact(result.user.preferred_contact_method || 'email')
+        }
+      } catch (error) {
+        if (!cancelled) setProfileError(error instanceof Error ? error.message : 'Unable to load profile')
+      } finally {
+        if (!cancelled) setProfileLoading(false)
+      }
+    }
+    loadProfile()
+    return () => { cancelled = true }
+  }, [auth.getToken, auth.isSignedIn])
+
+  async function handleSaveProfile() {
+    if (!auth.getToken || profileSaving) return
+    setProfileSaving(true)
+    setProfileError(null)
+    try {
+      const result = await updateProfile({ first_name: firstName.trim(), last_name: lastName.trim(), phone: phone.trim(), preferred_contact_method: preferredContact }, auth.getToken)
+      setProfile(result.user)
+      Alert.alert('Profile saved', 'Your contact settings were updated.')
+    } catch (error) {
+      setProfileError(error instanceof Error ? error.message : 'Unable to update profile')
+    } finally {
+      setProfileSaving(false)
+    }
+  }
 
   async function handleDeleteAccount() {
     if (!auth.getToken || deletingAccountRef.current) return
@@ -1210,15 +1363,37 @@ function AccountCard({ auth, onOpenAuth }: { auth: AppAuth; onOpenAuth: (prompt?
 
   if (auth.isSignedIn) {
     return (
-      <View style={styles.accountCard}>
-        <Text style={styles.accountKicker}>Account</Text>
-        <Text style={styles.accountTitle}>{auth.userName || auth.userEmail || 'Hafa Homes account'}</Text>
-        <Text style={styles.accountCopy}>You are signed in. Saved homes now sync to this account; request history stays available across devices.</Text>
-        <Pressable style={styles.secondaryCta} onPress={() => auth.signOut?.()} disabled={deletingAccount}><Text style={styles.secondaryCtaText}>Sign out</Text></Pressable>
-        <View style={styles.dangerZone}>
-          <Text style={styles.dangerTitle}>Delete account</Text>
-          <Text style={styles.dangerCopy}>Permanently remove your Hafa Homes account and synced saved homes. Public showing/contact requests are preserved for follow-up, but disconnected from your account.</Text>
-          {deleteError && <Text style={styles.dangerError}>{deleteError}</Text>}
+      <View style={styles.profileSettingsStack}>
+        {profileLoading && <ActivityIndicator color={colors.green} style={{ marginTop: 4 }} />}
+        <View style={styles.profileDetailsPanel}>
+          <Text style={styles.profileSectionTitle}>Contact details</Text>
+          <Text style={styles.profileSectionCopy}>These details prefill showing requests and price alerts.</Text>
+          <RequestInput label="First name" value={firstName} onChangeText={setFirstName} />
+          <RequestInput label="Last name" value={lastName} onChangeText={setLastName} />
+          <RequestInput label="Phone" value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="+1671" />
+          <Text style={styles.requestLabel}>Preferred contact</Text>
+          <View style={styles.contactSegmentRow}>
+            {preferredContactOptions.map((option) => (
+              <Pressable key={option.value} style={[styles.contactSegment, preferredContact === option.value && styles.contactSegmentActive]} onPress={() => setPreferredContact(option.value as 'phone' | 'text' | 'email')}>
+                <Text style={[styles.contactSegmentText, preferredContact === option.value && styles.contactSegmentTextActive]}>{option.label}</Text>
+              </Pressable>
+            ))}
+          </View>
+          {profileError && <Text style={styles.profileErrorText}>{profileError}</Text>}
+          <Pressable style={[styles.primaryCta, profileSaving && styles.ctaDisabled]} onPress={handleSaveProfile} disabled={profileSaving}>
+            <Text style={styles.primaryCtaText}>{profileSaving ? 'Saving profile...' : 'Save profile'}</Text>
+          </Pressable>
+        </View>
+
+        <View style={styles.profileActionsPanel}>
+          <Text style={styles.profileSectionTitle}>Account access</Text>
+          <Pressable style={styles.secondaryCta} onPress={() => auth.signOut?.()} disabled={deletingAccount}><Text style={styles.secondaryCtaText}>Sign out</Text></Pressable>
+        </View>
+
+        <View style={styles.deleteAccountPanel}>
+          <Text style={styles.deleteAccountTitle}>Delete account</Text>
+          <Text style={styles.deleteAccountCopy}>Permanently remove your Hafa Homes account and synced saved homes. Public showing/contact requests are preserved for follow-up, but disconnected from your account.</Text>
+          {deleteError && <Text style={styles.profileErrorText}>{deleteError}</Text>}
           <Pressable style={[styles.dangerCta, deletingAccount && styles.ctaDisabled]} onPress={confirmDeleteAccount} disabled={deletingAccount}>
             <Text style={styles.dangerCtaText}>{deletingAccount ? 'Deleting account...' : 'Delete account'}</Text>
           </Pressable>
@@ -1245,6 +1420,7 @@ function AuthModal({ open, prompt, onClose }: { open: boolean; prompt: AuthPromp
   const [mode, setMode] = useState<'sign-in' | 'sign-up'>('sign-in')
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
+  const [signupPhone, setSignupPhone] = useState('+1671')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [code, setCode] = useState('')
@@ -1258,6 +1434,7 @@ function AuthModal({ open, prompt, onClose }: { open: boolean; prompt: AuthPromp
     setMode(prompt?.initialMode ?? 'sign-in')
     setFirstName('')
     setLastName('')
+    setSignupPhone('+1671')
     setEmail('')
     setPassword('')
     setCode('')
@@ -1352,11 +1529,13 @@ function AuthModal({ open, prompt, onClose }: { open: boolean; prompt: AuthPromp
         }
       } else {
         if (!signUpLoaded) return
+        const cleanedSignupPhone = signupPhone.trim()
         await signUp.create({
           emailAddress: email.trim(),
           password,
           firstName: firstName.trim(),
           lastName: lastName.trim() || undefined,
+          unsafeMetadata: cleanedSignupPhone && cleanedSignupPhone !== '+1671' ? { phone: cleanedSignupPhone } : undefined,
         })
         await signUp.prepareEmailAddressVerification({ strategy: 'email_code' })
         setPendingVerification(true)
@@ -1453,6 +1632,7 @@ function AuthModal({ open, prompt, onClose }: { open: boolean; prompt: AuthPromp
                     <>
                       <RequestInput label="First name" value={firstName} onChangeText={setFirstName} placeholder="Leon" />
                       <RequestInput label="Last name" value={lastName} onChangeText={setLastName} placeholder="Shimizu" />
+                      <RequestInput label="Phone" value={signupPhone} onChangeText={setSignupPhone} keyboardType="phone-pad" placeholder="+1671" />
                     </>
                   )}
                   <RequestInput label="Email" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" placeholder="you@example.com" />
@@ -1723,7 +1903,7 @@ function ShowingRequestSheet({ listing, auth, open, onOpenAuth, onClose }: { lis
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('+1671')
   const [preferredContact, setPreferredContact] = useState('phone')
-  const [preferredTime, setPreferredTime] = useState('morning')
+  const [preferredTime, setPreferredTime] = useState('flexible')
   const [tourType, setTourType] = useState('in_person')
   const [message, setMessage] = useState(`I'm interested in ${listing.title}.`)
   const [submitting, setSubmitting] = useState(false)
@@ -1738,8 +1918,18 @@ function ShowingRequestSheet({ listing, auth, open, onOpenAuth, onClose }: { lis
     if (auth.isSignedIn) {
       setName((current) => current || auth.userName || '')
       setEmail((current) => current || auth.userEmail || '')
+      if (auth.getToken) {
+        fetchMe(auth.getToken)
+          .then((result) => {
+            setName(result.user.full_name || auth.userName || '')
+            setEmail(result.user.email || auth.userEmail || '')
+            setPhone(result.user.phone || '+1671')
+            setPreferredContact(result.user.preferred_contact_method || 'phone')
+          })
+          .catch((profileError) => console.warn('Unable to prefill showing request profile', profileError))
+      }
     }
-  }, [auth.isSignedIn, auth.userEmail, auth.userName, listing.title, open])
+  }, [auth.getToken, auth.isSignedIn, auth.userEmail, auth.userName, listing.title, open])
 
   async function handleSubmit() {
     const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
@@ -1760,6 +1950,7 @@ function ShowingRequestSheet({ listing, auth, open, onOpenAuth, onClose }: { lis
         preferred_contact_method: preferredContact,
         preferred_time: preferredTime,
         tour_type: tourType,
+        source_url: `hafahomes:///listings/${listing.id}`,
         message: `${message.trim()}\n\nListing: ${listing.title} — ${listing.address}, ${listing.village.name}`,
       }, auth.isSignedIn ? auth.getToken : undefined)
       setSubmitted(true)
@@ -1809,9 +2000,9 @@ function ShowingRequestSheet({ listing, auth, open, onOpenAuth, onClose }: { lis
                 <RequestInput label="Phone" value={phone} onChangeText={setPhone} placeholder="+1671" keyboardType="phone-pad" />
                 <Text style={styles.requestLabel}>Preferred contact</Text>
                 <View style={styles.contactSegmentRow}>
-                  {['phone', 'text', 'email'].map((option) => (
-                    <Pressable key={option} onPress={() => setPreferredContact(option)} style={[styles.contactSegment, preferredContact === option && styles.contactSegmentActive]}>
-                      <Text style={[styles.contactSegmentText, preferredContact === option && styles.contactSegmentTextActive]}>{option}</Text>
+                  {preferredContactOptions.map((option) => (
+                    <Pressable key={option.value} onPress={() => setPreferredContact(option.value)} style={[styles.contactSegment, preferredContact === option.value && styles.contactSegmentActive]}>
+                      <Text style={[styles.contactSegmentText, preferredContact === option.value && styles.contactSegmentTextActive]}>{option.label}</Text>
                     </Pressable>
                   ))}
                 </View>
@@ -1825,9 +2016,9 @@ function ShowingRequestSheet({ listing, auth, open, onOpenAuth, onClose }: { lis
                 </View>
                 <Text style={styles.requestLabel}>Preferred time</Text>
                 <View style={styles.contactSegmentRow}>
-                  {['morning', 'afternoon', 'evening'].map((option) => (
-                    <Pressable key={option} onPress={() => setPreferredTime(option)} style={[styles.contactSegment, preferredTime === option && styles.contactSegmentActive]}>
-                      <Text style={[styles.contactSegmentText, preferredTime === option && styles.contactSegmentTextActive]}>{option}</Text>
+                  {preferredTimeOptions.map((option) => (
+                    <Pressable key={option.value} onPress={() => setPreferredTime(option.value)} style={[styles.contactSegment, preferredTime === option.value && styles.contactSegmentActive]}>
+                      <Text style={[styles.contactSegmentText, preferredTime === option.value && styles.contactSegmentTextActive]}>{option.label}</Text>
                     </Pressable>
                   ))}
                 </View>
@@ -1863,8 +2054,17 @@ function PriceAlertSheet({ listing, auth, open, onClose }: { listing: Listing; a
     if (auth.isSignedIn) {
       setName((current) => current || auth.userName || '')
       setEmail((current) => current || auth.userEmail || '')
+      if (auth.getToken) {
+        fetchMe(auth.getToken)
+          .then((result) => {
+            setName(result.user.full_name || auth.userName || '')
+            setEmail(result.user.email || auth.userEmail || '')
+            setPhone(result.user.phone || '+1671')
+          })
+          .catch((profileError) => console.warn('Unable to prefill price alert profile', profileError))
+      }
     }
-  }, [auth.isSignedIn, auth.userEmail, auth.userName, listing.price, open])
+  }, [auth.getToken, auth.isSignedIn, auth.userEmail, auth.userName, listing.price, open])
 
   async function handleSubmit() {
     const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
@@ -1884,6 +2084,7 @@ function PriceAlertSheet({ listing, auth, open, onClose }: { listing: Listing; a
         phone: phone.trim(),
         preferred_contact_method: 'email',
         target_price: targetPrice.trim(),
+        source_url: `hafahomes:///listings/${listing.id}`,
         message: `Target price: ${targetPrice.trim()}\n\nListing: ${listing.title} — ${listing.address}, ${listing.village.name}`,
       }, auth.isSignedIn ? auth.getToken : undefined)
       setSubmitted(true)
@@ -1940,10 +2141,10 @@ function PriceAlertSheet({ listing, auth, open, onClose }: { listing: Listing; a
   )
 }
 
-function RequestInput({ label, value, onChangeText, placeholder = '', keyboardType, autoCapitalize, secureTextEntry }: { label: string; value: string; onChangeText: (value: string) => void; placeholder?: string; keyboardType?: 'default' | 'email-address' | 'phone-pad' | 'number-pad'; autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters'; secureTextEntry?: boolean }) {
+function RequestInput({ label, value, onChangeText, placeholder = '', keyboardType, autoCapitalize, secureTextEntry, labelStyle }: { label: string; value: string; onChangeText: (value: string) => void; placeholder?: string; keyboardType?: 'default' | 'email-address' | 'phone-pad' | 'number-pad'; autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters'; secureTextEntry?: boolean; labelStyle?: object }) {
   return (
     <View>
-      <Text style={styles.requestLabel}>{label}</Text>
+      <Text style={[styles.requestLabel, labelStyle]}>{label}</Text>
       <TextInput value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor="#7b8a84" keyboardType={keyboardType} autoCapitalize={autoCapitalize} secureTextEntry={secureTextEntry} style={styles.requestInput} />
     </View>
   )
@@ -2062,10 +2263,48 @@ const styles = StyleSheet.create({
   featureRow: { alignItems: 'center', backgroundColor: 'white', borderRadius: 18, flexDirection: 'row', gap: 10, padding: 14 },
   featureBullet: { color: colors.green2, fontSize: 16, fontWeight: '900' },
   featureText: { color: colors.ink, fontSize: 15, fontWeight: '800' },
+  moreHeroCard: { backgroundColor: colors.green, borderRadius: 30, gap: 10, padding: 20, shadowColor: colors.green, shadowOpacity: 0.18, shadowRadius: 20, shadowOffset: { width: 0, height: 10 } },
+  moreHeroKicker: { color: colors.mint, fontSize: 11, fontWeight: '900', letterSpacing: 1.8, textTransform: 'uppercase' },
+  moreHeroTitle: { color: 'white', fontSize: 28, fontWeight: '900', letterSpacing: -0.8 },
+  moreHeroCopy: { color: 'rgba(255,255,255,0.76)', fontSize: 14, fontWeight: '700', lineHeight: 21 },
+  moreHeroCta: { alignItems: 'center', backgroundColor: 'white', borderRadius: 22, marginTop: 8, paddingVertical: 14 },
+  moreHeroCtaText: { color: colors.green, fontSize: 15, fontWeight: '900' },
+  moreMenuSection: { gap: 10, marginTop: 16 },
+  moreMenuItem: { alignItems: 'center', backgroundColor: 'white', borderRadius: 24, flexDirection: 'row', gap: 14, padding: 16, shadowColor: colors.green, shadowOpacity: 0.05, shadowRadius: 14, shadowOffset: { width: 0, height: 6 } },
+  moreMenuMark: { alignItems: 'center', backgroundColor: colors.mint, borderRadius: 16, height: 46, justifyContent: 'center', width: 46 },
+  moreMenuMarkText: { color: colors.green2, fontSize: 11, fontWeight: '900', letterSpacing: 0.4 },
+  moreMenuCopy: { flex: 1, gap: 4 },
+  moreMenuTitle: { color: colors.ink, fontSize: 18, fontWeight: '900', letterSpacing: -0.3 },
+  moreMenuDescription: { color: colors.muted, fontSize: 13, fontWeight: '700', lineHeight: 18 },
+  moreMenuArrow: { color: colors.green2, fontSize: 32, fontWeight: '300', lineHeight: 34 },
+  moreSectionLabel: { color: colors.green2, fontSize: 11, fontWeight: '900', letterSpacing: 1.7, marginBottom: 2, textTransform: 'uppercase' },
+  resourceRow: { alignItems: 'center', backgroundColor: 'white', borderRadius: 20, flexDirection: 'row', gap: 12, padding: 15 },
+  resourceBullet: { backgroundColor: colors.green2, borderRadius: 999, height: 9, width: 9 },
+  resourceText: { color: colors.ink, fontSize: 16, fontWeight: '900' },
+  profileScreenHeader: { gap: 8, marginBottom: 4 },
+  profileBackButton: { alignSelf: 'flex-start', backgroundColor: 'white', borderRadius: 999, paddingHorizontal: 16, paddingVertical: 10 },
+  profileBackText: { color: colors.green, fontSize: 14, fontWeight: '900' },
+  profileSettingsStack: { gap: 12 },
+  profileDetailsPanel: { backgroundColor: 'white', borderColor: '#eadfce', borderRadius: 28, borderWidth: 1, gap: 12, padding: 16 },
+  profileActionsPanel: { backgroundColor: 'white', borderColor: '#eadfce', borderRadius: 24, borderWidth: 1, gap: 12, padding: 16 },
+  profileSectionTitle: { color: colors.ink, fontSize: 20, fontWeight: '900', letterSpacing: -0.4 },
+  profileSectionCopy: { color: colors.muted, fontSize: 13, fontWeight: '700', lineHeight: 19 },
+  profileErrorText: { color: '#b91c1c', fontSize: 13, fontWeight: '800', lineHeight: 18 },
+  deleteAccountPanel: { backgroundColor: '#fff8f6', borderColor: '#fecaca', borderRadius: 24, borderWidth: 1, gap: 10, padding: 16 },
+  deleteAccountTitle: { color: '#7f1d1d', fontSize: 20, fontWeight: '900', letterSpacing: -0.4 },
+  deleteAccountCopy: { color: '#7c4a43', fontSize: 13, fontWeight: '700', lineHeight: 19 },
   accountCard: { backgroundColor: colors.green, borderRadius: 26, gap: 10, marginBottom: 12, padding: 18 },
   accountKicker: { color: colors.mint, fontSize: 12, fontWeight: '900', letterSpacing: 1.8, textTransform: 'uppercase' },
   accountTitle: { color: 'white', fontSize: 22, fontWeight: '900', letterSpacing: -0.5 },
   accountCopy: { color: 'rgba(255,255,255,0.78)', fontSize: 14, fontWeight: '700', lineHeight: 21 },
+  profileForm: { backgroundColor: 'rgba(255,255,255,0.08)', borderColor: 'rgba(255,255,255,0.14)', borderRadius: 22, borderWidth: 1, gap: 10, padding: 14 },
+  fieldLabel: { color: colors.mint, fontSize: 11, fontWeight: '900', letterSpacing: 1.1, marginTop: 2, textTransform: 'uppercase' },
+  profileFieldLabel: { color: colors.mint },
+  segmentRow: { backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 18, flexDirection: 'row', gap: 6, padding: 5 },
+  segmentOption: { alignItems: 'center', borderRadius: 14, flex: 1, paddingVertical: 10 },
+  segmentOptionActive: { backgroundColor: 'white' },
+  segmentOptionText: { color: 'rgba(255,255,255,0.72)', fontSize: 13, fontWeight: '900' },
+  segmentOptionTextActive: { color: colors.green },
   dangerZone: { backgroundColor: 'rgba(255,255,255,0.08)', borderColor: 'rgba(255,255,255,0.14)', borderRadius: 22, borderWidth: 1, gap: 8, marginTop: 6, padding: 14 },
   dangerTitle: { color: '#fee2e2', fontSize: 16, fontWeight: '900' },
   dangerCopy: { color: 'rgba(255,255,255,0.74)', fontSize: 13, fontWeight: '700', lineHeight: 19 },

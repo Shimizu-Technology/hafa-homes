@@ -1,6 +1,6 @@
 # Roadmap
 
-_Last updated: 2026-06-10 after PR #10 broker CRM expansion merged._
+_Last updated: 2026-06-10 after PR #11 account deletion merged, iOS build `1.0.1 (9)` submitted, and admin/notification QA findings were documented._
 
 ## Current product direction
 
@@ -122,25 +122,58 @@ Completed in PR #10:
 
 ## Immediate release track
 
-Before starting the next large product branch, Leon wants to refresh the mobile app in Apple/TestFlight.
+Current App Store state:
 
-Recommended order:
+```text
+iOS version 1.0.1
+build 9
+status: Waiting for Review
+```
 
-1. Deploy latest API and run production migrations.
-2. Verify production endpoints used by mobile.
-3. Build iOS production/TestFlight app with EAS.
-4. Submit latest build to App Store Connect.
-5. Add Mike/John/testers.
+Build `9` includes the PR #11 self-service account deletion flow. Keep production `CLERK_SECRET_KEY` configured so Apple can test deletion if needed.
 
 See `docs/app-store-release.md`.
 
 ## Active next product phase
 
-### Phase 7 — Domain-first broker-branded website/app foundation
+### Phase 7 — Account, admin operations, audit, and notification hardening
+
+Recommended branches:
+
+```bash
+feature/consumer-profile-settings
+feature/notification-link-polish
+feature/admin-user-lifecycle
+feature/admin-audit-log
+```
+
+Goal:
+
+> Clean up the account/admin/notification gaps found in testing so the platform feels operationally credible before serious broker demos.
+
+Recommended scope:
+
+- Profile & settings on mobile/web.
+- Safe profile fields: first name, last name, phone, preferred contact.
+- Signed-in lead-form prefill from user profile.
+- Consumer/admin preferred-time parity, including `Flexible`.
+- Notification duplicate-greeting fix.
+- App-first notification/deep-link strategy with web fallback.
+- Admin-created users/invites for admins, agents, and consumers.
+- User edit/archive/reactivate/revoke lifecycle.
+- Global audit log/history with tenant-scoped admin visibility.
+
+See `docs/product/admin-ops-notification-hardening-plan.md`.
+
+## Upcoming phases
+
+### Phase 8 — Domain-first broker-branded website/app foundation
 
 Recommended branch:
 
 ```bash
+feature/broker-domain-foundation
+# or broader:
 feature/broker-branded-sites-apps
 ```
 
@@ -162,9 +195,7 @@ Recommended scope:
 
 See `docs/product/broker-branded-layer-plan.md`.
 
-## Upcoming phases
-
-### Phase 8 — Lead quality / CRM automation
+### Phase 9 — Lead quality / CRM automation
 
 Goal: improve broker confidence in lead quality and follow-up accountability.
 
@@ -178,7 +209,7 @@ Potential scope:
 - CSV export
 - agent follow-up reporting
 
-### Phase 9 — Property management preview
+### Phase 10 — Property management preview
 
 Goal: demo premium-tier rental/property-management value for Guam brokerages/property managers.
 
@@ -191,7 +222,7 @@ Potential scope:
 - maintenance request preview
 - owner/tenant portal concept
 
-### Phase 10 — Production deployment and demo hardening
+### Phase 11 — Production deployment and demo hardening
 
 Goal: make the latest platform safe and smooth to demo from production URLs/devices.
 
@@ -206,7 +237,7 @@ Potential scope:
 - notification gates/config verification
 - App Store/TestFlight notes update
 
-### Phase 11 — MLS/Flexmls integration path
+### Phase 12 — MLS/Flexmls integration path
 
 Start only after authorization/compliance is clear.
 

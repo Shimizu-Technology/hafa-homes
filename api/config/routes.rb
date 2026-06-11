@@ -3,7 +3,7 @@ Rails.application.routes.draw do
 
   namespace :api do
     namespace :v1 do
-      resource :me, only: [:show, :destroy], controller: :me do
+      resource :me, only: [:show, :update, :destroy], controller: :me do
         get :leads
       end
       get "me/saved_listings", to: "saved_listings#index"
@@ -28,7 +28,8 @@ Rails.application.routes.draw do
         get "dashboard", to: "dashboard#show"
         resources :brokerages, only: [:index]
         resources :agents, only: [:index]
-        resources :users, only: [:index, :update]
+        resources :users, only: [:index, :create, :update]
+        resources :audit_events, only: [:index]
       end
     end
   end

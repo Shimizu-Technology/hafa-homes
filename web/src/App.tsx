@@ -33,6 +33,7 @@ import {
   Search,
   Share2,
   ShieldCheck,
+  History,
   SlidersHorizontal,
   TrendingUp,
   UserRound,
@@ -328,21 +329,42 @@ type AdminDashboardResponse = {
 type CurrentUser = {
   id: number
   email: string
+  first_name?: string
+  last_name?: string
   full_name: string
   role: 'platform_admin' | 'brokerage_admin' | 'agent' | 'consumer'
+  phone?: string
+  preferred_contact_method?: 'phone' | 'text' | 'email'
+  invitation_status?: string
+  archived_at?: string
+  archived_by?: LeadUser | null
   is_staff: boolean
   is_platform_admin: boolean
   brokerages?: { role: string; status: string; brokerage?: Brokerage }[]
 }
 
 type AdminUser = CurrentUser & {
-  first_name?: string
-  last_name?: string
-  invitation_status?: string
   agent_profiles?: Agent[]
 }
 
 type AdminUsersResponse = { users: AdminUser[]; brokerages: Brokerage[]; agents: Agent[] }
+type AuditEvent = {
+  id: number
+  action: string
+  actor?: LeadUser | null
+  actor_email?: string
+  target_type?: string
+  target_id?: number
+  target_label?: string
+  brokerage_id?: number
+  lead_id?: number
+  metadata?: Record<string, unknown>
+  changes?: Record<string, { from?: unknown; to?: unknown }>
+  ip_address?: string
+  user_agent?: string
+  created_at: string
+}
+type AuditEventsResponse = { audit_events: AuditEvent[] }
 type SavedListingsResponse = { listing_ids: number[]; listings: Listing[] }
 type SaveListingResponse = { listing: Listing; listing_id: number; saved: boolean }
 
@@ -358,6 +380,8 @@ type LeadPayload = {
   preferred_tour_date?: string
   tour_type?: string
   target_price?: string
+  source_campaign?: string
+  source_url?: string
   message: string
   listing_id?: number
 }
@@ -421,6 +445,16 @@ async function fetchMe(): Promise<MeResponse> {
   return response.json()
 }
 
+async function updateMe(payload: Partial<Pick<CurrentUser, 'first_name' | 'last_name' | 'phone' | 'preferred_contact_method'>>): Promise<MeResponse> {
+  const response = await fetch(`${API_URL}/api/v1/me`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+    body: JSON.stringify({ user: payload }),
+  })
+  if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to update profile'), response.status)
+  return response.json()
+}
+
 async function deleteCurrentAccount(): Promise<{ deleted: boolean }> {
   const response = await fetch(`${API_URL}/api/v1/me`, { method: 'DELETE', headers: await authHeaders() })
   if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to delete account'), response.status)
@@ -466,6 +500,22 @@ async function fetchShowingAppointments(): Promise<ShowingAppointmentsResponse> 
 async function fetchAdminUsers(): Promise<AdminUsersResponse> {
   const response = await fetch(`${API_URL}/api/v1/admin/users`, { headers: await authHeaders() })
   if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to load users'), response.status)
+  return response.json()
+}
+
+async function fetchAuditEvents(): Promise<AuditEventsResponse> {
+  const response = await fetch(`${API_URL}/api/v1/admin/audit_events`, { headers: await authHeaders() })
+  if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to load audit history'), response.status)
+  return response.json()
+}
+
+async function createAdminUser(payload: Record<string, unknown>): Promise<{ user: AdminUser }> {
+  const response = await fetch(`${API_URL}/api/v1/admin/users`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+    body: JSON.stringify({ user: payload }),
+  })
+  if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to create user'), response.status)
   return response.json()
 }
 
@@ -615,6 +665,19 @@ async function createLead(payload: LeadPayload) {
   return response.json()
 }
 
+const preferredTimeOptions = [
+  { value: 'morning', label: 'Morning' },
+  { value: 'afternoon', label: 'Afternoon' },
+  { value: 'evening', label: 'Evening' },
+  { value: 'flexible', label: 'Flexible' },
+]
+
+const preferredContactOptions = [
+  { value: 'phone', label: 'Phone' },
+  { value: 'text', label: 'Text' },
+  { value: 'email', label: 'Email' },
+]
+
 const leadStatuses: Array<{ value: LeadStatus; label: string }> = [
   { value: 'new', label: 'New' },
   { value: 'contacted', label: 'Contacted' },
@@ -753,15 +816,61 @@ function App() {
         <Route path="/account/requests" element={<RequestsPage />} />
         <Route path="/requests" element={<RequestsPage />} />
         <Route path="/privacy" element={<PrivacyPage />} />
+        <Route path="/open" element={<OpenInAppPage />} />
         <Route path="/admin" element={<RequireStaff><AdminDashboardPage /></RequireStaff>} />
         <Route path="/admin/sync" element={<RequireStaff><SyncPage /></RequireStaff>} />
         <Route path="/admin/leads" element={<RequireStaff><LeadsPage /></RequireStaff>} />
         <Route path="/admin/leads/:id" element={<RequireStaff><LeadDetailPage /></RequireStaff>} />
         <Route path="/admin/showings" element={<RequireStaff><AdminShowingsPage /></RequireStaff>} />
         <Route path="/admin/users" element={<RequireStaff><AdminUsersPage /></RequireStaff>} />
+        <Route path="/admin/audit" element={<RequireStaff><AdminAuditPage /></RequireStaff>} />
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </>
+  )
+}
+
+function currentUtmCampaign() {
+  if (typeof window === 'undefined') return ''
+  return new URLSearchParams(window.location.search).get('utm_campaign') || ''
+}
+
+function safeInternalPath(path: string | null) {
+  if (!path) return '/'
+  const decoded = path.trim()
+  if (!decoded.startsWith('/') || decoded.startsWith('//')) return '/'
+  return decoded
+}
+
+function OpenInAppPage() {
+  const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
+  const target = safeInternalPath(searchParams.get('target'))
+
+  useEffect(() => {
+    const isMobile = /Android|iPhone|iPad|iPod/i.test(window.navigator.userAgent)
+    if (!isMobile || target.startsWith('/admin')) {
+      navigate(target, { replace: true })
+      return
+    }
+
+    const appUrl = `hafahomes://${target}`
+    window.location.href = appUrl
+    const fallback = window.setTimeout(() => navigate(target, { replace: true }), 1400)
+    return () => window.clearTimeout(fallback)
+  }, [navigate, target])
+
+  return (
+    <Shell compact>
+      <section className="mx-auto max-w-3xl px-5 py-12">
+        <div className="rounded-[2rem] bg-white p-8 text-center shadow-sm">
+          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#0f705e]">Opening Hafa Homes</p>
+          <h1 className="mt-3 text-3xl font-semibold tracking-[-0.05em]">Taking you to your request.</h1>
+          <p className="mt-3 text-[#66746f]">If the app is installed, it should open automatically. Otherwise we’ll continue on the web.</p>
+          <Link to={target} className="mt-6 inline-flex rounded-full bg-[#0f3d35] px-6 py-3 text-sm font-bold text-white">Continue on web</Link>
+        </div>
+      </section>
+    </Shell>
   )
 }
 
@@ -1641,12 +1750,13 @@ function AccountPage() {
   const navigate = useNavigate()
   const [deletePanelOpen, setDeletePanelOpen] = useState(false)
   const [confirmation, setConfirmation] = useState('')
-  const { data, isLoading: isMeLoading } = useQuery({
+  const { data, isLoading: isMeLoading, refetch } = useQuery({
     queryKey: ['me', userId, 'account'],
     queryFn: fetchMe,
     enabled: isClerkEnabled && isSignedIn && Boolean(userId),
     retry: false,
   })
+  const profileMutation = useMutation({ mutationFn: updateMe, onSuccess: () => refetch() })
   const deleteMutation = useMutation({
     mutationFn: deleteCurrentAccount,
     onSuccess: async () => {
@@ -1682,32 +1792,67 @@ function AccountPage() {
   const user = data?.user
   const canDelete = confirmation.trim().toUpperCase() === 'DELETE' && !deleteMutation.isPending
 
+  function handleProfileSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const form = new FormData(event.currentTarget)
+    profileMutation.mutate({
+      first_name: String(form.get('first_name') || '').trim(),
+      last_name: String(form.get('last_name') || '').trim(),
+      phone: String(form.get('phone') || '').trim(),
+      preferred_contact_method: String(form.get('preferred_contact_method') || '') as CurrentUser['preferred_contact_method'],
+    })
+  }
+
   return (
     <Shell compact>
-      <ContentHeader kicker="Account" title="Manage your Hafa Homes account." description="Review your signed-in profile, jump back into saved homes, or permanently delete your account when needed." />
-      <section className="mx-auto grid max-w-5xl gap-5 px-5 pb-12 lg:grid-cols-[1fr_0.9fr]">
-        <div className="rounded-[2rem] bg-white p-6 shadow-sm">
+      <ContentHeader kicker="Profile & settings" title="Manage your Hafa Homes account." description="Keep your contact profile current so showing requests can prefill cleanly across web and mobile." />
+      <section className="mx-auto grid max-w-6xl gap-5 px-5 pb-12 lg:grid-cols-[1fr_0.9fr]">
+        <form onSubmit={handleProfileSubmit} className="rounded-[2rem] bg-white p-6 shadow-sm">
           <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#0f705e]">Profile</p>
           <h2 className="mt-3 text-3xl font-semibold tracking-[-0.05em] text-[#17211f]">{user?.full_name || user?.email || 'Hafa Homes account'}</h2>
           {user?.email && <p className="mt-2 text-sm font-semibold text-[#66746f]">{user.email}</p>}
-          <div className="mt-5 grid gap-3 sm:grid-cols-2">
-            <Link to="/saved" className="rounded-2xl bg-[#e9f5ef] px-4 py-4 text-sm font-bold text-[#0f3d35]">Saved homes</Link>
-            <Link to="/account/requests" className="rounded-2xl bg-[#e9f5ef] px-4 py-4 text-sm font-bold text-[#0f3d35]">Request history</Link>
+
+          <div className="mt-6 grid gap-4 sm:grid-cols-2">
+            <label className="grid gap-2 text-sm font-semibold text-[#304942]">
+              First name
+              <input name="first_name" defaultValue={user?.first_name || ''} className="min-h-12 rounded-2xl border border-[#d7ded9] px-4 outline-none focus:border-[#0f705e] focus:ring-4 focus:ring-[#dff3ec]" />
+            </label>
+            <label className="grid gap-2 text-sm font-semibold text-[#304942]">
+              Last name
+              <input name="last_name" defaultValue={user?.last_name || ''} className="min-h-12 rounded-2xl border border-[#d7ded9] px-4 outline-none focus:border-[#0f705e] focus:ring-4 focus:ring-[#dff3ec]" />
+            </label>
+            <label className="grid gap-2 text-sm font-semibold text-[#304942]">
+              Phone
+              <input name="phone" defaultValue={user?.phone || ''} inputMode="tel" placeholder="671-555-1234" className="min-h-12 rounded-2xl border border-[#d7ded9] px-4 outline-none focus:border-[#0f705e] focus:ring-4 focus:ring-[#dff3ec]" />
+            </label>
+            <label className="grid gap-2 text-sm font-semibold text-[#304942]">
+              Preferred contact
+              <select name="preferred_contact_method" defaultValue={user?.preferred_contact_method || 'email'} className="min-h-12 rounded-2xl border border-[#d7ded9] px-4 outline-none focus:border-[#0f705e] focus:ring-4 focus:ring-[#dff3ec]">
+                {preferredContactOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+            </label>
           </div>
-          <button
-            type="button"
-            onClick={async () => {
-              try {
-                await signOut?.()
-              } finally {
-                navigate('/', { replace: true })
-              }
-            }}
-            className="mt-5 rounded-full border border-[#d7ded9] px-5 py-3 text-sm font-bold text-[#0f3d35]"
-          >
-            Sign out
-          </button>
-        </div>
+          {profileMutation.isError && <p className="mt-3 text-sm font-semibold text-red-700">{displayErrorMessage(profileMutation.error, 'Unable to update profile right now.')}</p>}
+          {profileMutation.isSuccess && <p className="mt-3 text-sm font-semibold text-[#0f705e]">Profile saved.</p>}
+          <div className="mt-5 flex flex-wrap gap-3">
+            <button type="submit" disabled={profileMutation.isPending} className="rounded-full bg-[#0f3d35] px-5 py-3 text-sm font-bold text-white disabled:opacity-60">{profileMutation.isPending ? 'Saving...' : 'Save profile'}</button>
+            <Link to="/saved" className="rounded-full border border-[#d7ded9] px-5 py-3 text-sm font-bold text-[#0f3d35]">Saved homes</Link>
+            <Link to="/account/requests" className="rounded-full border border-[#d7ded9] px-5 py-3 text-sm font-bold text-[#0f3d35]">Request history</Link>
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  await signOut?.()
+                } finally {
+                  navigate('/', { replace: true })
+                }
+              }}
+              className="rounded-full border border-[#d7ded9] px-5 py-3 text-sm font-bold text-[#0f3d35]"
+            >
+              Sign out
+            </button>
+          </div>
+        </form>
 
         <div className="rounded-[2rem] border border-red-200 bg-[#fff8f6] p-6 shadow-sm">
           <p className="text-sm font-semibold uppercase tracking-[0.2em] text-red-700">Delete account</p>
@@ -2080,6 +2225,14 @@ function FullMapModal({ open, onClose, listings }: { open: boolean; onClose: () 
 
 function SaveSearchModal({ open, onClose, filters }: { open: boolean; onClose: () => void; filters: Record<string, string> }) {
   const mutation = useMutation({ mutationFn: saveSearch })
+  const { isClerkEnabled, isSignedIn, userId } = useAuthContext()
+  const { data: meData } = useQuery({
+    queryKey: ['me', userId, 'save-search-prefill'],
+    queryFn: fetchMe,
+    enabled: open && isClerkEnabled && isSignedIn && Boolean(userId),
+    retry: false,
+  })
+  const profile = meData?.user
   if (!open) return null
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -2113,8 +2266,8 @@ function SaveSearchModal({ open, onClose, filters }: { open: boolean; onClose: (
               <button type="button" onClick={onClose} className="rounded-full border border-[#d7ded9] px-3 py-2 text-sm font-bold">Close</button>
             </div>
             <div className="mt-5 grid gap-3">
-              <Input name="name" label="Search name" defaultValue="My Guam home search" required />
-              <Input name="email" label="Email" type="email" required />
+              <Input name="name" label="Search name" defaultValue={profile?.full_name ? `${profile.full_name}'s Guam home search` : 'My Guam home search'} required />
+              <Input name="email" label="Email" type="email" defaultValue={profile?.email || ''} required />
               <label className="grid gap-2 text-sm font-semibold text-[#304942]">
                 Alert frequency
                 <select name="alert_frequency" className="min-h-12 rounded-2xl border border-[#dce5df] px-4">
@@ -2155,6 +2308,7 @@ function AdminShell({ children, title, kicker, description }: { children: React.
       label: 'Settings',
       items: [
         { label: 'Team access', href: '/admin/users', icon: <UsersRound size={18} /> },
+        { label: 'Audit history', href: '/admin/audit', icon: <History size={18} /> },
         { label: 'Data sync', href: '/admin/sync', icon: <DatabaseZap size={18} /> },
       ],
     },
@@ -2584,10 +2738,7 @@ function LeadEditForm({ lead, mutation }: { lead: Lead; mutation: LeadMutation }
           Preferred time
           <select name="preferred_time" defaultValue={lead.preferred_time || ''} className="min-h-12 w-full min-w-0 rounded-2xl border border-[#dce5df] bg-white px-4">
             <option value="">Not provided</option>
-            <option value="morning">Morning</option>
-            <option value="afternoon">Afternoon</option>
-            <option value="evening">Evening</option>
-            <option value="flexible">Flexible</option>
+            {preferredTimeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
         </label>
         <Input name="target_price" label="Target price" defaultValue={lead.target_price ? String(lead.target_price) : ''} type="number" min="0" step="1000" />
@@ -3438,9 +3589,17 @@ function AdminShowingsPage() {
 function AdminUsersPage() {
   const { data, isLoading, isError, refetch } = useQuery({ queryKey: ['admin-users'], queryFn: fetchAdminUsers })
   const [filter, setFilter] = useState<'staff' | 'consumers' | 'all'>('staff')
+  const [inviteFormVersion, setInviteFormVersion] = useState(0)
   const mutation = useMutation({
     mutationFn: ({ id, payload }: { id: number; payload: Record<string, unknown> }) => updateAdminUser(id, payload),
     onSuccess: () => refetch(),
+  })
+  const createMutation = useMutation({
+    mutationFn: createAdminUser,
+    onSuccess: () => {
+      setInviteFormVersion((version) => version + 1)
+      refetch()
+    },
   })
   const users = data?.users ?? []
   const brokerages = data?.brokerages ?? []
@@ -3460,7 +3619,10 @@ function AdminUsersPage() {
         {isLoading && <StateCard>Loading users...</StateCard>}
         {isError && <StateCard tone="error">Unable to load users. Platform admin access is required.</StateCard>}
         {mutation.isError && <StateCard tone="error">{displayErrorMessage(mutation.error, 'Unable to update user.')}</StateCard>}
-        <div className="mb-5 overflow-x-auto rounded-[1.25rem] bg-white p-1.5 shadow-sm sm:rounded-[1.5rem] sm:p-2">
+        {createMutation.isError && <StateCard tone="error">{displayErrorMessage(createMutation.error, 'Unable to create user.')}</StateCard>}
+        <InviteUserForm key={inviteFormVersion} brokerages={brokerages} saving={createMutation.isPending} onCreate={(payload) => createMutation.mutate(payload)} />
+        <RoleMatrix />
+        <div className="mb-5 mt-5 overflow-x-auto rounded-[1.25rem] bg-white p-1.5 shadow-sm sm:rounded-[1.5rem] sm:p-2">
           <div className="flex min-w-max items-center gap-1.5 sm:min-w-0 sm:flex-wrap sm:gap-2">
             {filterTabs.map((tab) => (
               <button
@@ -3486,6 +3648,146 @@ function AdminUsersPage() {
   )
 }
 
+function RoleMatrix() {
+  const [expanded, setExpanded] = useState(false)
+  const roles = [
+    {
+      role: 'Consumer',
+      access: 'Public browsing, saved homes, profile, own request history.',
+      notes: 'No admin access.',
+    },
+    {
+      role: 'Agent',
+      access: 'Assigned leads/showings, scoped CRM notes and tasks.',
+      notes: 'Requires brokerage; creates assignable agent profile.',
+    },
+    {
+      role: 'Brokerage admin',
+      access: 'Brokerage leads, showings, users, agents, audit history.',
+      notes: 'For office managers/brokers.',
+    },
+    {
+      role: 'Platform admin',
+      access: 'All brokerages, global audit, platform user lifecycle.',
+      notes: 'Use only for Hafa Homes operators.',
+    },
+  ]
+
+  return (
+    <section className="mt-5 rounded-[1.75rem] bg-white p-4 shadow-sm">
+      <button
+        type="button"
+        onClick={() => setExpanded((value) => !value)}
+        className="flex w-full flex-wrap items-center justify-between gap-3 text-left"
+        aria-expanded={expanded}
+      >
+        <span>
+          <span className="text-xs font-bold uppercase tracking-[0.22em] text-[#0f705e]">Role matrix</span>
+          <span className="mt-1 block text-xl font-semibold tracking-[-0.04em] text-[#17211f]">Choose the smallest role that gets the job done.</span>
+        </span>
+        <span className="rounded-full border border-[#d7ded9] px-4 py-2 text-sm font-bold text-[#0f3d35]">{expanded ? 'Hide' : 'Show roles'}</span>
+      </button>
+      {expanded && (
+        <div className="mt-4 grid gap-2 xl:grid-cols-4">
+          {roles.map((item) => (
+            <article key={item.role} className="rounded-2xl border border-[#dce5df] bg-[#fbfaf7] p-3">
+              <h3 className="text-base font-bold tracking-[-0.03em] text-[#17211f]">{item.role}</h3>
+              <p className="mt-2 text-sm leading-5 text-[#53645f]">{item.access}</p>
+              <p className="mt-3 rounded-xl bg-[#e9f5ef] px-3 py-2 text-xs font-semibold leading-5 text-[#0f3d35]">{item.notes}</p>
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
+  )
+}
+
+function InviteUserForm({ brokerages, onCreate, saving }: { brokerages: Brokerage[]; onCreate: (payload: Record<string, unknown>) => void; saving: boolean }) {
+  const [role, setRole] = useState('agent')
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const form = new FormData(event.currentTarget)
+    const brokerageId = String(form.get('brokerage_id') || '')
+    const selectedRole = String(form.get('role') || role)
+    const payload: Record<string, unknown> = {
+      email: String(form.get('email') || '').trim(),
+      first_name: String(form.get('first_name') || '').trim(),
+      last_name: String(form.get('last_name') || '').trim(),
+      phone: String(form.get('phone') || '').trim(),
+      preferred_contact_method: String(form.get('preferred_contact_method') || 'email'),
+      role: selectedRole,
+      brokerage_membership: brokerageId ? {
+        brokerage_id: Number(brokerageId),
+        role: selectedRole === 'brokerage_admin' ? 'brokerage_admin' : 'agent',
+        status: 'invited',
+      } : undefined,
+      agent_profile: selectedRole === 'agent' ? {
+        create: true,
+        brokerage_id: brokerageId ? Number(brokerageId) : undefined,
+      } : undefined,
+    }
+    onCreate(payload)
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="rounded-[2rem] bg-[#0f3d35] p-5 text-white shadow-xl shadow-[#0f3d35]/15">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#bdebdc]">Invite-only access</p>
+          <h2 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">Whitelist a user before they sign in.</h2>
+          <p className="mt-2 text-sm leading-6 text-white/70">Creating a staff record here lets that email accept a Clerk invite and inherit the correct Hafa Homes role. Agent users also get an assignable agent profile automatically.</p>
+        </div>
+        <button disabled={saving} className="rounded-full bg-white px-5 py-3 text-sm font-bold text-[#0f3d35] disabled:opacity-60">{saving ? 'Creating...' : 'Create invite'}</button>
+      </div>
+      <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <label className="grid gap-2 text-sm font-semibold text-white/86">
+          Email
+          <input name="email" type="email" required className="min-h-12 rounded-2xl border border-white/10 bg-white/10 px-4 text-white placeholder:text-white/45 outline-none focus:border-[#bdebdc]" />
+        </label>
+        <label className="grid gap-2 text-sm font-semibold text-white/86">
+          First name
+          <input name="first_name" className="min-h-12 rounded-2xl border border-white/10 bg-white/10 px-4 text-white placeholder:text-white/45 outline-none focus:border-[#bdebdc]" />
+        </label>
+        <label className="grid gap-2 text-sm font-semibold text-white/86">
+          Last name
+          <input name="last_name" className="min-h-12 rounded-2xl border border-white/10 bg-white/10 px-4 text-white placeholder:text-white/45 outline-none focus:border-[#bdebdc]" />
+        </label>
+        <label className="grid gap-2 text-sm font-semibold text-white/86">
+          Phone
+          <input name="phone" inputMode="tel" className="min-h-12 rounded-2xl border border-white/10 bg-white/10 px-4 text-white placeholder:text-white/45 outline-none focus:border-[#bdebdc]" />
+        </label>
+        <label className="grid gap-2 text-sm font-semibold text-white/86">
+          Product role
+          <select name="role" value={role} onChange={(event) => setRole(event.target.value)} className="min-h-12 rounded-2xl border border-white/10 bg-[#174c43] px-4 text-white outline-none focus:border-[#bdebdc]">
+            <option value="agent">Agent</option>
+            <option value="brokerage_admin">Brokerage admin</option>
+            <option value="platform_admin">Platform admin</option>
+            <option value="consumer">Consumer</option>
+          </select>
+        </label>
+        <label className="grid gap-2 text-sm font-semibold text-white/86">
+          Brokerage
+          <select name="brokerage_id" className="min-h-12 rounded-2xl border border-white/10 bg-[#174c43] px-4 text-white outline-none focus:border-[#bdebdc]">
+            <option value="">No brokerage</option>
+            {brokerages.map((brokerage) => <option key={brokerage.id} value={brokerage.id}>{brokerage.name}</option>)}
+          </select>
+        </label>
+        <label className="grid gap-2 text-sm font-semibold text-white/86">
+          Preferred contact
+          <select name="preferred_contact_method" defaultValue="email" className="min-h-12 rounded-2xl border border-white/10 bg-[#174c43] px-4 text-white outline-none focus:border-[#bdebdc]">
+            {preferredContactOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </label>
+        <div className="self-end rounded-2xl border border-white/10 bg-white/8 px-4 py-3 text-sm leading-6 text-white/76">
+          <strong className="block text-white">Agent profile</strong>
+          Agent role creates one automatically so the user can be assigned leads and showings.
+        </div>
+      </div>
+    </form>
+  )
+}
+
 function UserRoleCard({ user, brokerages, agents, onSave, saving }: { user: AdminUser; brokerages: Brokerage[]; agents: Agent[]; onSave: (payload: Record<string, unknown>) => void; saving: boolean }) {
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -3493,7 +3795,12 @@ function UserRoleCard({ user, brokerages, agents, onSave, saving }: { user: Admi
     const brokerageId = String(form.get('brokerage_id') || '')
     const agentId = String(form.get('agent_id') || '')
     const payload: Record<string, unknown> = {
+      first_name: String(form.get('first_name') || '').trim(),
+      last_name: String(form.get('last_name') || '').trim(),
+      phone: String(form.get('phone') || '').trim(),
+      preferred_contact_method: String(form.get('preferred_contact_method') || 'email'),
       role: String(form.get('role') || user.role),
+      archived: form.get('archived') === 'on',
       brokerage_membership: brokerageId ? {
         brokerage_id: Number(brokerageId),
         role: String(form.get('membership_role') || 'agent'),
@@ -3511,13 +3818,31 @@ function UserRoleCard({ user, brokerages, agents, onSave, saving }: { user: Admi
     <form onSubmit={handleSubmit} className="rounded-[1.75rem] bg-white p-4 shadow-sm sm:rounded-[2rem] sm:p-5">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#0f705e]">{user.role.replaceAll('_', ' ')}</p>
+          <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#0f705e]">{user.role.replaceAll('_', ' ')} · {user.archived_at ? 'Archived' : user.invitation_status || 'active'}</p>
           <h2 className="mt-2 text-xl font-semibold tracking-[-0.04em] sm:text-2xl">{user.full_name || user.email}</h2>
-          <p className="mt-1 text-sm font-semibold text-[#66746f]">{user.email}</p>
+          <p className="mt-1 text-sm font-semibold text-[#66746f]">{user.email}{user.phone ? ` · ${user.phone}` : ''}</p>
         </div>
         <button disabled={saving} className="w-full rounded-full bg-[#0f3d35] px-5 py-3 text-sm font-bold text-white disabled:opacity-60 sm:w-auto">{saving ? 'Saving...' : 'Save access'}</button>
       </div>
       <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+        <label className="grid gap-2 text-sm font-semibold text-[#304942]">
+          First name
+          <input name="first_name" defaultValue={user.first_name || ''} className="min-h-12 w-full min-w-0 rounded-2xl border border-[#dce5df] px-4" />
+        </label>
+        <label className="grid gap-2 text-sm font-semibold text-[#304942]">
+          Last name
+          <input name="last_name" defaultValue={user.last_name || ''} className="min-h-12 w-full min-w-0 rounded-2xl border border-[#dce5df] px-4" />
+        </label>
+        <label className="grid gap-2 text-sm font-semibold text-[#304942]">
+          Phone
+          <input name="phone" defaultValue={user.phone || ''} inputMode="tel" className="min-h-12 w-full min-w-0 rounded-2xl border border-[#dce5df] px-4" />
+        </label>
+        <label className="grid gap-2 text-sm font-semibold text-[#304942]">
+          Preferred contact
+          <select name="preferred_contact_method" defaultValue={user.preferred_contact_method || 'email'} className="min-h-12 w-full min-w-0 rounded-2xl border border-[#dce5df] px-4">
+            {preferredContactOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </label>
         <label className="grid gap-2 text-sm font-semibold text-[#304942]">
           Product role
           <select name="role" defaultValue={user.role} className="min-h-12 w-full min-w-0 rounded-2xl border border-[#dce5df] px-4">
@@ -3551,14 +3876,66 @@ function UserRoleCard({ user, brokerages, agents, onSave, saving }: { user: Admi
           </select>
         </label>
         <label className="grid gap-2 text-sm font-semibold text-[#304942]">
-          Agent profile
+          Assignable agent profile
+          <span className="text-xs font-medium leading-5 text-[#66746f]">Only needed when this user should be assigned leads/showings.</span>
           <select name="agent_id" defaultValue={linkedAgent?.id ?? ''} className="min-h-12 w-full min-w-0 rounded-2xl border border-[#dce5df] px-4">
             <option value="">No linked agent</option>
             {agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name} · {agent.brokerage?.name}</option>)}
           </select>
         </label>
+        <label className="flex min-h-12 items-center gap-3 self-end rounded-2xl border border-[#dce5df] px-4 text-sm font-semibold text-[#304942]">
+          <input name="archived" type="checkbox" defaultChecked={Boolean(user.archived_at)} className="h-4 w-4 rounded border-[#dce5df]" />
+          Archive account
+        </label>
       </div>
     </form>
+  )
+}
+
+function AdminAuditPage() {
+  const { data, isLoading, isError, refetch } = useQuery({ queryKey: ['audit-events'], queryFn: fetchAuditEvents })
+  const events = data?.audit_events ?? []
+
+  return (
+    <AdminShell kicker="Audit history" title="Platform audit log" description="A global trail for profile, admin, lead, notification, and showing changes.">
+      <section className="mx-auto max-w-7xl px-4 pb-10 sm:px-5">
+        {isLoading && <StateCard>Loading audit history...</StateCard>}
+        {isError && <StateCard tone="error">Unable to load audit history.</StateCard>}
+        <div className="mb-4 flex justify-end">
+          <button type="button" onClick={() => refetch()} className="rounded-full border border-[#d7ded9] bg-white px-4 py-2 text-sm font-bold text-[#0f3d35]">Refresh</button>
+        </div>
+        <div className="overflow-hidden rounded-[2rem] bg-white shadow-sm">
+          {events.map((event) => (
+            <article key={event.id} className="border-b border-[#edf0ec] p-5 last:border-b-0">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#0f705e]">{event.action.replaceAll('_', ' ')}</p>
+                  <h2 className="mt-2 text-xl font-semibold tracking-[-0.04em]">{event.target_label || `${event.target_type || 'Record'} #${event.target_id || event.id}`}</h2>
+                  <p className="mt-1 text-sm font-semibold text-[#66746f]">
+                    {event.actor?.full_name || event.actor_email || 'System'} · {formatDateTime(event.created_at)}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2 text-xs font-bold text-[#53645f]">
+                  {event.lead_id && <Link to={`/admin/leads/${event.lead_id}`} className="rounded-full bg-[#e9f5ef] px-3 py-2 text-[#0f3d35]">Lead #{event.lead_id}</Link>}
+                  {event.target_type && <span className="rounded-full bg-[#f6f1e8] px-3 py-2">{event.target_type}</span>}
+                </div>
+              </div>
+              {event.changes && Object.keys(event.changes).length > 0 && (
+                <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                  {Object.entries(event.changes).map(([field, change]) => (
+                    <div key={field} className="rounded-2xl bg-[#f6f1e8] p-3 text-xs">
+                      <p className="font-bold uppercase tracking-[0.16em] text-[#7b8a84]">{field.replaceAll('_', ' ')}</p>
+                      <p className="mt-1 font-semibold text-[#304942]">{String(change.from ?? 'blank')} → {String(change.to ?? 'blank')}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </article>
+          ))}
+          {events.length === 0 && !isLoading && <div className="p-5"><StateCard>No audit events yet.</StateCard></div>}
+        </div>
+      </section>
+    </AdminShell>
   )
 }
 
@@ -3622,6 +3999,14 @@ function MobileMenuDrawer({ open, onClose }: { open: boolean; onClose: () => voi
 
 function PriceTrackerModal({ listing, open, onClose }: { listing: Listing; open: boolean; onClose: () => void }) {
   const mutation = useMutation({ mutationFn: createLead })
+  const { isClerkEnabled, isSignedIn, userId } = useAuthContext()
+  const { data: meData } = useQuery({
+    queryKey: ['me', userId, 'price-tracker-prefill'],
+    queryFn: fetchMe,
+    enabled: open && isClerkEnabled && isSignedIn && Boolean(userId),
+    retry: false,
+  })
+  const profile = meData?.user
   if (!open) return null
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -3636,6 +4021,8 @@ function PriceTrackerModal({ listing, open, onClose }: { listing: Listing; open:
       phone: String(form.get('phone') || ''),
       preferred_contact_method: 'email',
       target_price: String(form.get('target_price') || ''),
+      source_campaign: currentUtmCampaign(),
+      source_url: window.location.href,
       message: `Target price: ${String(form.get('target_price') || '')}`, 
     })
   }
@@ -3662,9 +4049,9 @@ function PriceTrackerModal({ listing, open, onClose }: { listing: Listing; open:
             <p className="mt-3 text-sm leading-6 text-[#66746f]">Current price: <strong>{currency(listing.price, listing.listing_kind)}</strong></p>
             <div className="mt-5 grid gap-3">
               <Input name="target_price" label="Target price" inputMode="numeric" placeholder="450000" required />
-              <Input name="email" label="Email for alerts" type="email" required />
-              <Input name="name" label="Name" defaultValue="Hafa Homes user" />
-              <Input name="phone" label="Phone optional" defaultValue="+1671" inputMode="tel" />
+              <Input name="email" label="Email for alerts" type="email" defaultValue={profile?.email || ''} required />
+              <Input name="name" label="Name" defaultValue={profile?.full_name || 'Hafa Homes user'} />
+              <Input name="phone" label="Phone optional" defaultValue={profile?.phone || '+1671'} inputMode="tel" />
             </div>
             {mutation.isError && <p className="mt-3 text-sm font-semibold text-red-700">Unable to save tracker right now.</p>}
             <div className="mt-5 grid grid-cols-2 gap-3">
@@ -3680,6 +4067,14 @@ function PriceTrackerModal({ listing, open, onClose }: { listing: Listing; open:
 
 function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean; onClose: () => void }) {
   const mutation = useMutation({ mutationFn: createLead })
+  const { isClerkEnabled, isSignedIn, userId } = useAuthContext()
+  const { data: meData } = useQuery({
+    queryKey: ['me', userId, 'lead-prefill'],
+    queryFn: fetchMe,
+    enabled: open && isClerkEnabled && isSignedIn && Boolean(userId),
+    retry: false,
+  })
+  const profile = meData?.user
   if (!open) return null
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -3696,6 +4091,8 @@ function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean
       preferred_time: String(form.get('preferred_time') || 'morning'),
       preferred_tour_date: String(form.get('preferred_tour_date') || ''),
       tour_type: String(form.get('tour_type') || 'in_person'),
+      source_campaign: currentUtmCampaign(),
+      source_url: window.location.href,
       message: String(form.get('message') || ''),
     })
   }
@@ -3749,23 +4146,19 @@ function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean
               ))}
             </div>
             <div className="mt-4 grid gap-3 md:mt-5">
-              <Input name="name" label="Name" required />
-              <Input name="email" label="Email" type="email" required />
-              <Input name="phone" label="Phone" defaultValue="+1671" inputMode="tel" />
+              <Input name="name" label="Name" defaultValue={profile?.full_name || ''} required />
+              <Input name="email" label="Email" type="email" defaultValue={profile?.email || ''} required />
+              <Input name="phone" label="Phone" defaultValue={profile?.phone || '+1671'} inputMode="tel" />
               <label className="grid gap-2 text-sm font-semibold text-[#304942]">
                 Preferred contact
-                <select name="preferred_contact_method" className="min-h-12 rounded-2xl border border-[#dce5df] px-4">
-                  <option value="phone">Phone</option>
-                  <option value="email">Email</option>
-                  <option value="text">Text</option>
+                <select name="preferred_contact_method" defaultValue={profile?.preferred_contact_method || 'phone'} className="min-h-12 rounded-2xl border border-[#dce5df] px-4">
+                  {preferredContactOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                 </select>
               </label>
               <label className="grid gap-2 text-sm font-semibold text-[#304942]">
                 Select time
-                <select name="preferred_time" className="min-h-12 rounded-2xl border border-[#dce5df] px-4">
-                  <option value="morning">Morning</option>
-                  <option value="afternoon">Afternoon</option>
-                  <option value="evening">Evening</option>
+                <select name="preferred_time" defaultValue="flexible" className="min-h-12 rounded-2xl border border-[#dce5df] px-4">
+                  {preferredTimeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                 </select>
               </label>
               <label className="grid gap-2 text-sm font-semibold text-[#304942]">

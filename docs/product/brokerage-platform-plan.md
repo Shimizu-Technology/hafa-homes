@@ -1,6 +1,6 @@
 # Hafa Homes Brokerage Platform Plan
 
-_Last updated: 2026-06-10 after PR #10 broker CRM expansion merged._
+_Last updated: 2026-06-10 after PR #11 account deletion/App Store resubmission and admin/notification QA findings._
 
 ## Positioning
 
@@ -81,9 +81,11 @@ Completed platform foundations now include:
 
 The product can now credibly demo a broker lead workflow, not only a consumer listing browser.
 
-Next gap:
+Next gaps:
 
-> Domain-first broker-branded public website/app layer so each brokerage can see how Hafa Homes could power its existing or future customer-facing domain/app experience.
+> First, harden account/admin/notification operations so broker demos feel credible: profile phone/preferred-contact prefill, admin user lifecycle, global audit history, notification link/copy polish, and consumer/admin form parity.
+
+> Then, build the domain-first broker-branded public website/app layer so each brokerage can see how Hafa Homes could power its existing or future customer-facing domain/app experience.
 
 ## Product architecture implications
 
@@ -101,14 +103,20 @@ Continue building platform foundations:
 
 ## Near-term product priorities
 
-1. Domain-first broker-branded website/app foundation.
-2. Brokerage-scoped public search/listing pages.
-3. Agent roster/profile pages.
-4. Brokerage-routed lead forms.
-5. Lead quality and CRM automation follow-up.
-6. MLS/Flexmls/GAR discovery and adapter planning.
-7. Property-management preview surface.
-8. Production demo hardening and TestFlight refresh when ready.
+1. Consumer profile/settings with phone/preferred-contact fields and signed-in lead-form prefill.
+2. Consumer/admin form parity and notification link/copy polish.
+3. Admin-created user/invite/archive lifecycle.
+4. Global audit log/history.
+5. Domain-first broker-branded website/app foundation.
+6. Brokerage-scoped public search/listing pages.
+7. Agent roster/profile pages.
+8. Brokerage-routed lead forms.
+9. Lead quality and CRM automation follow-up.
+10. MLS/Flexmls/GAR discovery and adapter planning.
+11. Property-management preview surface.
+12. Production demo hardening and TestFlight refresh when ready.
+
+See `docs/product/admin-ops-notification-hardening-plan.md`.
 
 ## August 1 target
 
