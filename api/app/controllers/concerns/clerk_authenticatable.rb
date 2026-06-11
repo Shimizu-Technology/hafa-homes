@@ -79,6 +79,8 @@ module ClerkAuthenticatable
 
     user = User.find_by(clerk_id: clerk_id)
     if user
+      return user if user.archived?
+
       updates = { last_sign_in_at: Time.current }
       updates[:email] = email if email.present? && email.downcase != user.email
       updates[:first_name] = first_name if user.first_name.blank? && first_name.present?
