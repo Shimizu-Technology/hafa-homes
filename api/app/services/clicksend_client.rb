@@ -55,6 +55,7 @@ class ClicksendClient
       digits = phone.to_s.gsub(/\D/, "")
       return "+1#{digits}" if digits.match?(/\A671\d{7}\z/)
       return "+#{digits}" if digits.match?(/\A1671\d{7}\z/)
+      return "+#{digits}" if digits.match?(/\A1\d{10}\z/)
       return "+1671#{digits}" if digits.match?(/\A\d{7}\z/)
       return "+1#{digits}" if digits.match?(/\A\d{10}\z/)
 

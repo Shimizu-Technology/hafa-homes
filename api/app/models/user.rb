@@ -31,6 +31,7 @@ class User < ApplicationRecord
   validates :role, inclusion: { in: ROLES }
   validates :preferred_contact_method, inclusion: { in: CONTACT_METHODS }, allow_blank: true
   validates :invitation_status, inclusion: { in: %w[pending accepted revoked failed] }
+  validate :phone_number_format, if: :will_save_change_to_phone?
 
   before_validation :set_defaults
   before_validation :normalize_phone_number
@@ -156,6 +157,16 @@ class User < ApplicationRecord
   end
 
   def normalize_phone_number
-    self.phone = ClicksendClient.normalize_phone(phone).presence if phone.present?
+    return if phone.blank?
+
+    normalized_phone = ClicksendClient.normalize_phone(phone)
+    self.phone = normalized_phone if normalized_phone.present?
+  end
+
+  def phone_number_format
+    return if phone.blank?
+    return if ClicksendClient.normalize_phone(phone).present?
+
+    errors.add(:phone, "must be a valid Guam or US phone number")
   end
 end

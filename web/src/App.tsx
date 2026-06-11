@@ -3645,54 +3645,55 @@ function AdminUsersPage() {
 }
 
 function RoleMatrix() {
+  const [expanded, setExpanded] = useState(false)
   const roles = [
     {
       role: 'Consumer',
-      bestFor: 'Public buyers, renters, owners, and saved-home users.',
-      access: 'Browse, save homes, manage profile, view their own request history.',
-      notes: 'No admin access. Public lead forms remain low-friction.',
+      access: 'Public browsing, saved homes, profile, own request history.',
+      notes: 'No admin access.',
     },
     {
       role: 'Agent',
-      bestFor: 'Individual agents who should work assigned leads.',
-      access: 'Staff inbox for their assigned leads/showings, CRM notes/tasks within scope.',
-      notes: 'Requires brokerage. Creates an assignable agent profile automatically.',
+      access: 'Assigned leads/showings, scoped CRM notes and tasks.',
+      notes: 'Requires brokerage; creates assignable agent profile.',
     },
     {
       role: 'Brokerage admin',
-      bestFor: 'Broker/manager running a brokerage workspace.',
-      access: 'Brokerage-scoped leads, showings, users, agents, and audit history.',
-      notes: 'Use when they manage the office, not just their own leads.',
+      access: 'Brokerage leads, showings, users, agents, audit history.',
+      notes: 'For office managers/brokers.',
     },
     {
       role: 'Platform admin',
-      bestFor: 'Hafa Homes operators and Shimizu support.',
-      access: 'All brokerages, global audit history, platform user lifecycle.',
-      notes: 'Highest-trust role. Keep limited to core operators.',
+      access: 'All brokerages, global audit, platform user lifecycle.',
+      notes: 'Use only for Hafa Homes operators.',
     },
   ]
 
   return (
-    <section className="mt-5 rounded-[2rem] bg-white p-5 shadow-sm">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#0f705e]">Role matrix</p>
-          <h2 className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-[#17211f]">Choose the smallest role that gets the job done.</h2>
+    <section className="mt-5 rounded-[1.75rem] bg-white p-4 shadow-sm">
+      <button
+        type="button"
+        onClick={() => setExpanded((value) => !value)}
+        className="flex w-full flex-wrap items-center justify-between gap-3 text-left"
+        aria-expanded={expanded}
+      >
+        <span>
+          <span className="text-xs font-bold uppercase tracking-[0.22em] text-[#0f705e]">Role matrix</span>
+          <span className="mt-1 block text-xl font-semibold tracking-[-0.04em] text-[#17211f]">Choose the smallest role that gets the job done.</span>
+        </span>
+        <span className="rounded-full border border-[#d7ded9] px-4 py-2 text-sm font-bold text-[#0f3d35]">{expanded ? 'Hide' : 'Show roles'}</span>
+      </button>
+      {expanded && (
+        <div className="mt-4 grid gap-2 xl:grid-cols-4">
+          {roles.map((item) => (
+            <article key={item.role} className="rounded-2xl border border-[#dce5df] bg-[#fbfaf7] p-3">
+              <h3 className="text-base font-bold tracking-[-0.03em] text-[#17211f]">{item.role}</h3>
+              <p className="mt-2 text-sm leading-5 text-[#53645f]">{item.access}</p>
+              <p className="mt-3 rounded-xl bg-[#e9f5ef] px-3 py-2 text-xs font-semibold leading-5 text-[#0f3d35]">{item.notes}</p>
+            </article>
+          ))}
         </div>
-        <p className="max-w-2xl text-sm leading-6 text-[#66746f]">Non-consumer roles whitelist the email for staff access after Clerk sign-in. Brokerage roles should be paired with a brokerage membership so tenant scope is clear.</p>
-      </div>
-      <div className="mt-5 grid gap-3 xl:grid-cols-4">
-        {roles.map((item) => (
-          <article key={item.role} className="rounded-3xl border border-[#dce5df] bg-[#fbfaf7] p-4">
-            <h3 className="text-lg font-bold tracking-[-0.03em] text-[#17211f]">{item.role}</h3>
-            <p className="mt-2 text-xs font-bold uppercase tracking-[0.16em] text-[#0f705e]">Best for</p>
-            <p className="mt-1 text-sm leading-6 text-[#53645f]">{item.bestFor}</p>
-            <p className="mt-3 text-xs font-bold uppercase tracking-[0.16em] text-[#0f705e]">Can access</p>
-            <p className="mt-1 text-sm leading-6 text-[#53645f]">{item.access}</p>
-            <p className="mt-3 rounded-2xl bg-[#e9f5ef] p-3 text-xs font-semibold leading-5 text-[#0f3d35]">{item.notes}</p>
-          </article>
-        ))}
-      </div>
+      )}
     </section>
   )
 }

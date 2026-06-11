@@ -1081,24 +1081,6 @@ function SavedScreen({ listings, onOpen, onToggleSaved }: { listings: Listing[];
 
 function MoreScreen({ auth, onOpenAuth, onNavigateTab }: { auth: AppAuth; onOpenAuth: (prompt?: AuthPrompt) => void; onNavigateTab: (tab: TabKey) => void }) {
   const [page, setPage] = useState<'home' | 'profile'>('home')
-  const [profileFirstName, setProfileFirstName] = useState<string | null>(null)
-  const firstName = profileFirstName || auth.userName?.split(' ')[0]
-
-  useEffect(() => {
-    let cancelled = false
-    async function loadProfileName() {
-      if (!auth.isSignedIn || !auth.getToken || page !== 'home') return
-      try {
-        const result = await fetchMe(auth.getToken)
-        const name = result.user.first_name || result.user.full_name?.split(' ')[0]
-        if (!cancelled) setProfileFirstName(name || null)
-      } catch (profileError) {
-        console.warn('Unable to load More profile name', profileError)
-      }
-    }
-    loadProfileName()
-    return () => { cancelled = true }
-  }, [auth.getToken, auth.isSignedIn, page])
 
   if (page === 'profile') {
     return <ProfileSettingsScreen auth={auth} onOpenAuth={onOpenAuth} onBack={() => setPage('home')} />
@@ -1112,17 +1094,6 @@ function MoreScreen({ auth, onOpenAuth, onNavigateTab }: { auth: AppAuth; onOpen
         <Text style={styles.screenCopy}>Manage your account, jump into saved homes, track requests, and open island search resources as the app grows.</Text>
       </View>
 
-      <View style={styles.moreHeroCard}>
-        <Text style={styles.moreHeroKicker}>Account</Text>
-        <Text style={styles.moreHeroTitle}>{auth.isSignedIn ? `${firstName || 'Your'} profile is ready` : 'Create your Guam home profile'}</Text>
-        <Text style={styles.moreHeroCopy}>{auth.isSignedIn ? 'Keep your contact details current so showings and price alerts are easier to coordinate.' : 'Sign in to sync saved homes, request history, and showing details across devices.'}</Text>
-        <Pressable
-          style={styles.moreHeroCta}
-          onPress={() => auth.isSignedIn ? setPage('profile') : onOpenAuth({ title: 'Create your Hafa Homes account', initialMode: 'sign-up' })}
-        >
-          <Text style={styles.moreHeroCtaText}>{auth.isSignedIn ? 'Open profile & settings' : 'Sign in or create account'}</Text>
-        </Pressable>
-      </View>
 
       <View style={styles.moreMenuSection}>
         <MoreMenuItem title="Profile & settings" copy="Edit name, phone, contact preference, sign out, or delete account." label="Account" onPress={() => auth.isSignedIn ? setPage('profile') : onOpenAuth()} />
@@ -1157,8 +1128,6 @@ function MoreMenuItem({ title, copy, label, onPress }: { title: string; copy: st
 }
 
 function ProfileSettingsScreen({ auth, onOpenAuth, onBack }: { auth: AppAuth; onOpenAuth: (prompt?: AuthPrompt) => void; onBack: () => void }) {
-  const firstName = auth.userName?.split(' ')[0]
-
   return (
     <ScrollView contentContainerStyle={styles.listContent}>
       <View style={styles.profileScreenHeader}>
@@ -1166,7 +1135,6 @@ function ProfileSettingsScreen({ auth, onOpenAuth, onBack }: { auth: AppAuth; on
           <Text style={styles.profileBackText}>Back</Text>
         </Pressable>
         <Text style={styles.kicker}>Profile & settings</Text>
-        <Text style={styles.screenTitle}>{firstName ? `${firstName}'s profile & settings` : 'Profile & settings'}</Text>
         <Text style={styles.screenCopy}>Edit your account details, choose how agents should contact you, or manage account deletion.</Text>
       </View>
       {auth.clerkEnabled ? <AccountCard auth={auth} onOpenAuth={onOpenAuth} /> : <AuthUnavailableCard />}
@@ -1393,37 +1361,39 @@ function AccountCard({ auth, onOpenAuth }: { auth: AppAuth; onOpenAuth: (prompt?
     )
   }
 
-  const profileTitle = [firstName, lastName].filter(Boolean).join(' ').trim() || profile?.full_name || auth.userName || auth.userEmail || 'Hafa Homes account'
-
   if (auth.isSignedIn) {
     return (
-      <View style={styles.accountCard}>
-        <Text style={styles.accountKicker}>Profile & settings</Text>
-        <Text style={styles.accountTitle}>{profileTitle}</Text>
-        <Text style={styles.accountCopy}>Keep your phone and preferred contact method current so showing requests are easier to complete.</Text>
-        {profileLoading && <ActivityIndicator color={colors.green} style={{ marginTop: 12 }} />}
-        <View style={styles.profileForm}>
-          <RequestInput label="First name" value={firstName} onChangeText={setFirstName} labelStyle={styles.profileFieldLabel} />
-          <RequestInput label="Last name" value={lastName} onChangeText={setLastName} labelStyle={styles.profileFieldLabel} />
-          <RequestInput label="Phone" value={phone} onChangeText={setPhone} keyboardType="phone-pad" labelStyle={styles.profileFieldLabel} />
-          <Text style={styles.fieldLabel}>Preferred contact</Text>
-          <View style={styles.segmentRow}>
+      <View style={styles.profileSettingsStack}>
+        {profileLoading && <ActivityIndicator color={colors.green} style={{ marginTop: 4 }} />}
+        <View style={styles.profileDetailsPanel}>
+          <Text style={styles.profileSectionTitle}>Contact details</Text>
+          <Text style={styles.profileSectionCopy}>These details prefill showing requests and price alerts.</Text>
+          <RequestInput label="First name" value={firstName} onChangeText={setFirstName} />
+          <RequestInput label="Last name" value={lastName} onChangeText={setLastName} />
+          <RequestInput label="Phone" value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="+1671" />
+          <Text style={styles.requestLabel}>Preferred contact</Text>
+          <View style={styles.contactSegmentRow}>
             {preferredContactOptions.map((option) => (
-              <Pressable key={option.value} style={[styles.segmentOption, preferredContact === option.value && styles.segmentOptionActive]} onPress={() => setPreferredContact(option.value as 'phone' | 'text' | 'email')}>
-                <Text style={[styles.segmentOptionText, preferredContact === option.value && styles.segmentOptionTextActive]}>{option.label}</Text>
+              <Pressable key={option.value} style={[styles.contactSegment, preferredContact === option.value && styles.contactSegmentActive]} onPress={() => setPreferredContact(option.value as 'phone' | 'text' | 'email')}>
+                <Text style={[styles.contactSegmentText, preferredContact === option.value && styles.contactSegmentTextActive]}>{option.label}</Text>
               </Pressable>
             ))}
           </View>
-          {profileError && <Text style={styles.dangerError}>{profileError}</Text>}
+          {profileError && <Text style={styles.profileErrorText}>{profileError}</Text>}
           <Pressable style={[styles.primaryCta, profileSaving && styles.ctaDisabled]} onPress={handleSaveProfile} disabled={profileSaving}>
             <Text style={styles.primaryCtaText}>{profileSaving ? 'Saving profile...' : 'Save profile'}</Text>
           </Pressable>
         </View>
-        <Pressable style={styles.secondaryCta} onPress={() => auth.signOut?.()} disabled={deletingAccount}><Text style={styles.secondaryCtaText}>Sign out</Text></Pressable>
-        <View style={styles.dangerZone}>
-          <Text style={styles.dangerTitle}>Delete account</Text>
-          <Text style={styles.dangerCopy}>Permanently remove your Hafa Homes account and synced saved homes. Public showing/contact requests are preserved for follow-up, but disconnected from your account.</Text>
-          {deleteError && <Text style={styles.dangerError}>{deleteError}</Text>}
+
+        <View style={styles.profileActionsPanel}>
+          <Text style={styles.profileSectionTitle}>Account access</Text>
+          <Pressable style={styles.secondaryCta} onPress={() => auth.signOut?.()} disabled={deletingAccount}><Text style={styles.secondaryCtaText}>Sign out</Text></Pressable>
+        </View>
+
+        <View style={styles.deleteAccountPanel}>
+          <Text style={styles.deleteAccountTitle}>Delete account</Text>
+          <Text style={styles.deleteAccountCopy}>Permanently remove your Hafa Homes account and synced saved homes. Public showing/contact requests are preserved for follow-up, but disconnected from your account.</Text>
+          {deleteError && <Text style={styles.profileErrorText}>{deleteError}</Text>}
           <Pressable style={[styles.dangerCta, deletingAccount && styles.ctaDisabled]} onPress={confirmDeleteAccount} disabled={deletingAccount}>
             <Text style={styles.dangerCtaText}>{deletingAccount ? 'Deleting account...' : 'Delete account'}</Text>
           </Pressable>
@@ -1450,7 +1420,7 @@ function AuthModal({ open, prompt, onClose }: { open: boolean; prompt: AuthPromp
   const [mode, setMode] = useState<'sign-in' | 'sign-up'>('sign-in')
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
-  const [signupPhone, setSignupPhone] = useState('')
+  const [signupPhone, setSignupPhone] = useState('+1671')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [code, setCode] = useState('')
@@ -1464,7 +1434,7 @@ function AuthModal({ open, prompt, onClose }: { open: boolean; prompt: AuthPromp
     setMode(prompt?.initialMode ?? 'sign-in')
     setFirstName('')
     setLastName('')
-    setSignupPhone('')
+    setSignupPhone('+1671')
     setEmail('')
     setPassword('')
     setCode('')
@@ -1559,12 +1529,13 @@ function AuthModal({ open, prompt, onClose }: { open: boolean; prompt: AuthPromp
         }
       } else {
         if (!signUpLoaded) return
+        const cleanedSignupPhone = signupPhone.trim()
         await signUp.create({
           emailAddress: email.trim(),
           password,
           firstName: firstName.trim(),
           lastName: lastName.trim() || undefined,
-          unsafeMetadata: signupPhone.trim() ? { phone: signupPhone.trim() } : undefined,
+          unsafeMetadata: cleanedSignupPhone && cleanedSignupPhone !== '+1671' ? { phone: cleanedSignupPhone } : undefined,
         })
         await signUp.prepareEmailAddressVerification({ strategy: 'email_code' })
         setPendingVerification(true)
@@ -1661,7 +1632,7 @@ function AuthModal({ open, prompt, onClose }: { open: boolean; prompt: AuthPromp
                     <>
                       <RequestInput label="First name" value={firstName} onChangeText={setFirstName} placeholder="Leon" />
                       <RequestInput label="Last name" value={lastName} onChangeText={setLastName} placeholder="Shimizu" />
-                      <RequestInput label="Phone" value={signupPhone} onChangeText={setSignupPhone} keyboardType="phone-pad" placeholder="671-555-1234" />
+                      <RequestInput label="Phone" value={signupPhone} onChangeText={setSignupPhone} keyboardType="phone-pad" placeholder="+1671" />
                     </>
                   )}
                   <RequestInput label="Email" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" placeholder="you@example.com" />
@@ -2313,6 +2284,15 @@ const styles = StyleSheet.create({
   profileScreenHeader: { gap: 8, marginBottom: 4 },
   profileBackButton: { alignSelf: 'flex-start', backgroundColor: 'white', borderRadius: 999, paddingHorizontal: 16, paddingVertical: 10 },
   profileBackText: { color: colors.green, fontSize: 14, fontWeight: '900' },
+  profileSettingsStack: { gap: 12 },
+  profileDetailsPanel: { backgroundColor: 'white', borderColor: '#eadfce', borderRadius: 28, borderWidth: 1, gap: 12, padding: 16 },
+  profileActionsPanel: { backgroundColor: 'white', borderColor: '#eadfce', borderRadius: 24, borderWidth: 1, gap: 12, padding: 16 },
+  profileSectionTitle: { color: colors.ink, fontSize: 20, fontWeight: '900', letterSpacing: -0.4 },
+  profileSectionCopy: { color: colors.muted, fontSize: 13, fontWeight: '700', lineHeight: 19 },
+  profileErrorText: { color: '#b91c1c', fontSize: 13, fontWeight: '800', lineHeight: 18 },
+  deleteAccountPanel: { backgroundColor: '#fff8f6', borderColor: '#fecaca', borderRadius: 24, borderWidth: 1, gap: 10, padding: 16 },
+  deleteAccountTitle: { color: '#7f1d1d', fontSize: 20, fontWeight: '900', letterSpacing: -0.4 },
+  deleteAccountCopy: { color: '#7c4a43', fontSize: 13, fontWeight: '700', lineHeight: 19 },
   accountCard: { backgroundColor: colors.green, borderRadius: 26, gap: 10, marginBottom: 12, padding: 18 },
   accountKicker: { color: colors.mint, fontSize: 12, fontWeight: '900', letterSpacing: 1.8, textTransform: 'uppercase' },
   accountTitle: { color: 'white', fontSize: 22, fontWeight: '900', letterSpacing: -0.5 },
