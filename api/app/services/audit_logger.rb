@@ -4,20 +4,22 @@ class AuditLogger
       resolved_lead = lead || infer_lead(target)
       resolved_brokerage = brokerage || infer_brokerage(target, resolved_lead)
 
-      AuditEvent.create!(
-        actor: actor,
-        actor_email: actor&.email,
-        action: action,
-        target_type: target&.class&.name,
-        target_id: target&.id,
-        target_label: target_label || label_for(target),
-        brokerage: resolved_brokerage,
-        lead: resolved_lead,
-        ip_address: request&.remote_ip,
-        user_agent: request&.user_agent,
-        metadata: sanitize_hash(metadata),
-        field_changes: sanitize_hash(changes)
-      )
+      AuditEvent.transaction(requires_new: true) do
+        AuditEvent.create!(
+          actor: actor,
+          actor_email: actor&.email,
+          action: action,
+          target_type: target&.class&.name,
+          target_id: target&.id,
+          target_label: target_label || label_for(target),
+          brokerage: resolved_brokerage,
+          lead: resolved_lead,
+          ip_address: request&.remote_ip,
+          user_agent: request&.user_agent,
+          metadata: sanitize_hash(metadata),
+          field_changes: sanitize_hash(changes)
+        )
+      end
     rescue StandardError => e
       Rails.logger.warn("[AuditLogger] Unable to record #{action}: #{e.class} #{e.message}")
       nil
