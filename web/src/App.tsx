@@ -3589,13 +3589,17 @@ function AdminShowingsPage() {
 function AdminUsersPage() {
   const { data, isLoading, isError, refetch } = useQuery({ queryKey: ['admin-users'], queryFn: fetchAdminUsers })
   const [filter, setFilter] = useState<'staff' | 'consumers' | 'all'>('staff')
+  const [inviteFormVersion, setInviteFormVersion] = useState(0)
   const mutation = useMutation({
     mutationFn: ({ id, payload }: { id: number; payload: Record<string, unknown> }) => updateAdminUser(id, payload),
     onSuccess: () => refetch(),
   })
   const createMutation = useMutation({
     mutationFn: createAdminUser,
-    onSuccess: () => refetch(),
+    onSuccess: () => {
+      setInviteFormVersion((version) => version + 1)
+      refetch()
+    },
   })
   const users = data?.users ?? []
   const brokerages = data?.brokerages ?? []
@@ -3616,7 +3620,7 @@ function AdminUsersPage() {
         {isError && <StateCard tone="error">Unable to load users. Platform admin access is required.</StateCard>}
         {mutation.isError && <StateCard tone="error">{displayErrorMessage(mutation.error, 'Unable to update user.')}</StateCard>}
         {createMutation.isError && <StateCard tone="error">{displayErrorMessage(createMutation.error, 'Unable to create user.')}</StateCard>}
-        <InviteUserForm brokerages={brokerages} saving={createMutation.isPending} onCreate={(payload) => createMutation.mutate(payload)} />
+        <InviteUserForm key={inviteFormVersion} brokerages={brokerages} saving={createMutation.isPending} onCreate={(payload) => createMutation.mutate(payload)} />
         <RoleMatrix />
         <div className="mb-5 mt-5 overflow-x-auto rounded-[1.25rem] bg-white p-1.5 shadow-sm sm:rounded-[1.5rem] sm:p-2">
           <div className="flex min-w-max items-center gap-1.5 sm:min-w-0 sm:flex-wrap sm:gap-2">

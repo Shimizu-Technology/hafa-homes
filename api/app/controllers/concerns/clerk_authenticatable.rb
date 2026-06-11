@@ -81,17 +81,9 @@ module ClerkAuthenticatable
     if user
       updates = { last_sign_in_at: Time.current }
       updates[:email] = email if email.present? && email.downcase != user.email
-      if missing_profile_fields?(user, first_name, last_name, phone)
-        clerk_profile = ClerkAuth.fetch_user_profile(clerk_id)
-        email ||= clerk_profile&.dig(:email)
-        first_name ||= clerk_profile&.dig(:first_name)
-        last_name ||= clerk_profile&.dig(:last_name)
-        phone ||= clerk_profile&.dig(:phone)
-      end
-
-      updates[:first_name] = first_name if first_name.present?
-      updates[:last_name] = last_name if last_name.present?
-      updates[:phone] = phone if phone.present? && user.phone.blank?
+      updates[:first_name] = first_name if user.first_name.blank? && first_name.present?
+      updates[:last_name] = last_name if user.last_name.blank? && last_name.present?
+      updates[:phone] = phone if user.phone.blank? && phone.present?
       user.update(updates)
       return user
     end
@@ -128,9 +120,9 @@ module ClerkAuthenticatable
   def accept_invited_user(user, clerk_id:, first_name:, last_name:, phone: nil)
     user.update!(
       clerk_id: clerk_id,
-      first_name: first_name.presence || user.first_name,
-      last_name: last_name.presence || user.last_name,
-      phone: phone.presence || user.phone,
+      first_name: user.first_name.presence || first_name,
+      last_name: user.last_name.presence || last_name,
+      phone: user.phone.presence || phone,
       invitation_status: "accepted",
       accepted_at: user.accepted_at || Time.current,
       last_sign_in_at: Time.current
@@ -170,12 +162,6 @@ module ClerkAuthenticatable
     end
 
     admin_email.present? && email.to_s.downcase == admin_email.downcase ? "platform_admin" : "consumer"
-  end
-
-  def missing_profile_fields?(user, first_name, last_name, phone)
-    user.first_name.blank? && first_name.blank? ||
-      user.last_name.blank? && last_name.blank? ||
-      user.phone.blank? && phone.blank?
   end
 
   def phone_from_claims(decoded)
