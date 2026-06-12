@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { ClerkLoaded, ClerkProvider, useAuth, useSignIn, useSignInWithApple, useSignUp, useSSO, useUser } from '@clerk/clerk-expo'
 import { tokenCache } from '@clerk/clerk-expo/token-cache'
+import * as AppleAuthentication from 'expo-apple-authentication'
 import * as Linking from 'expo-linking'
 import { StatusBar } from 'expo-status-bar'
 import * as WebBrowser from 'expo-web-browser'
@@ -147,9 +148,13 @@ const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000'
 const MAPBOX_TOKEN = process.env.EXPO_PUBLIC_MAPBOX_TOKEN
 const CLERK_PUBLISHABLE_KEY = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY
 const CLERK_JWT_TEMPLATE = process.env.EXPO_PUBLIC_CLERK_JWT_TEMPLATE
+const APPLE_AUTH_ENABLED = process.env.EXPO_PUBLIC_ENABLE_APPLE_AUTH === 'true'
+const GOOGLE_AUTH_ENABLED = process.env.EXPO_PUBLIC_ENABLE_GOOGLE_AUTH === 'true'
 const FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1600047509807-ba8f99d2cdde?auto=format&fit=crop&w=1200&q=80'
 const LEGACY_SAVED_LISTING_IDS_KEY = 'hafaHomes:savedListingIds'
 const LEGACY_SAVED_LISTINGS_KEY = 'hafaHomes:savedListings'
+const OAUTH_CALLBACK_PATH = 'oauth-native-callback'
+const AUTH_FLOW_TIMEOUT_MS = 25_000
 
 const preferredTimeOptions = [
   { value: 'morning', label: 'Morning' },
@@ -218,6 +223,33 @@ async function apiErrorMessage(response: Response, fallback: string) {
   }
 
   return fallback
+}
+
+function authErrorMessage(error: any, fallback: string) {
+  return error?.errors?.[0]?.longMessage || error?.errors?.[0]?.message || error?.message || fallback
+}
+
+function authErrorCode(error: any) {
+  return error?.code || error?.errors?.[0]?.code
+}
+
+function isAuthCancellation(error: any) {
+  const code = authErrorCode(error)
+  const message = String(error?.message || error?.errors?.[0]?.message || '').toLowerCase()
+  return code === 'ERR_REQUEST_CANCELED' || code === 'ERR_CANCELED' || code === 'ERR_CANCELLED' || message.includes('authorizationerror 1001') || message.includes('cancelled') || message.includes('canceled')
+}
+
+function isExistingSessionError(error: any) {
+  return authErrorCode(error) === 'session_exists'
+}
+
+function oauthRedirectUrl() {
+  return Linking.createURL(OAUTH_CALLBACK_PATH)
+}
+
+function withAuthDelayNotice<T>(promise: Promise<T>, onDelay: () => void, timeoutMs = AUTH_FLOW_TIMEOUT_MS): Promise<T> {
+  const timeoutId = setTimeout(onDelay, timeoutMs)
+  return promise.finally(() => clearTimeout(timeoutId))
 }
 
 async function fetchListing(listingId: number): Promise<Listing> {
@@ -1427,6 +1459,7 @@ function AuthModal({ open, prompt, onClose }: { open: boolean; prompt: AuthPromp
   const [pendingVerification, setPendingVerification] = useState(false)
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
+  const [appleAuthAvailable, setAppleAuthAvailable] = useState(false)
 
   useEffect(() => {
     if (!open) return
@@ -1443,29 +1476,67 @@ function AuthModal({ open, prompt, onClose }: { open: boolean; prompt: AuthPromp
     setMessage(null)
   }, [open, prompt?.initialMode])
 
+  useEffect(() => {
+    let active = true
+
+    if (!open || Platform.OS !== 'ios' || !APPLE_AUTH_ENABLED) {
+      setAppleAuthAvailable(false)
+      return
+    }
+
+    AppleAuthentication.isAvailableAsync()
+      .then((available) => {
+        if (active) setAppleAuthAvailable(available)
+      })
+      .catch(() => {
+        if (active) setAppleAuthAvailable(false)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [open])
+
   function switchMode(nextMode: 'sign-in' | 'sign-up') {
     setMode(nextMode)
     setPendingVerification(false)
     setMessage(null)
   }
 
+  async function finishSocialSignIn(result: { createdSessionId: string | null; setActive?: (params: { session: string }) => Promise<void> | void }, provider: 'Apple' | 'Google') {
+    if (result.createdSessionId && result.setActive) {
+      await result.setActive({ session: result.createdSessionId })
+      onClose()
+      return
+    }
+
+    setMessage(`${provider} sign-in was cancelled or did not finish. Please try again or use email.`)
+  }
+
   async function handleGoogleSignIn() {
     setLoading(true)
     setMessage(null)
     try {
-      const { createdSessionId, setActive } = await startSSOFlow({
-        strategy: 'oauth_google',
-        redirectUrl: Linking.createURL('/oauth-native-callback'),
-      })
+      const result = await withAuthDelayNotice(
+        startSSOFlow({
+          strategy: 'oauth_google',
+          redirectUrl: oauthRedirectUrl(),
+        }),
+        () => setMessage('Google sign-in is taking longer than usual. Finish in the browser, or cancel and use email.')
+      )
 
-      if (createdSessionId && setActive) {
-        await setActive({ session: createdSessionId })
-        onClose()
-      } else {
-        setMessage('Google sign-in did not finish. Please try again.')
-      }
+      await finishSocialSignIn(result, 'Google')
     } catch (authError: any) {
-      setMessage(authError?.errors?.[0]?.longMessage || authError?.errors?.[0]?.message || 'Google sign-in failed. Please try again.')
+      if (isAuthCancellation(authError)) {
+        setMessage(null)
+        return
+      }
+      if (isExistingSessionError(authError)) {
+        onClose()
+        return
+      }
+
+      setMessage(authErrorMessage(authError, 'Google sign-in failed. Please try again or use email.'))
     } finally {
       setLoading(false)
     }
@@ -1475,30 +1546,22 @@ function AuthModal({ open, prompt, onClose }: { open: boolean; prompt: AuthPromp
     setLoading(true)
     setMessage(null)
     try {
-      const { createdSessionId, setActive } = await startAppleAuthenticationFlow()
-
-      if (createdSessionId && setActive) {
-        await setActive({ session: createdSessionId })
-        onClose()
-      } else {
-        setMessage('Apple sign-in did not finish. Please try again.')
-      }
+      const result = await withAuthDelayNotice(
+        startAppleAuthenticationFlow(),
+        () => setMessage('Apple sign-in is taking longer than usual. Finish in the Apple prompt, or cancel and use email.')
+      )
+      await finishSocialSignIn(result, 'Apple')
     } catch (nativeAppleError: any) {
-      try {
-        const { createdSessionId, setActive } = await startSSOFlow({
-          strategy: 'oauth_apple',
-          redirectUrl: Linking.createURL('/oauth-native-callback'),
-        })
-
-        if (createdSessionId && setActive) {
-          await setActive({ session: createdSessionId })
-          onClose()
-        } else {
-          setMessage('Apple sign-in did not finish. Please try again.')
-        }
-      } catch (authError: any) {
-        setMessage(authError?.errors?.[0]?.longMessage || authError?.errors?.[0]?.message || nativeAppleError?.errors?.[0]?.message || 'Apple sign-in failed. Please try again.')
+      if (isAuthCancellation(nativeAppleError)) {
+        setMessage(null)
+        return
       }
+      if (isExistingSessionError(nativeAppleError)) {
+        onClose()
+        return
+      }
+
+      setMessage(authErrorMessage(nativeAppleError, 'Apple sign-in failed. Please try again or use email.'))
     } finally {
       setLoading(false)
     }
@@ -1571,6 +1634,8 @@ function AuthModal({ open, prompt, onClose }: { open: boolean; prompt: AuthPromp
   const intro = prompt?.copy || (mode === 'sign-in'
     ? 'Sign in to save Guam homes, sync your shortlist, and keep your search moving.'
     : 'Create a free Hafa Homes account to sync saved homes and make showing requests easier.')
+  const showAppleAuth = Platform.OS === 'ios' && APPLE_AUTH_ENABLED && appleAuthAvailable
+  const showGoogleAuth = GOOGLE_AUTH_ENABLED && (Platform.OS !== 'ios' || showAppleAuth)
 
   return (
     <Modal visible={open} animationType="slide" presentationStyle="fullScreen" onRequestClose={onClose}>
@@ -1598,18 +1663,25 @@ function AuthModal({ open, prompt, onClose }: { open: boolean; prompt: AuthPromp
               </Pressable>
             </View>
 
-            {!pendingVerification && (
+            {!pendingVerification && (showAppleAuth || showGoogleAuth) && (
               <>
-                {Platform.OS === 'ios' && (
-                  <Pressable style={[styles.socialCta, styles.appleCta]} onPress={handleAppleSignIn} disabled={loading}>
-                    <View style={styles.appleCtaMark}><Text style={styles.appleCtaMarkText}>A</Text></View>
-                    <Text style={styles.appleCtaText}>Continue with Apple</Text>
+                {showAppleAuth && (
+                  <View style={[styles.nativeAppleButtonWrap, loading && styles.ctaDisabled]}>
+                    <AppleAuthentication.AppleAuthenticationButton
+                      buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE}
+                      buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+                      cornerRadius={16}
+                      onPress={() => { if (!loading) handleAppleSignIn() }}
+                      style={styles.nativeAppleButton}
+                    />
+                  </View>
+                )}
+                {showGoogleAuth && (
+                  <Pressable style={styles.socialCta} onPress={handleGoogleSignIn} disabled={loading}>
+                    <View style={styles.socialCtaMark}><Text style={styles.socialCtaMarkText}>G</Text></View>
+                    <Text style={styles.socialCtaText}>{loading ? 'Signing in...' : 'Continue with Google'}</Text>
                   </Pressable>
                 )}
-                <Pressable style={styles.socialCta} onPress={handleGoogleSignIn} disabled={loading}>
-                  <View style={styles.socialCtaMark}><Text style={styles.socialCtaMarkText}>G</Text></View>
-                  <Text style={styles.socialCtaText}>Continue with Google</Text>
-                </Pressable>
                 <View style={styles.authDividerRow}>
                   <View style={styles.authDividerLine} />
                   <Text style={styles.authDividerText}>or use email</Text>
@@ -2328,14 +2400,12 @@ const styles = StyleSheet.create({
   authModeTabActive: { backgroundColor: 'white' },
   authModeText: { color: colors.muted, fontSize: 14, fontWeight: '900' },
   authModeTextActive: { color: colors.green },
+  nativeAppleButtonWrap: { height: 54 },
+  nativeAppleButton: { height: 54, width: '100%' },
   socialCta: { alignItems: 'center', backgroundColor: 'white', borderColor: '#eadfce', borderRadius: 20, borderWidth: 1, flexDirection: 'row', gap: 12, justifyContent: 'center', padding: 15 },
   socialCtaMark: { alignItems: 'center', backgroundColor: colors.sand, borderRadius: 999, height: 28, justifyContent: 'center', width: 28 },
   socialCtaMarkText: { color: colors.green, fontSize: 14, fontWeight: '900' },
   socialCtaText: { color: colors.ink, fontSize: 15, fontWeight: '900' },
-  appleCta: { backgroundColor: colors.ink, borderColor: colors.ink },
-  appleCtaMark: { alignItems: 'center', backgroundColor: 'white', borderRadius: 999, height: 28, justifyContent: 'center', width: 28 },
-  appleCtaMarkText: { color: colors.ink, fontSize: 14, fontWeight: '900' },
-  appleCtaText: { color: 'white', fontSize: 15, fontWeight: '900' },
   authDividerRow: { alignItems: 'center', flexDirection: 'row', gap: 10, marginVertical: 2 },
   authDividerLine: { backgroundColor: '#eadfce', flex: 1, height: 1 },
   authDividerText: { color: colors.muted, fontSize: 11, fontWeight: '900', letterSpacing: 1, textTransform: 'uppercase' },

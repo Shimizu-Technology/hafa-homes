@@ -1,6 +1,6 @@
 # App Store / TestFlight Release Notes
 
-_Last updated: 2026-06-10 after PR #11 account deletion merged and iOS build `1.0.1 (9)` was submitted._
+_Last updated: 2026-06-12 after App Review rejected iOS build `1.0.1 (10)` for Sign in with Apple loading indefinitely and the native Apple/Clerk fix was started._
 
 ## Current status
 
@@ -11,8 +11,8 @@ _Last updated: 2026-06-10 after PR #11 account deletion merged and iOS build `1.
 - First iOS production build previously uploaded to TestFlight.
 - Build previously tested on Leon's phone through TestFlight.
 - App Store version `1.0.0` is already approved/ready for distribution, so new TestFlight/App Store builds must use a higher marketing version such as `1.0.1`.
-- iOS build `1.0.1 (9)` was built from `main` commit `3155df9` and submitted to App Store Connect.
-- Current App Store Connect status: `1.0.1 Waiting for Review` with build `9` selected.
+- iOS build `1.0.1 (10)` was built from `main` commit `5a8781b` and submitted to App Store Connect.
+- Current App Store Connect status: `1.0.1 Rejected` for Guideline 2.1(a) because Apple reported the app loaded indefinitely after Sign in with Apple.
 - Production API env is configured in EAS: `EXPO_PUBLIC_API_URL=https://hafa-homes.onrender.com`
 - Production Mapbox token is configured in EAS as a sensitive variable.
 
@@ -64,13 +64,35 @@ then bump `expo.version` in `mobile/app.json`, for example from `1.0.0` to `1.0.
 
 ```text
 Version: 1.0.1
-Build number: 9
-EAS build ID: f0487a94-3bfc-4500-ae5c-0d4ee718d311
-Submission ID: 4aab42b3-7e1a-4bd0-bb4d-2e161c6a1b5f
-Status: Waiting for Review in App Store Connect
+Build number: 10
+EAS build ID: 519dcec0-a96e-4167-8d4a-e918908181d8
+Submission ID: 76a7aa1e-a2a0-46e8-8eaa-4e33add16c5e
+Status: Rejected in App Store Connect
 ```
 
-This is the build with account deletion. If Apple asks for an account-deletion path, use build `9` as the reference.
+This is the build with account deletion plus PR #12 account/admin/audit hardening. Apple rejected it because Sign in with Apple did not complete during review. If Apple asks for an account-deletion path, build `10` still has the in-app deletion flow; the next build should fix the Apple auth path before resubmission.
+
+## Native Apple/Clerk setup for the next build
+
+The preferred production fix is native Sign in with Apple through Clerk Expo, not the browser OAuth fallback used in older Shimizu apps.
+
+Required before submitting the replacement build:
+
+- Clerk production app is configured and EAS uses a `pk_live_...` publishable key.
+- Clerk Dashboard has a Native Application for:
+  - Apple Team/App ID Prefix: `4T358A5S74`
+  - iOS bundle ID: `com.shimizutechnology.hafahomes`
+- Clerk Apple SSO connection is enabled for sign-up and sign-in.
+- EAS production env includes:
+  - `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_live_...`
+  - `EXPO_PUBLIC_ENABLE_APPLE_AUTH=true`
+  - keep `EXPO_PUBLIC_ENABLE_GOOGLE_AUTH=false` until Google OAuth is separately verified.
+- Render API env uses the matching live Clerk instance:
+  - `CLERK_ISSUER`
+  - `CLERK_SECRET_KEY`
+  - no stale test `CLERK_JWKS_URL` overriding the issuer.
+- Netlify/web uses the matching live `VITE_CLERK_PUBLISHABLE_KEY`.
+- TestFlight smoke on a physical iPhone/iPad confirms Apple sign-in creates a session, saved homes work, profile loads, and account deletion works.
 
 ## Recommended future replacement-build sequence
 
