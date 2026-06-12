@@ -229,19 +229,27 @@ function authErrorMessage(error: any, fallback: string) {
   return error?.errors?.[0]?.longMessage || error?.errors?.[0]?.message || error?.message || fallback
 }
 
+function authErrorCode(error: any) {
+  return error?.code || error?.errors?.[0]?.code
+}
+
+function isAuthCancellation(error: any) {
+  const code = authErrorCode(error)
+  const message = String(error?.message || error?.errors?.[0]?.message || '').toLowerCase()
+  return code === 'ERR_REQUEST_CANCELED' || code === 'ERR_CANCELED' || code === 'ERR_CANCELLED' || message.includes('authorizationerror 1001') || message.includes('cancelled') || message.includes('canceled')
+}
+
+function isExistingSessionError(error: any) {
+  return authErrorCode(error) === 'session_exists'
+}
+
 function oauthRedirectUrl() {
   return Linking.createURL(OAUTH_CALLBACK_PATH)
 }
 
-function withTimeout<T>(promise: Promise<T>, timeoutMessage: string, timeoutMs = AUTH_FLOW_TIMEOUT_MS): Promise<T> {
-  let timeoutId: ReturnType<typeof setTimeout> | undefined
-  const timeout = new Promise<T>((_, reject) => {
-    timeoutId = setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs)
-  })
-
-  return Promise.race([promise, timeout]).finally(() => {
-    if (timeoutId) clearTimeout(timeoutId)
-  })
+function withAuthDelayNotice<T>(promise: Promise<T>, onDelay: () => void, timeoutMs = AUTH_FLOW_TIMEOUT_MS): Promise<T> {
+  const timeoutId = setTimeout(onDelay, timeoutMs)
+  return promise.finally(() => clearTimeout(timeoutId))
 }
 
 async function fetchListing(listingId: number): Promise<Listing> {
@@ -1509,13 +1517,25 @@ function AuthModal({ open, prompt, onClose }: { open: boolean; prompt: AuthPromp
     setLoading(true)
     setMessage(null)
     try {
-      const result = await withTimeout(startSSOFlow({
-        strategy: 'oauth_google',
-        redirectUrl: oauthRedirectUrl(),
-      }), 'Google sign-in took too long. Please try again or use email.')
+      const result = await withAuthDelayNotice(
+        startSSOFlow({
+          strategy: 'oauth_google',
+          redirectUrl: oauthRedirectUrl(),
+        }),
+        () => setMessage('Google sign-in is taking longer than usual. Finish in the browser, or cancel and use email.')
+      )
 
       await finishSocialSignIn(result, 'Google')
     } catch (authError: any) {
+      if (isAuthCancellation(authError)) {
+        setMessage(null)
+        return
+      }
+      if (isExistingSessionError(authError)) {
+        onClose()
+        return
+      }
+
       setMessage(authErrorMessage(authError, 'Google sign-in failed. Please try again or use email.'))
     } finally {
       setLoading(false)
@@ -1526,9 +1546,21 @@ function AuthModal({ open, prompt, onClose }: { open: boolean; prompt: AuthPromp
     setLoading(true)
     setMessage(null)
     try {
-      const result = await withTimeout(startAppleAuthenticationFlow(), 'Apple sign-in took too long. Please try again or use email.')
+      const result = await withAuthDelayNotice(
+        startAppleAuthenticationFlow(),
+        () => setMessage('Apple sign-in is taking longer than usual. Finish in the Apple prompt, or cancel and use email.')
+      )
       await finishSocialSignIn(result, 'Apple')
     } catch (nativeAppleError: any) {
+      if (isAuthCancellation(nativeAppleError)) {
+        setMessage(null)
+        return
+      }
+      if (isExistingSessionError(nativeAppleError)) {
+        onClose()
+        return
+      }
+
       setMessage(authErrorMessage(nativeAppleError, 'Apple sign-in failed. Please try again or use email.'))
     } finally {
       setLoading(false)
