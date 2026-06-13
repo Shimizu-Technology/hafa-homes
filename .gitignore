@@ -8,6 +8,11 @@ vendor/
 !.env.example
 !**/.env.example
 
+# Secrets / private keys
+*.p8
+*.p12
+*.pem
+
 # Logs
 *.log
 log/
