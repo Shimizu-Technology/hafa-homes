@@ -5,10 +5,25 @@
 
 # Read more: https://github.com/cyu/rack-cors
 
-allowed_web_origins = ENV.fetch("WEB_ORIGINS", ENV.fetch("WEB_ORIGIN", "http://localhost:5173"))
+default_web_origins = ["http://localhost:5173"]
+
+allowed_web_origins = ENV.fetch("WEB_ORIGINS", nil).to_s
   .split(",")
   .map(&:strip)
   .reject(&:empty?)
+
+if allowed_web_origins.empty?
+  allowed_web_origins = ENV.fetch("WEB_ORIGIN", nil).to_s
+    .split(",")
+    .map(&:strip)
+    .reject(&:empty?)
+end
+
+allowed_web_origins = default_web_origins if allowed_web_origins.empty? && !Rails.env.production?
+
+if allowed_web_origins.empty?
+  raise "WEB_ORIGINS or WEB_ORIGIN must include at least one allowed web origin"
+end
 
 Rails.application.config.middleware.insert_before 0, Rack::Cors do
   allow do
