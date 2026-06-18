@@ -102,7 +102,7 @@ module Api
 
       def filtered_staff_leads
         leads = staff_lead_scope
-        assigned_agent_id = params[:assigned_agent_id].presence || params[:agent_id].presence
+        assigned_agent_id = params[:assigned_agent_id].presence
         return leads unless assigned_agent_id
 
         assigned_agent_id == "unassigned" ? leads.where(assigned_agent_id: nil) : leads.where(assigned_agent_id: assigned_agent_id)

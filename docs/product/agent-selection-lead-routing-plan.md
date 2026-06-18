@@ -7,7 +7,7 @@
 - Rails validation that public requests can only route to an active agent in the listing brokerage context.
 - `Lead.requested_agent` is stored separately from `Lead.assigned_agent`.
 - Initial routing sets `assigned_agent` to the requested agent so CRM ownership works immediately.
-- Admin lead list can filter by assigned agent or unassigned leads.
+- Admin lead list can filter by `assigned_agent_id` or `assigned_agent_id=unassigned`.
 - Admin lead cards/detail show requested agent versus assigned agent.
 - Web Agents page lets consumers choose a preferred agent and stores it locally.
 - Web and mobile showing/price requests include a preferred agent only when the consumer explicitly selected one; listing attribution alone does not populate `requested_agent`.
