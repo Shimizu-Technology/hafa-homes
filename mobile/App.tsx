@@ -494,12 +494,16 @@ function AppContent({ auth }: { auth: AppAuth }) {
   }, [])
 
   useEffect(() => {
+    const shouldLoadAgents = activeTab === 'agents' || Boolean(selectedListing)
+    if (!shouldLoadAgents || agents.length > 0) return undefined
+
     let cancelled = false
 
     async function loadAgents() {
       setAgentsLoading(true)
       try {
-        const results = await fetchAgents()
+        const brokerageId = selectedListing ? listingBrokerageId(selectedListing) ?? undefined : undefined
+        const results = await fetchAgents(brokerageId)
         if (!cancelled) setAgents(results)
       } catch (loadError) {
         console.warn('Unable to load agents', loadError)
@@ -513,7 +517,7 @@ function AppContent({ auth }: { auth: AppAuth }) {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [activeTab, agents.length, selectedListing])
 
   useEffect(() => {
     let cancelled = false

@@ -10,7 +10,10 @@ module Api
       before_action :set_lead, only: [:show, :update, :send_notification]
 
       def index
-        leads = filtered_staff_leads.order(created_at: :desc).limit(100)
+        leads = filtered_staff_leads
+        return if performed?
+
+        leads = leads.order(created_at: :desc).limit(100)
 
         render json: {
           leads: leads.map { |lead| LeadSerializer.summary(lead) },
@@ -104,8 +107,14 @@ module Api
         leads = staff_lead_scope
         assigned_agent_id = params[:assigned_agent_id].presence
         return leads unless assigned_agent_id
+        return leads.where(assigned_agent_id: nil) if assigned_agent_id == "unassigned"
 
-        assigned_agent_id == "unassigned" ? leads.where(assigned_agent_id: nil) : leads.where(assigned_agent_id: assigned_agent_id)
+        unless assigned_agent_id.match?(/\A\d+\z/)
+          render json: { errors: ["assigned_agent_id must be a numeric id or unassigned"] }, status: :unprocessable_entity
+          return Lead.none
+        end
+
+        leads.where(assigned_agent_id: assigned_agent_id.to_i)
       end
 
       def apply_lead_update_params
