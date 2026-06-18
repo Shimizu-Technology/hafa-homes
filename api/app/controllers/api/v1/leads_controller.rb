@@ -34,6 +34,9 @@ module Api
         lead.listing = active_listing_from_params(permitted)
         return if performed?
 
+        assign_routing_brokerage(lead)
+        return if performed?
+
         assign_requested_agent_from_params(lead, permitted[:requested_agent_id])
         return if performed?
 
@@ -223,6 +226,16 @@ module Api
         )
       end
 
+      def assign_routing_brokerage(lead)
+        brokerage = current_routing_brokerage
+        unless brokerage
+          render json: { errors: ["No active brokerage is available for lead routing"] }, status: :unprocessable_entity
+          return
+        end
+
+        lead.brokerage = brokerage
+      end
+
       def assign_requested_agent_from_params(lead, requested_agent_id)
         return if requested_agent_id.blank?
 
@@ -232,14 +245,13 @@ module Api
           return
         end
 
-        if lead.listing&.brokerage_id.present? && agent.brokerage_id != lead.listing.brokerage_id
-          render json: { errors: ["Requested agent is not available for this listing"] }, status: :unprocessable_entity
+        if agent.brokerage_id != lead.brokerage_id
+          render json: { errors: ["Requested agent is not available for this brokerage"] }, status: :unprocessable_entity
           return
         end
 
         lead.requested_agent = agent
         lead.assigned_agent = agent
-        lead.brokerage ||= agent.brokerage
       end
 
       def active_listing_from_params(permitted)

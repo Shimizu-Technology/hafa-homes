@@ -1,16 +1,16 @@
 # Brokerage Apps, MLS Attribution, and Lead Routing Questions
 
-_Last updated: 2026-06-18 before Mike/John follow-up._
+_Last updated: 2026-06-18 after Mike/John follow-up._
 
 ## Why this needs a decision
 
 The agent-selection PR adds the V1 workflow Mike asked for: a customer can choose an agent from the brokerage and leads can be routed/filtered by that agent in the admin CRM.
 
-Before we build the next layer, we need to confirm how a broker-branded Hafa Homes app should behave once real FlexMLS/MLS data is involved.
+Mike/John clarified that MLS/FlexMLS should expose the broader Guam inventory, not only one brokerage's own listings. That means broker-branded Hafa Homes experiences should preserve MLS listing attribution while routing interested customers to the app/brokerage agent they choose.
 
-The key product question:
+Confirmed direction:
 
-> Is a broker-branded app meant to show only that brokerage's own listings, or should it show the broader Guam MLS/FlexMLS inventory while routing interested customers to the brokerage's selected/buyer-side agent?
+> Show authorized Guam MLS/FlexMLS listings broadly, keep the true listing agent/office attribution visible, and route customer conversations to the selected buyer-side/preferred agent from the app brokerage.
 
 ## Concepts to keep separate
 
@@ -44,7 +44,7 @@ In the app today:
 Lead.requested_agent
 ```
 
-This is consumer intent, not MLS attribution.
+This is consumer intent / buyer-side relationship preference, not MLS attribution.
 
 Example:
 
@@ -73,16 +73,18 @@ Assigned CRM owner: Mia Santos
 
 ## Current V1 behavior in this PR
 
-The V1 implementation is intentionally conservative:
+The V1 implementation now aligns with the full-market direction while using a simple default routing brokerage until domain/app tenant resolution exists:
 
-- Agent directory shows active brokerage agents.
-- Customer can select a preferred agent.
+- Agent directory shows active agents from the current routing/app brokerage.
+- Customer can select a preferred agent from that routing brokerage.
 - Showing/price leads include `requested_agent_id` only when explicitly selected.
-- Backend validates requested agent before setting routing.
-- `Listing.agent` remains separate from `Lead.requested_agent` and `Lead.assigned_agent`.
-- UI copy now distinguishes `Listed by` from `Preferred agent` / `Work with an agent`.
+- Backend validates requested agent against `Lead.brokerage` / routing brokerage before setting routing.
+- `Listing.agent` and `Listing.brokerage` remain listing/MLS attribution and are not overwritten.
+- `Lead.brokerage` is the brokerage/app that owns the lead conversation.
+- No-preference leads stay in the brokerage queue instead of auto-assigning to the listing agent.
+- UI copy distinguishes `Listed by` from `Preferred agent` / `Work with an agent`.
 
-This is enough for a single-brokerage/demo flow and Mike's immediate lead-generation feedback.
+This handles Mike's immediate lead-generation feedback while avoiding the incorrect assumption that the requested agent must belong to the listing brokerage.
 
 ## Real-world brokerage / MLS models to confirm
 
@@ -97,7 +99,7 @@ Implications:
 - Current V1 backend validation model maps closely to this.
 - Simpler compliance and routing model.
 
-### Option B — Full-market IDX/FlexMLS search
+### Option B — Full-market IDX/FlexMLS search — confirmed direction
 
 Each broker-branded app shows all authorized Guam MLS/FlexMLS listings, including listings from other brokerages.
 
@@ -109,7 +111,7 @@ Implications:
 - Lead routing should go to the selected app brokerage agent, while listing attribution remains the actual MLS listing agent/office.
 - We likely need a stronger tenant/app-brokerage resolver before loosening the current validation rule.
 
-Possible future model:
+Current/future model:
 
 ```text
 Listing.agent              = MLS/listing attribution
@@ -193,11 +195,14 @@ Admins can assign/reassign the lead owner without changing:
 19. Would brokerages be comfortable with their agents receiving leads for listings represented by other brokerages?
 20. Should we position this like: “Search all Guam listings, work with your chosen [Brokerage] agent”?
 
-## Recommendation before changing code further
+## Recommendation before qualified-lead capture
 
-Do not loosen the current brokerage-match validation until we have a tenant/app-brokerage resolver and a confirmed MLS/IDX policy.
+The routing foundation should be in place before building qualification prompts/scoring:
 
-For now, merge the V1 PR as the single-brokerage-safe foundation. Then, after Mike/John clarify the model, build a follow-up PR for one of these paths:
+1. Treat `Lead.brokerage` as the app/routing brokerage that owns the customer relationship.
+2. Treat `Listing.brokerage` and `Listing.agent` as MLS/listing attribution.
+3. Validate `Lead.requested_agent` against the routing brokerage, not the listing brokerage.
+4. Do not auto-assign no-preference leads to the listing agent.
+5. Keep lead qualification answers attached to the lead/customer profile owned by the routing brokerage.
 
-1. **Brokerage-only inventory path** — keep current validation mostly as-is; add listing management if needed.
-2. **Full-market IDX path** — introduce explicit app/routing brokerage context separate from MLS listing brokerage, then allow selected brokerage agents to receive leads for other brokerages' listings while preserving MLS attribution.
+Next implementation after this PR should be qualified lead capture: lightweight prompts for prequalification, lender/bank, timeline, budget, villages, beds/baths, and quality summary for agents/admins.

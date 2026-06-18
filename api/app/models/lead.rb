@@ -21,11 +21,11 @@ class Lead < ApplicationRecord
   validates :lead_type, :name, :email, presence: true
   validates :status, inclusion: { in: STATUSES }
   validates :quality_status, inclusion: { in: QUALITY_STATUSES }
-  validate :requested_agent_matches_listing_brokerage
+  validate :requested_agent_matches_routing_brokerage
 
   before_validation :set_defaults
   before_validation :normalize_phone_number
-  before_validation :infer_routing_from_listing
+  before_validation :infer_routing_from_requested_agent
 
   private
 
@@ -45,18 +45,24 @@ class Lead < ApplicationRecord
     self.phone = ClicksendClient.normalize_phone(phone).presence || phone.to_s.strip
   end
 
-  def infer_routing_from_listing
-    return unless new_record? && listing
+  def infer_routing_from_requested_agent
+    return unless new_record? && requested_agent
 
-    self.brokerage ||= requested_agent&.brokerage || listing.brokerage
-    self.assigned_agent ||= requested_agent || listing.agent
+    self.brokerage ||= requested_agent.brokerage
+    self.assigned_agent ||= requested_agent
   end
 
-  def requested_agent_matches_listing_brokerage
-    return unless requested_agent && listing&.brokerage_id
-    return if requested_agent.brokerage_id == listing.brokerage_id
+  def requested_agent_matches_routing_brokerage
+    return unless requested_agent
 
-    errors.add(:requested_agent, "is not available for this listing")
+    if brokerage_id.blank?
+      errors.add(:brokerage, "must be set before assigning a requested agent")
+      return
+    end
+
+    return if requested_agent.brokerage_id == brokerage_id
+
+    errors.add(:requested_agent, "is not available for this brokerage")
   end
 
   def queue_request_received_notification?

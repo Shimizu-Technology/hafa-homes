@@ -4,9 +4,9 @@
 
 - Public `/api/v1/agents` endpoint for active brokerage agents, capped at 100 records per request with `limit`/`offset` metadata.
 - Consumer-selected `requested_agent_id` on lead creation.
-- Rails validation that public requests can only route to an active agent in the listing brokerage context.
+- Rails validation that public requests can only route to an active agent in the app/routing brokerage context.
 - `Lead.requested_agent` is stored separately from `Lead.assigned_agent`.
-- Initial routing sets `assigned_agent` to the requested agent so CRM ownership works immediately.
+- Initial routing sets `assigned_agent` to the requested agent so CRM ownership works immediately; no-preference leads remain in the brokerage queue/unassigned.
 - Admin lead list can filter by `assigned_agent_id` or `assigned_agent_id=unassigned`.
 - Admin lead cards/detail show requested agent versus assigned agent.
 - Web Agents page lets consumers choose a preferred agent and stores it locally.
@@ -22,7 +22,7 @@ Keep these concepts separate in both data and UI copy:
 2. `Lead.requested_agent` — the customer-selected/preferred agent (“Work with” / “Preferred agent”).
 3. `Lead.assigned_agent` — the CRM owner responsible for follow-up.
 
-For V1, when a public consumer chooses an agent, the backend also sets `assigned_agent` to that same agent after validating that the agent belongs to the listing brokerage. Admins can later reassign the CRM owner without rewriting the original customer request.
+For V1, when a public consumer chooses an agent, the backend also sets `assigned_agent` to that same agent after validating that the agent belongs to the app/routing brokerage. Admins can later reassign the CRM owner without rewriting the original customer request. The listing agent is not used as the CRM owner unless a staff user explicitly assigns that agent through the lead workflow.
 
 ## Related follow-up planning
 
@@ -31,7 +31,7 @@ See `docs/product/brokerage-mls-attribution-routing-questions.md` for the larger
 ## Open questions for Mike / John / brokerage
 
 1. Should the customer-selected agent be global across the app, per listing request, or both?
-2. Can a customer choose any agent in the brokerage for any listing, or should some listings force the listing agent/team?
+2. Can a customer choose any agent in the app/routing brokerage for any listing, or should some packages/contexts force a narrower agent list?
 3. Is the current “No preference / brokerage team” request option enough, or should brokerages want stronger prompts to pick a specific agent?
 4. Should the requested agent remain visible if an admin reassigns the CRM owner to someone else?
 5. Should agents receive automatic notifications for routed leads, and should brokerage admins be copied?

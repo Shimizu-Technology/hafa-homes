@@ -256,15 +256,6 @@ function agentInitials(agent: Agent) {
     .join('') || 'HH'
 }
 
-function listingBrokerageId(listing: Listing) {
-  return listing.brokerage?.id ?? listing.agent?.brokerage_id ?? null
-}
-
-function agentMatchesListing(agent: Agent, listing: Listing) {
-  const brokerageId = listingBrokerageId(listing)
-  return Boolean(brokerageId && agent.brokerage_id === brokerageId)
-}
-
 async function apiErrorMessage(response: Response, fallback: string) {
   try {
     const payload = await response.json() as { error?: unknown; errors?: unknown }
@@ -451,7 +442,7 @@ function AppContent({ auth }: { auth: AppAuth }) {
   const [searchQuery, setSearchQuery] = useState('')
   const [listings, setListings] = useState<Listing[]>([])
   const [agents, setAgents] = useState<Agent[]>([])
-  const [agentsScope, setAgentsScope] = useState<'global' | number | null>(null)
+  const [agentsScope, setAgentsScope] = useState<'global' | null>(null)
   const [agentsLoading, setAgentsLoading] = useState(false)
   const [selectedAgentId, setSelectedAgentId] = useState<number | null>(null)
   const [listingCache, setListingCache] = useState<Record<number, Listing>>({})
@@ -495,26 +486,24 @@ function AppContent({ auth }: { auth: AppAuth }) {
   }, [])
 
   useEffect(() => {
-    const targetAgentsScope: 'global' | number | null = selectedListing ? listingBrokerageId(selectedListing) : activeTab === 'agents' ? 'global' : null
+    const targetAgentsScope: 'global' | null = activeTab === 'agents' || Boolean(selectedListing) ? 'global' : null
     if (!targetAgentsScope || agentsScope === targetAgentsScope) return undefined
 
-    const requestedScope = targetAgentsScope
-    const requestedBrokerageId = requestedScope === 'global' ? undefined : requestedScope
     let cancelled = false
 
     async function loadAgents() {
       setAgentsLoading(true)
       try {
-        const results = await fetchAgents(requestedBrokerageId)
+        const results = await fetchAgents()
         if (!cancelled) {
           setAgents(results)
-          setAgentsScope(requestedScope)
+          setAgentsScope(targetAgentsScope)
         }
       } catch (loadError) {
         console.warn('Unable to load agents', loadError)
         if (!cancelled) {
           setAgents([])
-          setAgentsScope(requestedScope)
+          setAgentsScope(targetAgentsScope)
         }
       } finally {
         if (!cancelled) setAgentsLoading(false)
@@ -583,9 +572,8 @@ function AppContent({ auth }: { auth: AppAuth }) {
     [listingCache, savedListingIds],
   )
 
-  const selectedListingBrokerageId = selectedListing ? listingBrokerageId(selectedListing) : null
   const directoryAgents = agentsScope === 'global' ? agents : []
-  const selectedListingAgents = selectedListingBrokerageId && agentsScope === selectedListingBrokerageId ? agents : []
+  const selectedListingAgents = agentsScope === 'global' ? agents : []
   const selectedAgent = useMemo(
     () => (selectedListing ? selectedListingAgents : directoryAgents).find((agent) => agent.id === selectedAgentId) ?? null,
     [directoryAgents, selectedAgentId, selectedListing, selectedListingAgents],
@@ -2016,9 +2004,8 @@ function ListingDetailScreen({ listing, saved, auth, agents, selectedAgent, onSe
   }, [listing])
 
   const photos = detailListing.photos?.length ? detailListing.photos : [{ id: 0, url: detailListing.primary_photo_url || FALLBACK_IMAGE, position: 1, alt_text: detailListing.title }]
-  const listingAgents = agents.filter((agent) => agentMatchesListing(agent, detailListing))
-  const selectedListingAgent = selectedAgent && agentMatchesListing(selectedAgent, detailListing) ? selectedAgent : null
-  const requestedAgent = selectedListingAgent
+  const routingAgents = agents
+  const requestedAgent = selectedAgent
   const listingAgent = detailListing.agent || null
 
   function showPhoto(index: number) {
@@ -2068,12 +2055,12 @@ function ListingDetailScreen({ listing, saved, auth, agents, selectedAgent, onSe
               <Text style={styles.agentMeta}>Listing attribution</Text>
             </View>
           </View>
-          {listingAgents.length > 0 && (
+          {routingAgents.length > 0 && (
             <View style={styles.agentChoiceList}>
               <Text style={styles.sectionTitle}>Work with an agent</Text>
               <Text style={styles.detailCopy}>Choose who should follow up and coordinate next steps. The listing attribution above stays unchanged.</Text>
               <Text style={styles.requestLabel}>Preferred agent for requests</Text>
-              {listingAgents.map((agent) => (
+              {routingAgents.map((agent) => (
                 <Pressable key={agent.id} style={[styles.agentChoice, requestedAgent?.id === agent.id && styles.agentChoiceActive]} onPress={() => onSelectAgent(agent.id)} accessibilityRole="button">
                   <Text style={[styles.agentChoiceText, requestedAgent?.id === agent.id && styles.agentChoiceTextActive]}>{agent.name}</Text>
                 </Pressable>

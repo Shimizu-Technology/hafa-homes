@@ -438,15 +438,6 @@ function agentInitials(agent: Agent) {
     .join('') || 'HH'
 }
 
-function listingBrokerageId(listing: Listing) {
-  return listing.brokerage?.id ?? listing.agent?.brokerage_id ?? null
-}
-
-function agentBrokerageMatchesListing(agent: Agent, listing: Listing) {
-  const brokerageId = listingBrokerageId(listing)
-  return Boolean(brokerageId && agent.brokerage_id === brokerageId)
-}
-
 function buildQuery(params: Record<string, string | undefined>) {
   const search = new URLSearchParams()
   Object.entries(params).forEach(([key, value]) => {
@@ -4146,11 +4137,10 @@ function PriceTrackerModal({ listing, open, onClose }: { listing: Listing; open:
     enabled: open && isClerkEnabled && isSignedIn && Boolean(userId),
     retry: false,
   })
-  const brokerageId = listingBrokerageId(listing)
   const { data: agentsData } = useQuery({
-    queryKey: ['agents', brokerageId, 'price-tracker'],
-    queryFn: () => fetchAgents(brokerageId ?? undefined),
-    enabled: open && Boolean(brokerageId),
+    queryKey: ['agents', 'routing', 'price-tracker'],
+    queryFn: () => fetchAgents(),
+    enabled: open,
   })
   const profile = meData?.user
   if (!open) return null
@@ -4167,15 +4157,15 @@ function PriceTrackerModal({ listing, open, onClose }: { listing: Listing; open:
       const selectedAgentId = storedSelectedAgentId()
       let candidateAgents = agentsData?.agents
 
-      if (selectedAgentId && !candidateAgents && brokerageId) {
+      if (selectedAgentId && !candidateAgents) {
         try {
-          candidateAgents = (await fetchAgents(brokerageId)).agents
+          candidateAgents = (await fetchAgents()).agents
         } catch (agentError) {
           console.warn('Unable to resolve preferred agent before price tracker submit', agentError)
         }
       }
 
-      const selectedAgent = candidateAgents?.find((agent) => agent.id === selectedAgentId && agentBrokerageMatchesListing(agent, listing))
+      const selectedAgent = candidateAgents?.find((agent) => agent.id === selectedAgentId)
       captureAnalyticsEvent('lead_form_submitted', { listing_id: listing.id, lead_type: 'price_tracker' })
       await mutation.mutateAsync({
         listing_id: listing.id,
@@ -4245,23 +4235,21 @@ function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean
     enabled: open && isClerkEnabled && isSignedIn && Boolean(userId),
     retry: false,
   })
-  const brokerageId = listingBrokerageId(listing)
   const { data: agentsData } = useQuery({
-    queryKey: ['agents', brokerageId, 'lead-modal'],
-    queryFn: () => fetchAgents(brokerageId ?? undefined),
-    enabled: open && Boolean(brokerageId),
+    queryKey: ['agents', 'routing', 'lead-modal'],
+    queryFn: () => fetchAgents(),
+    enabled: open,
   })
   const profile = meData?.user
-  const agents = agentsData?.agents ?? []
-  const listingAgents = agents.length > 0 ? agents : listing.agent && listing.agent.status === 'active' && agentBrokerageMatchesListing(listing.agent, listing) ? [listing.agent] : []
+  const routingAgents = agentsData?.agents ?? []
   const defaultAgentId = (() => {
     const stored = storedSelectedAgentId()
-    const storedAgent = listingAgents.find((agent) => agent.id === stored && agentBrokerageMatchesListing(agent, listing))
+    const storedAgent = routingAgents.find((agent) => agent.id === stored)
     return storedAgent?.id ?? null
   })()
   const [agentSelectionOverride, setAgentSelectionOverride] = useState<{ listingId: number; agentId: number | null } | null>(null)
   const effectiveSelectedAgentId = agentSelectionOverride?.listingId === listing.id ? agentSelectionOverride.agentId : defaultAgentId
-  const selectedModalAgent = listingAgents.find((agent) => agent.id === effectiveSelectedAgentId) ?? null
+  const selectedModalAgent = routingAgents.find((agent) => agent.id === effectiveSelectedAgentId) ?? null
 
   if (!open) return null
 
@@ -4330,12 +4318,12 @@ function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean
                   <p className="text-xs font-semibold text-[#66746f] md:text-sm">{listing.address}</p>
                 </div>
               </div>
-              {listingAgents.length > 0 && (
+              {routingAgents.length > 0 && (
                 <label className="mt-4 grid gap-2 text-sm font-semibold text-[#304942]">
                   Preferred agent
                   <select name="requested_agent_id" value={effectiveSelectedAgentId ?? ''} onChange={(event) => handleAgentChange(event.target.value)} className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
                     <option value="">Brokerage team / no preference for this request</option>
-                    {listingAgents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
+                    {routingAgents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
                   </select>
                 </label>
               )}

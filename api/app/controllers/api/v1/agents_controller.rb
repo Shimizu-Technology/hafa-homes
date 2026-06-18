@@ -8,7 +8,7 @@ module Api
         agents = Agent.active.includes(:brokerage)
         if params[:brokerage_id].present?
           agents = agents.where(brokerage_id: params[:brokerage_id])
-        elsif (brokerage = default_brokerage)
+        elsif (brokerage = current_routing_brokerage)
           agents = agents.where(brokerage: brokerage)
         end
 
@@ -26,10 +26,6 @@ module Api
       end
 
       private
-
-      def default_brokerage
-        Brokerage.active.order(:id).first
-      end
 
       def limit_param
         requested_limit = params[:limit].to_i
