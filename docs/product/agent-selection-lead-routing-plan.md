@@ -10,7 +10,7 @@
 - Admin lead list can filter by assigned agent or unassigned leads.
 - Admin lead cards/detail show requested agent versus assigned agent.
 - Web Agents page lets consumers choose a preferred agent and stores it locally.
-- Web and mobile showing/price requests include the preferred agent when valid.
+- Web and mobile showing/price requests include a preferred agent only when the consumer explicitly selected one; listing attribution alone does not populate `requested_agent`.
 - Mobile Agents tab lets consumers select/clear a preferred agent.
 - Demo seed data now includes four distinct active agents.
 
@@ -28,7 +28,7 @@ For V1, when a public consumer chooses an agent, the backend also sets `assigned
 
 1. Should the customer-selected agent be global across the app, per listing request, or both?
 2. Can a customer choose any agent in the brokerage for any listing, or should some listings force the listing agent/team?
-3. Do we need an explicit “No preference / brokerage team” option in the consumer UI, or should the first/listing agent be preselected?
+3. Is the current “No preference / brokerage team” request option enough, or should brokerages want stronger prompts to pick a specific agent?
 4. Should the requested agent remain visible if an admin reassigns the CRM owner to someone else?
 5. Should agents receive automatic notifications for routed leads, and should brokerage admins be copied?
 6. What exact lead-routing fallback should happen if the selected agent is inactive/on vacation: unassigned, listing agent, round-robin, or brokerage admin?

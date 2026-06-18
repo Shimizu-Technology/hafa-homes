@@ -1707,6 +1707,12 @@ function AgentsPage() {
     captureAnalyticsEvent('agent_selected', { agent_id: agent.id, brokerage_id: agent.brokerage_id, source: 'agents_page' })
   }
 
+  function clearSelectedAgent() {
+    setSelectedAgentId(null)
+    storeSelectedAgentId(null)
+    captureAnalyticsEvent('agent_selection_cleared', { source: 'agents_page' })
+  }
+
   return (
     <Shell compact>
       <ContentHeader
@@ -1722,7 +1728,10 @@ function AgentsPage() {
               <h2 className="mt-2 text-2xl font-semibold tracking-[-0.05em] md:text-3xl">Your selected agent follows you into showing requests.</h2>
               <p className="mt-3 max-w-3xl text-sm leading-6 text-white/72">Listing attribution stays intact for MLS/brokerage compliance, while the customer-selected agent can own the follow-up in the CRM.</p>
             </div>
-            <Link to="/" className="inline-flex min-h-12 items-center justify-center rounded-full bg-white px-5 text-sm font-bold text-[#0f3d35]">Search listings</Link>
+            <div className="flex flex-col gap-2 sm:flex-row md:flex-col lg:flex-row">
+              {selectedAgentId && <button type="button" onClick={clearSelectedAgent} className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/25 px-5 text-sm font-bold text-white">Clear preference</button>}
+              <Link to="/" className="inline-flex min-h-12 items-center justify-center rounded-full bg-white px-5 text-sm font-bold text-[#0f3d35]">Search listings</Link>
+            </div>
           </div>
         </div>
 
@@ -4213,14 +4222,15 @@ function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean
   })
   const profile = meData?.user
   const agents = agentsData?.agents ?? []
-  const listingAgents = agents.length > 0 ? agents : listing.agent ? [listing.agent] : []
+  const listingAgents = agents.length > 0 ? agents : listing.agent && listing.agent.status !== 'inactive' ? [listing.agent] : []
   const defaultAgentId = (() => {
     const stored = storedSelectedAgentId()
     const storedAgent = listingAgents.find((agent) => agent.id === stored && agentBrokerageMatchesListing(agent, listing))
-    return storedAgent?.id ?? listing.agent?.id ?? listingAgents[0]?.id ?? null
+    return storedAgent?.id ?? null
   })()
   const [selectedAgentId, setSelectedAgentId] = useState<number | null | undefined>(undefined)
   const effectiveSelectedAgentId = selectedAgentId === undefined ? defaultAgentId : selectedAgentId
+  const selectedModalAgent = listingAgents.find((agent) => agent.id === effectiveSelectedAgentId) ?? null
 
   if (!open) return null
 
@@ -4248,8 +4258,13 @@ function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean
   function handleAgentChange(value: string) {
     const nextAgentId = value ? Number(value) : null
     setSelectedAgentId(nextAgentId)
-    storeSelectedAgentId(nextAgentId)
-    captureAnalyticsEvent('agent_selected', { agent_id: nextAgentId, listing_id: listing.id, source: 'lead_modal' })
+
+    if (nextAgentId) {
+      storeSelectedAgentId(nextAgentId)
+      captureAnalyticsEvent('agent_selected', { agent_id: nextAgentId, listing_id: listing.id, source: 'lead_modal' })
+    } else {
+      captureAnalyticsEvent('agent_preference_skipped', { listing_id: listing.id, source: 'lead_modal' })
+    }
   }
 
   return (
@@ -4274,11 +4289,11 @@ function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean
             <div className="mt-4 rounded-3xl bg-[#f6f1e8] p-4 md:mt-5">
               <div className="flex items-center gap-4">
                 <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-[#0f3d35] text-sm font-black text-[#f5c16c] md:h-16 md:w-16 md:text-base">
-                  {listingAgents.find((agent) => agent.id === effectiveSelectedAgentId) ? agentInitials(listingAgents.find((agent) => agent.id === effectiveSelectedAgentId)!) : 'HH'}
+                  {selectedModalAgent ? agentInitials(selectedModalAgent) : 'HH'}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-base font-bold text-[#17211f] md:text-lg">{listingAgents.find((agent) => agent.id === effectiveSelectedAgentId)?.name || 'Hafa Homes Team'}</p>
-                  <p className="text-xs font-semibold text-[#66746f] md:text-sm">{listingAgents.find((agent) => agent.id === effectiveSelectedAgentId)?.brokerage?.name || listing.brokerage_name || 'Brokerage partner'}</p>
+                  <p className="text-base font-bold text-[#17211f] md:text-lg">{selectedModalAgent?.name || 'Brokerage team'}</p>
+                  <p className="text-xs font-semibold text-[#66746f] md:text-sm">{selectedModalAgent?.brokerage?.name || listing.brokerage_name || 'No agent preference selected'}</p>
                   <p className="text-xs font-semibold text-[#66746f] md:text-sm">{listing.address}</p>
                 </div>
               </div>
@@ -4286,7 +4301,7 @@ function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean
                 <label className="mt-4 grid gap-2 text-sm font-semibold text-[#304942]">
                   Preferred agent
                   <select name="requested_agent_id" value={effectiveSelectedAgentId ?? ''} onChange={(event) => handleAgentChange(event.target.value)} className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
-                    <option value="">Brokerage team</option>
+                    <option value="">Brokerage team / no preference for this request</option>
                     {listingAgents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
                   </select>
                 </label>

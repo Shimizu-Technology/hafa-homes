@@ -1994,7 +1994,8 @@ function ListingDetailScreen({ listing, saved, auth, agents, selectedAgent, onSe
   const photos = detailListing.photos?.length ? detailListing.photos : [{ id: 0, url: detailListing.primary_photo_url || FALLBACK_IMAGE, position: 1, alt_text: detailListing.title }]
   const listingAgents = agents.filter((agent) => agentMatchesListing(agent, detailListing))
   const selectedListingAgent = selectedAgent && agentMatchesListing(selectedAgent, detailListing) ? selectedAgent : null
-  const requestedAgent = selectedListingAgent || detailListing.agent || listingAgents[0] || null
+  const requestedAgent = selectedListingAgent
+  const displayAgent = requestedAgent || detailListing.agent || null
 
   function showPhoto(index: number) {
     const nextIndex = (index + photos.length) % photos.length
@@ -2036,11 +2037,11 @@ function ListingDetailScreen({ listing, saved, auth, agents, selectedAgent, onSe
           <LocalIntelSection listing={detailListing} />
           <Text style={styles.sectionTitle}>Agent</Text>
           <View style={styles.agentCard}>
-            <View style={styles.agentAvatar}><Text style={styles.agentInitial}>{requestedAgent ? agentInitials(requestedAgent) : (detailListing.agent_name || 'H').charAt(0)}</Text></View>
+            <View style={styles.agentAvatar}><Text style={styles.agentInitial}>{displayAgent ? agentInitials(displayAgent) : (detailListing.agent_name || 'H').charAt(0)}</Text></View>
             <View style={styles.agentInfo}>
-              <Text style={styles.agentName}>{requestedAgent?.name || detailListing.agent_name || 'Hafa Homes Agent'}</Text>
-              <Text style={styles.agentMeta}>{requestedAgent?.brokerage?.name || detailListing.brokerage_name || 'Brokerage partner'}</Text>
-              {selectedListingAgent && <Text style={styles.agentMeta}>Selected for your future requests</Text>}
+              <Text style={styles.agentName}>{displayAgent?.name || detailListing.agent_name || 'Hafa Homes Agent'}</Text>
+              <Text style={styles.agentMeta}>{displayAgent?.brokerage?.name || detailListing.brokerage_name || 'Brokerage partner'}</Text>
+              {requestedAgent ? <Text style={styles.agentMeta}>Selected for your future requests</Text> : <Text style={styles.agentMeta}>Listing attribution shown; no preferred agent selected</Text>}
             </View>
           </View>
           {listingAgents.length > 0 && (
@@ -2222,7 +2223,7 @@ function ShowingRequestSheet({ listing, auth, requestedAgent, open, onOpenAuth, 
                 <Text style={styles.requestListingPrice}>{currency(listing.price, listing.listing_kind)}</Text>
                 <Text numberOfLines={1} style={styles.requestListingTitle}>{listing.title}</Text>
                 <Text numberOfLines={1} style={styles.cardMeta}>{listing.village.name} · {listing.address}</Text>
-                <Text numberOfLines={1} style={styles.cardMeta}>Preferred agent: {requestedAgent?.name || listing.agent_name || 'Brokerage team'}</Text>
+                <Text numberOfLines={1} style={styles.cardMeta}>Preferred agent: {requestedAgent?.name || 'Brokerage team'}</Text>
               </View>
               <View style={styles.requestFieldGroup}>
                 <RequestInput label="Name" value={name} onChangeText={setName} placeholder="Your name" />
@@ -2353,7 +2354,7 @@ function PriceAlertSheet({ listing, auth, requestedAgent, open, onClose }: { lis
                 <Text style={styles.requestListingPrice}>{currency(listing.price, listing.listing_kind)}</Text>
                 <Text numberOfLines={1} style={styles.requestListingTitle}>{listing.title}</Text>
                 <Text numberOfLines={1} style={styles.cardMeta}>{listing.village.name} · {listing.address}</Text>
-                <Text numberOfLines={1} style={styles.cardMeta}>Preferred agent: {requestedAgent?.name || listing.agent_name || 'Brokerage team'}</Text>
+                <Text numberOfLines={1} style={styles.cardMeta}>Preferred agent: {requestedAgent?.name || 'Brokerage team'}</Text>
               </View>
               <View style={styles.requestFieldGroup}>
                 <RequestInput label="Target price" value={targetPrice} onChangeText={setTargetPrice} placeholder="750000" keyboardType="number-pad" />

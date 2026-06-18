@@ -204,7 +204,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_13_130000) do
     t.index ["listing_id"], name: "index_leads_on_listing_id"
     t.index ["quality_status"], name: "index_leads_on_quality_status"
     t.index ["requested_agent_id", "created_at"], name: "index_leads_on_requested_agent_id_and_created_at"
-    t.index ["requested_agent_id"], name: "index_leads_on_requested_agent_id"
     t.index ["source_campaign"], name: "index_leads_on_source_campaign"
     t.index ["status"], name: "index_leads_on_status"
     t.index ["user_id", "created_at"], name: "index_leads_on_user_id_and_created_at"
