@@ -2019,7 +2019,7 @@ function ListingDetailScreen({ listing, saved, auth, agents, selectedAgent, onSe
   const listingAgents = agents.filter((agent) => agentMatchesListing(agent, detailListing))
   const selectedListingAgent = selectedAgent && agentMatchesListing(selectedAgent, detailListing) ? selectedAgent : null
   const requestedAgent = selectedListingAgent
-  const displayAgent = requestedAgent || detailListing.agent || null
+  const listingAgent = detailListing.agent || null
 
   function showPhoto(index: number) {
     const nextIndex = (index + photos.length) % photos.length
@@ -2059,17 +2059,19 @@ function ListingDetailScreen({ listing, saved, auth, agents, selectedAgent, onSe
           <Text style={styles.detailCopy}>{detailListing.description || 'Explore this Guam listing, request a showing, save it for later, or ask an agent for next steps.'}</Text>
           {detailError && <Text style={styles.requestError}>This listing could not be refreshed from the API. Go back to search and reload listings before saving or requesting a showing. Error: {detailError}</Text>}
           <LocalIntelSection listing={detailListing} />
-          <Text style={styles.sectionTitle}>Agent</Text>
+          <Text style={styles.sectionTitle}>Listed by</Text>
           <View style={styles.agentCard}>
-            <View style={styles.agentAvatar}><Text style={styles.agentInitial}>{displayAgent ? agentInitials(displayAgent) : (detailListing.agent_name || 'H').charAt(0)}</Text></View>
+            <View style={styles.agentAvatar}><Text style={styles.agentInitial}>{listingAgent ? agentInitials(listingAgent) : (detailListing.agent_name || 'H').charAt(0)}</Text></View>
             <View style={styles.agentInfo}>
-              <Text style={styles.agentName}>{displayAgent?.name || detailListing.agent_name || 'Hafa Homes Agent'}</Text>
-              <Text style={styles.agentMeta}>{displayAgent?.brokerage?.name || detailListing.brokerage_name || 'Brokerage partner'}</Text>
-              {requestedAgent ? <Text style={styles.agentMeta}>Selected for your future requests</Text> : <Text style={styles.agentMeta}>Listing attribution shown; no preferred agent selected</Text>}
+              <Text style={styles.agentName}>{listingAgent?.name || detailListing.agent_name || 'Listing agent'}</Text>
+              <Text style={styles.agentMeta}>{listingAgent?.brokerage?.name || detailListing.brokerage_name || 'Listing brokerage'}</Text>
+              <Text style={styles.agentMeta}>Listing attribution</Text>
             </View>
           </View>
           {listingAgents.length > 0 && (
             <View style={styles.agentChoiceList}>
+              <Text style={styles.sectionTitle}>Work with an agent</Text>
+              <Text style={styles.detailCopy}>Choose who should follow up and coordinate next steps. The listing attribution above stays unchanged.</Text>
               <Text style={styles.requestLabel}>Preferred agent for requests</Text>
               {listingAgents.map((agent) => (
                 <Pressable key={agent.id} style={[styles.agentChoice, requestedAgent?.id === agent.id && styles.agentChoiceActive]} onPress={() => onSelectAgent(agent.id)} accessibilityRole="button">

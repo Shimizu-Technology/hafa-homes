@@ -4309,8 +4309,10 @@ function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean
                   {selectedModalAgent ? agentInitials(selectedModalAgent) : 'HH'}
                 </div>
                 <div className="min-w-0 flex-1">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#0f705e]">Preferred agent</p>
                   <p className="text-base font-bold text-[#17211f] md:text-lg">{selectedModalAgent?.name || 'Brokerage team'}</p>
-                  <p className="text-xs font-semibold text-[#66746f] md:text-sm">{selectedModalAgent?.brokerage?.name || listing.brokerage_name || 'No agent preference selected'}</p>
+                  <p className="text-xs font-semibold text-[#66746f] md:text-sm">{selectedModalAgent?.brokerage?.name || 'No agent preference selected'}</p>
+                  <p className="mt-1 text-xs font-semibold text-[#66746f] md:text-sm">Listed by {listing.agent_name || 'Listing agent'} · {listing.brokerage_name || 'Listing brokerage'}</p>
                   <p className="text-xs font-semibold text-[#66746f] md:text-sm">{listing.address}</p>
                 </div>
               </div>

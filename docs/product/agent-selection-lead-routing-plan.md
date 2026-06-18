@@ -16,10 +16,10 @@
 
 ## Data model rule
 
-Keep these concepts separate:
+Keep these concepts separate in both data and UI copy:
 
-1. `Listing.agent` — listing/MLS attribution.
-2. `Lead.requested_agent` — the customer-selected/preferred agent.
+1. `Listing.agent` — listing/MLS attribution (“Listed by”).
+2. `Lead.requested_agent` — the customer-selected/preferred agent (“Work with” / “Preferred agent”).
 3. `Lead.assigned_agent` — the CRM owner responsible for follow-up.
 
 For V1, when a public consumer chooses an agent, the backend also sets `assigned_agent` to that same agent after validating that the agent belongs to the listing brokerage. Admins can later reassign the CRM owner without rewriting the original customer request.
