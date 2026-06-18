@@ -24,6 +24,10 @@ Keep these concepts separate in both data and UI copy:
 
 For V1, when a public consumer chooses an agent, the backend also sets `assigned_agent` to that same agent after validating that the agent belongs to the listing brokerage. Admins can later reassign the CRM owner without rewriting the original customer request.
 
+## Related follow-up planning
+
+See `docs/product/brokerage-mls-attribution-routing-questions.md` for the larger Mike/John discussion around broker-branded app inventory scope, FlexMLS/IDX attribution, listing-agent ownership, and buyer/preferred-agent lead routing.
+
 ## Open questions for Mike / John / brokerage
 
 1. Should the customer-selected agent be global across the app, per listing request, or both?
