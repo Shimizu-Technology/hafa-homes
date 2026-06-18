@@ -4137,6 +4137,8 @@ function MobileMenuDrawer({ open, onClose }: { open: boolean; onClose: () => voi
 
 function PriceTrackerModal({ listing, open, onClose }: { listing: Listing; open: boolean; onClose: () => void }) {
   const mutation = useMutation({ mutationFn: createLead })
+  const submittingRef = useRef(false)
+  const [submitting, setSubmitting] = useState(false)
   const { isClerkEnabled, isSignedIn, userId } = useAuthContext()
   const { data: meData } = useQuery({
     queryKey: ['me', userId, 'price-tracker-prefill'],
@@ -4155,33 +4157,45 @@ function PriceTrackerModal({ listing, open, onClose }: { listing: Listing; open:
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    const form = new FormData(event.currentTarget)
-    const selectedAgentId = storedSelectedAgentId()
-    let candidateAgents = agentsData?.agents
+    if (submittingRef.current || mutation.isPending) return
 
-    if (selectedAgentId && !candidateAgents && brokerageId) {
-      try {
-        candidateAgents = (await fetchAgents(brokerageId)).agents
-      } catch (agentError) {
-        console.warn('Unable to resolve preferred agent before price tracker submit', agentError)
+    submittingRef.current = true
+    setSubmitting(true)
+
+    try {
+      const form = new FormData(event.currentTarget)
+      const selectedAgentId = storedSelectedAgentId()
+      let candidateAgents = agentsData?.agents
+
+      if (selectedAgentId && !candidateAgents && brokerageId) {
+        try {
+          candidateAgents = (await fetchAgents(brokerageId)).agents
+        } catch (agentError) {
+          console.warn('Unable to resolve preferred agent before price tracker submit', agentError)
+        }
       }
-    }
 
-    const selectedAgent = candidateAgents?.find((agent) => agent.id === selectedAgentId && agentBrokerageMatchesListing(agent, listing))
-    captureAnalyticsEvent('lead_form_submitted', { listing_id: listing.id, lead_type: 'price_tracker' })
-    mutation.mutate({
-      listing_id: listing.id,
-      lead_type: 'price_tracker',
-      name: String(form.get('name') || 'Price tracker user'),
-      email: String(form.get('email') || ''),
-      phone: String(form.get('phone') || ''),
-      preferred_contact_method: 'email',
-      target_price: String(form.get('target_price') || ''),
-      source_campaign: currentUtmCampaign(),
-      source_url: window.location.href,
-      requested_agent_id: selectedAgent?.id,
-      message: `Target price: ${String(form.get('target_price') || '')}`, 
-    })
+      const selectedAgent = candidateAgents?.find((agent) => agent.id === selectedAgentId && agentBrokerageMatchesListing(agent, listing))
+      captureAnalyticsEvent('lead_form_submitted', { listing_id: listing.id, lead_type: 'price_tracker' })
+      await mutation.mutateAsync({
+        listing_id: listing.id,
+        lead_type: 'price_tracker',
+        name: String(form.get('name') || 'Price tracker user'),
+        email: String(form.get('email') || ''),
+        phone: String(form.get('phone') || ''),
+        preferred_contact_method: 'email',
+        target_price: String(form.get('target_price') || ''),
+        source_campaign: currentUtmCampaign(),
+        source_url: window.location.href,
+        requested_agent_id: selectedAgent?.id,
+        message: `Target price: ${String(form.get('target_price') || '')}`,
+      })
+    } catch {
+      // React Query keeps the mutation error state for the inline error message.
+    } finally {
+      submittingRef.current = false
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -4212,7 +4226,7 @@ function PriceTrackerModal({ listing, open, onClose }: { listing: Listing; open:
             </div>
             {mutation.isError && <p className="mt-3 text-sm font-semibold text-red-700">Unable to save tracker right now.</p>}
             <div className="mt-5 grid grid-cols-2 gap-3">
-              <button disabled={mutation.isPending} className="rounded-2xl bg-[#0f3d35] px-4 py-3 text-sm font-bold text-white disabled:opacity-60">{mutation.isPending ? 'Saving...' : 'Add'}</button>
+              <button disabled={submitting || mutation.isPending} className="rounded-2xl bg-[#0f3d35] px-4 py-3 text-sm font-bold text-white disabled:opacity-60">{submitting || mutation.isPending ? 'Saving...' : 'Add'}</button>
               <button type="button" onClick={onClose} className="rounded-2xl bg-[#edf0ec] px-4 py-3 text-sm font-bold text-[#17211f]">Cancel</button>
             </div>
           </form>
