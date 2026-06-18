@@ -10,7 +10,7 @@ module Api
       before_action :set_lead, only: [:show, :update, :send_notification]
 
       def index
-        leads = staff_lead_scope.order(created_at: :desc).limit(100)
+        leads = filtered_staff_leads.order(created_at: :desc).limit(100)
 
         render json: {
           leads: leads.map { |lead| LeadSerializer.summary(lead) },
@@ -27,8 +27,11 @@ module Api
 
       def create
         permitted = lead_params
-        lead = Lead.new(permitted.except(:listing_id))
+        lead = Lead.new(permitted.except(:listing_id, :requested_agent_id))
         lead.listing = active_listing_from_params(permitted)
+        return if performed?
+
+        assign_requested_agent_from_params(lead, permitted[:requested_agent_id])
         return if performed?
 
         lead.user = current_user if current_user
@@ -97,6 +100,14 @@ module Api
         @lead = staff_lead_scope.find(params[:id])
       end
 
+      def filtered_staff_leads
+        leads = staff_lead_scope
+        assigned_agent_id = params[:assigned_agent_id].presence || params[:agent_id].presence
+        return leads unless assigned_agent_id
+
+        assigned_agent_id == "unassigned" ? leads.where(assigned_agent_id: nil) : leads.where(assigned_agent_id: assigned_agent_id)
+      end
+
       def apply_lead_update_params
         permitted = lead_update_params
 
@@ -116,6 +127,22 @@ module Api
           end
         end
 
+        if permitted.key?(:requested_agent_id)
+          requested_agent_id = permitted.delete(:requested_agent_id)
+          if requested_agent_id.present?
+            requested_agent = assignable_agents_for(@lead).find_by(id: requested_agent_id)
+            unless requested_agent
+              render json: { errors: ["Requested agent is not available for this lead"] }, status: :unprocessable_entity
+              return false
+            end
+
+            @lead.requested_agent = requested_agent
+            @lead.brokerage ||= requested_agent.brokerage
+          else
+            @lead.requested_agent = nil
+          end
+        end
+
         normalize_blank_update_values(permitted)
         @lead.assign_attributes(permitted)
         @lead.last_contacted_at = Time.current if permitted.key?(:status) && contact_status?(@lead.status)
@@ -130,7 +157,7 @@ module Api
 
       def record_lead_update_activity
         trackable_fields = %w[
-          status assigned_agent_id quality_status lead_type name email phone preferred_contact_method
+          status assigned_agent_id requested_agent_id quality_status lead_type name email phone preferred_contact_method
           preferred_time preferred_tour_date tour_type target_price message source_campaign source_url
         ]
         changed_fields = @lead.previous_changes.keys & trackable_fields
@@ -155,7 +182,7 @@ module Api
 
       def record_global_lead_update_audit
         trackable_fields = %w[
-          status assigned_agent_id quality_status lead_type name email phone preferred_contact_method
+          status assigned_agent_id requested_agent_id quality_status lead_type name email phone preferred_contact_method
           preferred_time preferred_tour_date tour_type target_price message source_campaign source_url
         ]
         changes = AuditLogger.change_details(@lead.previous_changes, trackable_fields)
@@ -182,8 +209,28 @@ module Api
           :message,
           :source_campaign,
           :source_url,
-          :listing_id
+          :listing_id,
+          :requested_agent_id
         )
+      end
+
+      def assign_requested_agent_from_params(lead, requested_agent_id)
+        return if requested_agent_id.blank?
+
+        agent = Agent.active.includes(:brokerage).find_by(id: requested_agent_id)
+        unless agent
+          render json: { errors: ["Requested agent is not available"] }, status: :unprocessable_entity
+          return
+        end
+
+        if lead.listing&.brokerage_id.present? && agent.brokerage_id != lead.listing.brokerage_id
+          render json: { errors: ["Requested agent is not available for this listing"] }, status: :unprocessable_entity
+          return
+        end
+
+        lead.requested_agent = agent
+        lead.assigned_agent = agent
+        lead.brokerage ||= agent.brokerage
       end
 
       def active_listing_from_params(permitted)
@@ -198,6 +245,7 @@ module Api
         params.require(:lead).permit(
           :status,
           :assigned_agent_id,
+          :requested_agent_id,
           :quality_status,
           :lead_type,
           :name,

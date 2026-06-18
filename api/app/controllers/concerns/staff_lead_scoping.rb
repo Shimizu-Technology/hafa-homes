@@ -5,7 +5,7 @@ module StaffLeadScoping
 
   def staff_lead_scope
     base = Lead
-      .includes(:brokerage, :assigned_agent, { showing_appointments: [:listing, :brokerage, :agent, :created_by] }, listing: [:village, :brokerage, :agent])
+      .includes(:brokerage, :requested_agent, :assigned_agent, { showing_appointments: [:listing, :brokerage, :agent, :created_by] }, listing: [:village, :brokerage, :agent])
 
     return base if current_user.platform_admin?
 

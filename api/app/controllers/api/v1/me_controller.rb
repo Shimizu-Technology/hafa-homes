@@ -23,7 +23,7 @@ module Api
 
       def leads
         leads = current_user.leads
-          .includes(:brokerage, :assigned_agent, { showing_appointments: [:listing, :brokerage, :agent, :created_by] }, listing: [:village, :brokerage, :agent])
+          .includes(:brokerage, :requested_agent, :assigned_agent, { showing_appointments: [:listing, :brokerage, :agent, :created_by] }, listing: [:village, :brokerage, :agent])
           .order(created_at: :desc)
           .limit(100)
 

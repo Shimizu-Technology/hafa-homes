@@ -85,6 +85,7 @@ module Api
             phone: agent.phone,
             license_number: agent.license_number,
             photo_url: agent.photo_url,
+            bio: agent.bio,
             status: agent.status
           }
         end

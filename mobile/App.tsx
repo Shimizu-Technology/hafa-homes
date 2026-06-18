@@ -6,7 +6,7 @@ import * as Linking from 'expo-linking'
 import { StatusBar } from 'expo-status-bar'
 import * as WebBrowser from 'expo-web-browser'
 import { WebView } from 'react-native-webview'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
@@ -24,7 +24,7 @@ import {
   View,
 } from 'react-native'
 
-type TabKey = 'search' | 'map' | 'saved' | 'requests' | 'more'
+type TabKey = 'search' | 'map' | 'agents' | 'saved' | 'requests' | 'more'
 type ListingKind = 'sale' | 'rent'
 
 type Feature = {
@@ -58,6 +58,27 @@ type ListingPhoto = {
   alt_text?: string
 }
 
+type Brokerage = {
+  id: number
+  name: string
+  slug?: string
+  phone?: string
+  website_url?: string
+}
+
+type Agent = {
+  id: number
+  brokerage_id?: number
+  name: string
+  email?: string
+  phone?: string
+  license_number?: string
+  photo_url?: string
+  bio?: string
+  status?: string
+  brokerage?: Brokerage
+}
+
 type Listing = {
   id: number
   external_id?: string
@@ -77,6 +98,8 @@ type Listing = {
   description?: string
   agent_name?: string
   brokerage_name?: string
+  brokerage?: Brokerage | null
+  agent?: Agent | null
   village: Village
   features: Feature[]
   photos?: ListingPhoto[]
@@ -105,7 +128,8 @@ type ConsumerLead = {
   preferred_contact_method?: string
   created_at: string
   message?: string
-  listing?: { id: number; title: string; address?: string; village?: string; primary_photo_url?: string; price?: number; listing_kind?: ListingKind } | null
+  listing?: { id: number; title: string; address?: string; village?: string; primary_photo_url?: string; price?: number; listing_kind?: ListingKind; agent?: Agent | null } | null
+  requested_agent?: Agent | null
   assigned_agent?: { id: number; name: string; phone?: string; email?: string } | null
   brokerage?: { id: number; name: string; phone?: string } | null
   latest_showing_appointment?: ShowingAppointment | null
@@ -153,6 +177,7 @@ const GOOGLE_AUTH_ENABLED = process.env.EXPO_PUBLIC_ENABLE_GOOGLE_AUTH === 'true
 const FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1600047509807-ba8f99d2cdde?auto=format&fit=crop&w=1200&q=80'
 const LEGACY_SAVED_LISTING_IDS_KEY = 'hafaHomes:savedListingIds'
 const LEGACY_SAVED_LISTINGS_KEY = 'hafaHomes:savedListings'
+const SELECTED_AGENT_ID_KEY = 'hafaHomes:selectedAgentId'
 const OAUTH_CALLBACK_PATH = 'oauth-native-callback'
 const AUTH_FLOW_TIMEOUT_MS = 25_000
 
@@ -182,6 +207,7 @@ class ApiRequestError extends Error {
 const tabs: Array<{ key: TabKey; label: string; icon: string }> = [
   { key: 'search', label: 'Search', icon: '⌂' },
   { key: 'map', label: 'Map', icon: '⌖' },
+  { key: 'agents', label: 'Agents', icon: '◉' },
   { key: 'saved', label: 'Saved', icon: '♡' },
   { key: 'requests', label: 'Requests', icon: '◎' },
   { key: 'more', label: 'More', icon: '☰' },
@@ -211,6 +237,27 @@ async function fetchListings(kind: ListingKind): Promise<Listing[]> {
   if (!response.ok) throw new Error('Unable to load listings')
   const json = await response.json()
   return json.listings ?? []
+}
+
+async function fetchAgents(brokerageId?: number): Promise<Agent[]> {
+  const query = brokerageId ? `?brokerage_id=${brokerageId}` : ''
+  const response = await fetch(`${API_URL}/api/v1/agents${query}`)
+  if (!response.ok) throw new Error('Unable to load agents')
+  const json = await response.json()
+  return json.agents ?? []
+}
+
+function agentInitials(agent: Agent) {
+  return agent.name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join('') || 'HH'
+}
+
+function agentMatchesListing(agent: Agent, listing: Listing) {
+  return !listing.brokerage?.id || agent.brokerage_id === listing.brokerage.id
 }
 
 async function apiErrorMessage(response: Response, fallback: string) {
@@ -310,6 +357,7 @@ async function createLead(payload: {
   target_price?: string
   source_campaign?: string
   source_url?: string
+  requested_agent_id?: number
   message: string
 }, getToken?: GetAuthToken) {
   const response = await fetch(`${API_URL}/api/v1/leads`, {
@@ -397,6 +445,9 @@ function AppContent({ auth }: { auth: AppAuth }) {
   const [kind, setKind] = useState<ListingKind>('sale')
   const [searchQuery, setSearchQuery] = useState('')
   const [listings, setListings] = useState<Listing[]>([])
+  const [agents, setAgents] = useState<Agent[]>([])
+  const [agentsLoading, setAgentsLoading] = useState(false)
+  const [selectedAgentId, setSelectedAgentId] = useState<number | null>(null)
   const [listingCache, setListingCache] = useState<Record<number, Listing>>({})
   const [selectedListing, setSelectedListing] = useState<Listing | null>(null)
   const [savedListingIds, setSavedListingIds] = useState<number[]>([])
@@ -417,6 +468,7 @@ function AppContent({ auth }: { auth: AppAuth }) {
       if (!url) return
       const parsed = Linking.parse(url)
       const path = parsed.path ? `/${parsed.path}` : '/'
+      if (path.startsWith('/agents')) setActiveTab('agents')
       if (path.startsWith('/account/requests') || path.startsWith('/requests')) setActiveTab('requests')
       if (path.startsWith('/saved')) setActiveTab('saved')
       if (path.startsWith('/account')) setActiveTab('more')
@@ -425,6 +477,37 @@ function AppContent({ auth }: { auth: AppAuth }) {
     Linking.getInitialURL().then(handleUrl).catch((linkError) => console.warn('Unable to parse initial link', linkError))
     const subscription = Linking.addEventListener('url', ({ url }) => handleUrl(url))
     return () => subscription.remove()
+  }, [])
+
+  useEffect(() => {
+    AsyncStorage.getItem(SELECTED_AGENT_ID_KEY)
+      .then((value) => {
+        const parsed = value ? Number(value) : null
+        if (parsed && Number.isFinite(parsed)) setSelectedAgentId(parsed)
+      })
+      .catch((storageError) => console.warn('Unable to load selected agent', storageError))
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadAgents() {
+      setAgentsLoading(true)
+      try {
+        const results = await fetchAgents()
+        if (!cancelled) setAgents(results)
+      } catch (loadError) {
+        console.warn('Unable to load agents', loadError)
+      } finally {
+        if (!cancelled) setAgentsLoading(false)
+      }
+    }
+
+    loadAgents()
+
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   useEffect(() => {
@@ -481,6 +564,14 @@ function AppContent({ auth }: { auth: AppAuth }) {
     () => savedListingIds.map((id) => listingCache[id]).filter((listing): listing is Listing => Boolean(listing)),
     [listingCache, savedListingIds],
   )
+
+  const selectedAgent = useMemo(() => agents.find((agent) => agent.id === selectedAgentId) ?? null, [agents, selectedAgentId])
+
+  const selectAgent = useCallback((agentId: number | null) => {
+    setSelectedAgentId(agentId)
+    if (agentId) AsyncStorage.setItem(SELECTED_AGENT_ID_KEY, String(agentId)).catch((storageError) => console.warn('Unable to save selected agent', storageError))
+    else AsyncStorage.removeItem(SELECTED_AGENT_ID_KEY).catch((storageError) => console.warn('Unable to clear selected agent', storageError))
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -669,6 +760,9 @@ function AppContent({ auth }: { auth: AppAuth }) {
         listing={selectedListing}
         saved={savedListingIds.includes(selectedListing.id)}
         auth={auth}
+        agents={agents}
+        selectedAgent={selectedAgent}
+        onSelectAgent={selectAgent}
         onBack={() => setSelectedListing(null)}
         onOpenAuth={openAuthPrompt}
         onToggleSaved={() => toggleSaved(selectedListing.id)}
@@ -732,6 +826,9 @@ function AppContent({ auth }: { auth: AppAuth }) {
                 fullMap={fullMapOpen}
                 onToggleFullMap={() => setFullMapOpen((current) => !current)}
               />
+        )}
+        {activeTab === 'agents' && (
+          <AgentsScreen agents={agents} loading={agentsLoading} selectedAgentId={selectedAgentId} onSelectAgent={selectAgent} />
         )}
         {activeTab === 'saved' && (
           !auth.isSignedIn
@@ -1077,6 +1174,49 @@ function buildMapHtml(points: Listing[]) {
 </html>`
 }
 
+function AgentsScreen({ agents, loading, selectedAgentId, onSelectAgent }: { agents: Agent[]; loading: boolean; selectedAgentId: number | null; onSelectAgent: (agentId: number | null) => void }) {
+  return (
+    <ScrollView contentContainerStyle={styles.listContent}>
+      <View style={styles.screenIntro}>
+        <Text style={styles.kicker}>Agent network</Text>
+        <Text style={styles.screenTitle}>Choose who you want to work with</Text>
+        <Text style={styles.screenCopy}>Your selected agent is added to future showing and price requests when the listing belongs to their brokerage. Listing attribution remains unchanged.</Text>
+      </View>
+
+      {selectedAgentId && (
+        <Pressable style={styles.secondaryCta} onPress={() => onSelectAgent(null)} accessibilityRole="button">
+          <Text style={styles.secondaryCtaText}>Clear selected agent</Text>
+        </Pressable>
+      )}
+
+      {loading && <CenteredState label="Loading agents..." loading />}
+      {!loading && agents.length === 0 && <CenteredState label="No active agents are published yet." />}
+      {agents.map((agent) => {
+        const selected = agent.id === selectedAgentId
+        return (
+          <View key={agent.id} style={[styles.agentDirectoryCard, selected && styles.agentDirectoryCardActive]}>
+            <View style={styles.agentDirectoryHeader}>
+              <View style={styles.agentDirectoryAvatar}>
+                {agent.photo_url ? <Image source={{ uri: agent.photo_url }} style={styles.agentDirectoryPhoto} /> : <Text style={styles.agentInitial}>{agentInitials(agent)}</Text>}
+              </View>
+              <View style={styles.agentInfo}>
+                <Text style={styles.agentName}>{agent.name}</Text>
+                <Text style={styles.agentMeta}>{agent.brokerage?.name || 'Brokerage partner'}</Text>
+                {agent.license_number && <Text style={styles.agentMeta}>License {agent.license_number}</Text>}
+              </View>
+            </View>
+            {agent.bio && <Text style={styles.agentBio}>{agent.bio}</Text>}
+            {(agent.phone || agent.email) && <Text style={styles.agentBio}>{[agent.phone, agent.email].filter(Boolean).join(' · ')}</Text>}
+            <Pressable style={[styles.primaryCta, selected && styles.selectedAgentCta]} onPress={() => onSelectAgent(agent.id)} accessibilityRole="button">
+              <Text style={[styles.primaryCtaText, selected && styles.selectedAgentCtaText]}>{selected ? 'Selected for future requests' : `Work with ${agent.name.split(' ')[0]}`}</Text>
+            </Pressable>
+          </View>
+        )
+      })}
+    </ScrollView>
+  )
+}
+
 function SavedSignInScreen({ clerkEnabled, onOpenAuth }: { clerkEnabled: boolean; onOpenAuth: () => void }) {
   return (
     <ScrollView contentContainerStyle={styles.listContent}>
@@ -1130,12 +1270,13 @@ function MoreScreen({ auth, onOpenAuth, onNavigateTab }: { auth: AppAuth; onOpen
       <View style={styles.moreMenuSection}>
         <MoreMenuItem title="Profile & settings" copy="Edit name, phone, contact preference, sign out, or delete account." label="Account" onPress={() => auth.isSignedIn ? setPage('profile') : onOpenAuth()} />
         <MoreMenuItem title="Saved homes" copy="Return to homes you saved from web or mobile." label="Saved" onPress={() => onNavigateTab('saved')} />
+        <MoreMenuItem title="Agents" copy="Choose the brokerage agent you want future requests routed to." label="Agents" onPress={() => onNavigateTab('agents')} />
         <MoreMenuItem title="Request history" copy="Track showing requests, agents, brokerage details, and appointment status." label="CRM" onPress={() => onNavigateTab('requests')} />
       </View>
 
       <View style={styles.moreMenuSection}>
         <Text style={styles.moreSectionLabel}>Coming next</Text>
-        {['Saved search alerts', 'Neighborhood guide', 'Mortgage tools', 'Military relocation resources', 'Agent and brokerage contacts'].map((item) => (
+        {['Saved search alerts', 'Neighborhood guide', 'Mortgage tools', 'Military relocation resources'].map((item) => (
           <View key={item} style={styles.resourceRow}>
             <View style={styles.resourceBullet} />
             <Text style={styles.resourceText}>{item}</Text>
@@ -1277,7 +1418,8 @@ function RequestHistoryCard({ request }: { request: ConsumerLead }) {
         <Text style={styles.requestHistoryMeta}>Submitted {formatRequestDate(request.created_at)}</Text>
         <View style={styles.showingSummaryCard}>
           <Text style={styles.requestHistoryStatus}>Agent and brokerage</Text>
-          <Text style={styles.requestHistoryMeta}>Agent: {request.assigned_agent?.name || 'Pending assignment'}</Text>
+          <Text style={styles.requestHistoryMeta}>Requested agent: {request.requested_agent?.name || request.listing?.agent?.name || 'Brokerage team'}</Text>
+          <Text style={styles.requestHistoryMeta}>Assigned agent: {request.assigned_agent?.name || 'Pending assignment'}</Text>
           {request.assigned_agent?.phone && <Text style={styles.requestHistoryMeta}>Agent phone: {request.assigned_agent.phone}</Text>}
           {request.assigned_agent?.email && <Text style={styles.requestHistoryMeta}>Agent email: {request.assigned_agent.email}</Text>}
           <Text style={styles.requestHistoryMeta}>Brokerage: {request.brokerage?.name || 'Hafa Homes'}</Text>
@@ -1813,7 +1955,7 @@ function CalculatorInput({ label, value, onChangeText, prefix, suffix }: { label
   )
 }
 
-function ListingDetailScreen({ listing, saved, auth, onBack, onOpenAuth, onToggleSaved }: { listing: Listing; saved: boolean; auth: AppAuth; onBack: () => void; onOpenAuth: (prompt?: AuthPrompt) => void; onToggleSaved: () => void }) {
+function ListingDetailScreen({ listing, saved, auth, agents, selectedAgent, onSelectAgent, onBack, onOpenAuth, onToggleSaved }: { listing: Listing; saved: boolean; auth: AppAuth; agents: Agent[]; selectedAgent: Agent | null; onSelectAgent: (agentId: number | null) => void; onBack: () => void; onOpenAuth: (prompt?: AuthPrompt) => void; onToggleSaved: () => void }) {
   const [detailListing, setDetailListing] = useState(listing)
   const [imageUri, setImageUri] = useState(listing.photos?.[0]?.url || listing.primary_photo_url || FALLBACK_IMAGE)
   const [photoIndex, setPhotoIndex] = useState(0)
@@ -1850,6 +1992,9 @@ function ListingDetailScreen({ listing, saved, auth, onBack, onOpenAuth, onToggl
   }, [listing])
 
   const photos = detailListing.photos?.length ? detailListing.photos : [{ id: 0, url: detailListing.primary_photo_url || FALLBACK_IMAGE, position: 1, alt_text: detailListing.title }]
+  const listingAgents = agents.filter((agent) => agentMatchesListing(agent, detailListing))
+  const selectedListingAgent = selectedAgent && agentMatchesListing(selectedAgent, detailListing) ? selectedAgent : null
+  const requestedAgent = selectedListingAgent || detailListing.agent || listingAgents[0] || null
 
   function showPhoto(index: number) {
     const nextIndex = (index + photos.length) % photos.length
@@ -1891,12 +2036,23 @@ function ListingDetailScreen({ listing, saved, auth, onBack, onOpenAuth, onToggl
           <LocalIntelSection listing={detailListing} />
           <Text style={styles.sectionTitle}>Agent</Text>
           <View style={styles.agentCard}>
-            <View style={styles.agentAvatar}><Text style={styles.agentInitial}>{(detailListing.agent_name || 'H').charAt(0)}</Text></View>
+            <View style={styles.agentAvatar}><Text style={styles.agentInitial}>{requestedAgent ? agentInitials(requestedAgent) : (detailListing.agent_name || 'H').charAt(0)}</Text></View>
             <View style={styles.agentInfo}>
-              <Text style={styles.agentName}>{detailListing.agent_name || 'Hafa Homes Agent'}</Text>
-              <Text style={styles.agentMeta}>{detailListing.brokerage_name || 'Brokerage partner'}</Text>
+              <Text style={styles.agentName}>{requestedAgent?.name || detailListing.agent_name || 'Hafa Homes Agent'}</Text>
+              <Text style={styles.agentMeta}>{requestedAgent?.brokerage?.name || detailListing.brokerage_name || 'Brokerage partner'}</Text>
+              {selectedListingAgent && <Text style={styles.agentMeta}>Selected for your future requests</Text>}
             </View>
           </View>
+          {listingAgents.length > 0 && (
+            <View style={styles.agentChoiceList}>
+              <Text style={styles.requestLabel}>Preferred agent for requests</Text>
+              {listingAgents.map((agent) => (
+                <Pressable key={agent.id} style={[styles.agentChoice, requestedAgent?.id === agent.id && styles.agentChoiceActive]} onPress={() => onSelectAgent(agent.id)} accessibilityRole="button">
+                  <Text style={[styles.agentChoiceText, requestedAgent?.id === agent.id && styles.agentChoiceTextActive]}>{agent.name}</Text>
+                </Pressable>
+              ))}
+            </View>
+          )}
           <Pressable disabled={Boolean(detailError)} style={[styles.primaryCta, detailError && styles.ctaDisabled]} onPress={() => setShowRequestForm(true)}>
             <Text style={styles.primaryCtaText}>Request a showing</Text>
           </Pressable>
@@ -1919,8 +2075,8 @@ function ListingDetailScreen({ listing, saved, auth, onBack, onOpenAuth, onToggl
           )}
         </View>
       </ScrollView>
-      <ShowingRequestSheet listing={detailListing} auth={auth} open={showRequestForm} onOpenAuth={onOpenAuth} onClose={() => setShowRequestForm(false)} />
-      <PriceAlertSheet listing={detailListing} auth={auth} open={showPriceTracker} onClose={() => setShowPriceTracker(false)} />
+      <ShowingRequestSheet listing={detailListing} auth={auth} requestedAgent={requestedAgent} open={showRequestForm} onOpenAuth={onOpenAuth} onClose={() => setShowRequestForm(false)} />
+      <PriceAlertSheet listing={detailListing} auth={auth} requestedAgent={requestedAgent} open={showPriceTracker} onClose={() => setShowPriceTracker(false)} />
     </SafeAreaView>
   )
 }
@@ -1970,7 +2126,7 @@ function LocalIntelList({ title, items, note }: { title: string; items?: string[
   )
 }
 
-function ShowingRequestSheet({ listing, auth, open, onOpenAuth, onClose }: { listing: Listing; auth: AppAuth; open: boolean; onOpenAuth: (prompt?: AuthPrompt) => void; onClose: () => void }) {
+function ShowingRequestSheet({ listing, auth, requestedAgent, open, onOpenAuth, onClose }: { listing: Listing; auth: AppAuth; requestedAgent: Agent | null; open: boolean; onOpenAuth: (prompt?: AuthPrompt) => void; onClose: () => void }) {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('+1671')
@@ -2023,6 +2179,7 @@ function ShowingRequestSheet({ listing, auth, open, onOpenAuth, onClose }: { lis
         preferred_time: preferredTime,
         tour_type: tourType,
         source_url: `hafahomes:///listings/${listing.id}`,
+        requested_agent_id: requestedAgent?.id,
         message: `${message.trim()}\n\nListing: ${listing.title} — ${listing.address}, ${listing.village.name}`,
       }, auth.isSignedIn ? auth.getToken : undefined)
       setSubmitted(true)
@@ -2065,6 +2222,7 @@ function ShowingRequestSheet({ listing, auth, open, onOpenAuth, onClose }: { lis
                 <Text style={styles.requestListingPrice}>{currency(listing.price, listing.listing_kind)}</Text>
                 <Text numberOfLines={1} style={styles.requestListingTitle}>{listing.title}</Text>
                 <Text numberOfLines={1} style={styles.cardMeta}>{listing.village.name} · {listing.address}</Text>
+                <Text numberOfLines={1} style={styles.cardMeta}>Preferred agent: {requestedAgent?.name || listing.agent_name || 'Brokerage team'}</Text>
               </View>
               <View style={styles.requestFieldGroup}>
                 <RequestInput label="Name" value={name} onChangeText={setName} placeholder="Your name" />
@@ -2109,7 +2267,7 @@ function ShowingRequestSheet({ listing, auth, open, onOpenAuth, onClose }: { lis
   )
 }
 
-function PriceAlertSheet({ listing, auth, open, onClose }: { listing: Listing; auth: AppAuth; open: boolean; onClose: () => void }) {
+function PriceAlertSheet({ listing, auth, requestedAgent, open, onClose }: { listing: Listing; auth: AppAuth; requestedAgent: Agent | null; open: boolean; onClose: () => void }) {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('+1671')
@@ -2157,6 +2315,7 @@ function PriceAlertSheet({ listing, auth, open, onClose }: { listing: Listing; a
         preferred_contact_method: 'email',
         target_price: targetPrice.trim(),
         source_url: `hafahomes:///listings/${listing.id}`,
+        requested_agent_id: requestedAgent?.id,
         message: `Target price: ${targetPrice.trim()}\n\nListing: ${listing.title} — ${listing.address}, ${listing.village.name}`,
       }, auth.isSignedIn ? auth.getToken : undefined)
       setSubmitted(true)
@@ -2194,6 +2353,7 @@ function PriceAlertSheet({ listing, auth, open, onClose }: { listing: Listing; a
                 <Text style={styles.requestListingPrice}>{currency(listing.price, listing.listing_kind)}</Text>
                 <Text numberOfLines={1} style={styles.requestListingTitle}>{listing.title}</Text>
                 <Text numberOfLines={1} style={styles.cardMeta}>{listing.village.name} · {listing.address}</Text>
+                <Text numberOfLines={1} style={styles.cardMeta}>Preferred agent: {requestedAgent?.name || listing.agent_name || 'Brokerage team'}</Text>
               </View>
               <View style={styles.requestFieldGroup}>
                 <RequestInput label="Target price" value={targetPrice} onChangeText={setTargetPrice} placeholder="750000" keyboardType="number-pad" />
@@ -2332,6 +2492,19 @@ const styles = StyleSheet.create({
   agentName: { color: colors.ink, fontSize: 16, fontWeight: '900' },
   agentMeta: { color: colors.muted, fontSize: 12, fontWeight: '700', marginTop: 2 },
   agentCta: { color: colors.green2, fontSize: 13, fontWeight: '900' },
+  agentDirectoryCard: { backgroundColor: 'white', borderColor: 'rgba(15,61,53,0.08)', borderRadius: 26, borderWidth: 1, gap: 12, marginBottom: 12, padding: 16 },
+  agentDirectoryCardActive: { borderColor: colors.green2, shadowColor: colors.green, shadowOpacity: 0.12, shadowRadius: 14, shadowOffset: { width: 0, height: 8 } },
+  agentDirectoryHeader: { alignItems: 'center', flexDirection: 'row', gap: 12 },
+  agentDirectoryAvatar: { alignItems: 'center', backgroundColor: colors.green, borderRadius: 22, height: 56, justifyContent: 'center', overflow: 'hidden', width: 56 },
+  agentDirectoryPhoto: { height: '100%', width: '100%' },
+  agentBio: { color: colors.muted, fontSize: 13, fontWeight: '700', lineHeight: 20 },
+  selectedAgentCta: { backgroundColor: colors.mint },
+  selectedAgentCtaText: { color: colors.green },
+  agentChoiceList: { gap: 8, marginTop: 12 },
+  agentChoice: { backgroundColor: 'white', borderColor: '#d7e5de', borderRadius: 18, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 12 },
+  agentChoiceActive: { backgroundColor: colors.mint, borderColor: colors.green2 },
+  agentChoiceText: { color: colors.ink, fontSize: 14, fontWeight: '900' },
+  agentChoiceTextActive: { color: colors.green },
   featureRow: { alignItems: 'center', backgroundColor: 'white', borderRadius: 18, flexDirection: 'row', gap: 10, padding: 14 },
   featureBullet: { color: colors.green2, fontSize: 16, fontWeight: '900' },
   featureText: { color: colors.ink, fontSize: 15, fontWeight: '800' },

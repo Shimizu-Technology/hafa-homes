@@ -4,6 +4,7 @@ class Agent < ApplicationRecord
   belongs_to :brokerage
   belongs_to :user, optional: true
   has_many :listings, dependent: :nullify
+  has_many :requested_leads, class_name: "Lead", foreign_key: :requested_agent_id, dependent: :nullify, inverse_of: :requested_agent
   has_many :assigned_leads, class_name: "Lead", foreign_key: :assigned_agent_id, dependent: :nullify, inverse_of: :assigned_agent
   has_many :showing_appointments, dependent: :nullify
 
