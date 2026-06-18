@@ -4239,7 +4239,7 @@ function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean
   })
   const profile = meData?.user
   const agents = agentsData?.agents ?? []
-  const listingAgents = agents.length > 0 ? agents : listing.agent && listing.agent.status !== 'inactive' && agentBrokerageMatchesListing(listing.agent, listing) ? [listing.agent] : []
+  const listingAgents = agents.length > 0 ? agents : listing.agent && listing.agent.status === 'active' && agentBrokerageMatchesListing(listing.agent, listing) ? [listing.agent] : []
   const defaultAgentId = (() => {
     const stored = storedSelectedAgentId()
     const storedAgent = listingAgents.find((agent) => agent.id === stored && agentBrokerageMatchesListing(agent, listing))
