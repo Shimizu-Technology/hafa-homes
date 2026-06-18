@@ -4145,13 +4145,13 @@ function PriceTrackerModal({ listing, open, onClose }: { listing: Listing; open:
     enabled: open,
   })
   const profile = meData?.user
-  const selectedAgentId = storedSelectedAgentId()
-  const selectedAgent = agentsData?.agents.find((agent) => agent.id === selectedAgentId && agentBrokerageMatchesListing(agent, listing))
   if (!open) return null
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const form = new FormData(event.currentTarget)
+    const selectedAgentId = storedSelectedAgentId()
+    const selectedAgent = agentsData?.agents.find((agent) => agent.id === selectedAgentId && agentBrokerageMatchesListing(agent, listing))
     captureAnalyticsEvent('lead_form_submitted', { listing_id: listing.id, lead_type: 'price_tracker' })
     mutation.mutate({
       listing_id: listing.id,
