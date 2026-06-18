@@ -451,6 +451,7 @@ function AppContent({ auth }: { auth: AppAuth }) {
   const [searchQuery, setSearchQuery] = useState('')
   const [listings, setListings] = useState<Listing[]>([])
   const [agents, setAgents] = useState<Agent[]>([])
+  const [agentsScope, setAgentsScope] = useState<'global' | number | null>(null)
   const [agentsLoading, setAgentsLoading] = useState(false)
   const [selectedAgentId, setSelectedAgentId] = useState<number | null>(null)
   const [listingCache, setListingCache] = useState<Record<number, Listing>>({})
@@ -494,19 +495,27 @@ function AppContent({ auth }: { auth: AppAuth }) {
   }, [])
 
   useEffect(() => {
-    const shouldLoadAgents = activeTab === 'agents' || Boolean(selectedListing)
-    if (!shouldLoadAgents || agents.length > 0) return undefined
+    const targetAgentsScope: 'global' | number | null = selectedListing ? listingBrokerageId(selectedListing) : activeTab === 'agents' ? 'global' : null
+    if (!targetAgentsScope || agentsScope === targetAgentsScope) return undefined
 
+    const requestedScope = targetAgentsScope
+    const requestedBrokerageId = requestedScope === 'global' ? undefined : requestedScope
     let cancelled = false
 
     async function loadAgents() {
       setAgentsLoading(true)
       try {
-        const brokerageId = selectedListing ? listingBrokerageId(selectedListing) ?? undefined : undefined
-        const results = await fetchAgents(brokerageId)
-        if (!cancelled) setAgents(results)
+        const results = await fetchAgents(requestedBrokerageId)
+        if (!cancelled) {
+          setAgents(results)
+          setAgentsScope(requestedScope)
+        }
       } catch (loadError) {
         console.warn('Unable to load agents', loadError)
+        if (!cancelled) {
+          setAgents([])
+          setAgentsScope(requestedScope)
+        }
       } finally {
         if (!cancelled) setAgentsLoading(false)
       }
@@ -517,7 +526,7 @@ function AppContent({ auth }: { auth: AppAuth }) {
     return () => {
       cancelled = true
     }
-  }, [activeTab, agents.length, selectedListing])
+  }, [activeTab, agentsScope, selectedListing])
 
   useEffect(() => {
     let cancelled = false
@@ -574,7 +583,13 @@ function AppContent({ auth }: { auth: AppAuth }) {
     [listingCache, savedListingIds],
   )
 
-  const selectedAgent = useMemo(() => agents.find((agent) => agent.id === selectedAgentId) ?? null, [agents, selectedAgentId])
+  const selectedListingBrokerageId = selectedListing ? listingBrokerageId(selectedListing) : null
+  const directoryAgents = agentsScope === 'global' ? agents : []
+  const selectedListingAgents = selectedListingBrokerageId && agentsScope === selectedListingBrokerageId ? agents : []
+  const selectedAgent = useMemo(
+    () => (selectedListing ? selectedListingAgents : directoryAgents).find((agent) => agent.id === selectedAgentId) ?? null,
+    [directoryAgents, selectedAgentId, selectedListing, selectedListingAgents],
+  )
 
   const selectAgent = useCallback((agentId: number | null) => {
     setSelectedAgentId(agentId)
@@ -769,7 +784,7 @@ function AppContent({ auth }: { auth: AppAuth }) {
         listing={selectedListing}
         saved={savedListingIds.includes(selectedListing.id)}
         auth={auth}
-        agents={agents}
+        agents={selectedListingAgents}
         selectedAgent={selectedAgent}
         onSelectAgent={selectAgent}
         onBack={() => setSelectedListing(null)}
@@ -837,7 +852,7 @@ function AppContent({ auth }: { auth: AppAuth }) {
               />
         )}
         {activeTab === 'agents' && (
-          <AgentsScreen agents={agents} loading={agentsLoading} selectedAgentId={selectedAgentId} onSelectAgent={selectAgent} />
+          <AgentsScreen agents={directoryAgents} loading={agentsLoading || agentsScope !== 'global'} selectedAgentId={selectedAgentId} onSelectAgent={selectAgent} />
         )}
         {activeTab === 'saved' && (
           !auth.isSignedIn
