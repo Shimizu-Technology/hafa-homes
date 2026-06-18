@@ -2,7 +2,7 @@
 
 ## What shipped in this branch
 
-- Public `/api/v1/agents` endpoint for active brokerage agents.
+- Public `/api/v1/agents` endpoint for active brokerage agents, capped at 100 records per request with `limit`/`offset` metadata.
 - Consumer-selected `requested_agent_id` on lead creation.
 - Rails validation that public requests can only route to an active agent in the listing brokerage context.
 - `Lead.requested_agent` is stored separately from `Lead.assigned_agent`.

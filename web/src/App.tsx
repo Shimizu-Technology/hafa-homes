@@ -4228,8 +4228,8 @@ function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean
     const storedAgent = listingAgents.find((agent) => agent.id === stored && agentBrokerageMatchesListing(agent, listing))
     return storedAgent?.id ?? null
   })()
-  const [selectedAgentId, setSelectedAgentId] = useState<number | null | undefined>(undefined)
-  const effectiveSelectedAgentId = selectedAgentId === undefined ? defaultAgentId : selectedAgentId
+  const [agentSelectionOverride, setAgentSelectionOverride] = useState<{ listingId: number; agentId: number | null } | null>(null)
+  const effectiveSelectedAgentId = agentSelectionOverride?.listingId === listing.id ? agentSelectionOverride.agentId : defaultAgentId
   const selectedModalAgent = listingAgents.find((agent) => agent.id === effectiveSelectedAgentId) ?? null
 
   if (!open) return null
@@ -4257,7 +4257,7 @@ function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean
 
   function handleAgentChange(value: string) {
     const nextAgentId = value ? Number(value) : null
-    setSelectedAgentId(nextAgentId)
+    setAgentSelectionOverride({ listingId: listing.id, agentId: nextAgentId })
 
     if (nextAgentId) {
       storeSelectedAgentId(nextAgentId)
