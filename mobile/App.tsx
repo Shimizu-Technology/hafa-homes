@@ -256,8 +256,13 @@ function agentInitials(agent: Agent) {
     .join('') || 'HH'
 }
 
+function listingBrokerageId(listing: Listing) {
+  return listing.brokerage?.id ?? listing.agent?.brokerage_id ?? null
+}
+
 function agentMatchesListing(agent: Agent, listing: Listing) {
-  return !listing.brokerage?.id || agent.brokerage_id === listing.brokerage.id
+  const brokerageId = listingBrokerageId(listing)
+  return Boolean(brokerageId && agent.brokerage_id === brokerageId)
 }
 
 async function apiErrorMessage(response: Response, fallback: string) {

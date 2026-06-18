@@ -438,8 +438,13 @@ function agentInitials(agent: Agent) {
     .join('') || 'HH'
 }
 
+function listingBrokerageId(listing: Listing) {
+  return listing.brokerage?.id ?? listing.agent?.brokerage_id ?? null
+}
+
 function agentBrokerageMatchesListing(agent: Agent, listing: Listing) {
-  return !listing.brokerage?.id || agent.brokerage_id === listing.brokerage.id
+  const brokerageId = listingBrokerageId(listing)
+  return Boolean(brokerageId && agent.brokerage_id === brokerageId)
 }
 
 function buildQuery(params: Record<string, string | undefined>) {
@@ -4139,19 +4144,30 @@ function PriceTrackerModal({ listing, open, onClose }: { listing: Listing; open:
     enabled: open && isClerkEnabled && isSignedIn && Boolean(userId),
     retry: false,
   })
+  const brokerageId = listingBrokerageId(listing)
   const { data: agentsData } = useQuery({
-    queryKey: ['agents', listing.brokerage?.id, 'price-tracker'],
-    queryFn: () => fetchAgents(listing.brokerage?.id),
-    enabled: open,
+    queryKey: ['agents', brokerageId, 'price-tracker'],
+    queryFn: () => fetchAgents(brokerageId ?? undefined),
+    enabled: open && Boolean(brokerageId),
   })
   const profile = meData?.user
   if (!open) return null
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const form = new FormData(event.currentTarget)
     const selectedAgentId = storedSelectedAgentId()
-    const selectedAgent = agentsData?.agents.find((agent) => agent.id === selectedAgentId && agentBrokerageMatchesListing(agent, listing))
+    let candidateAgents = agentsData?.agents
+
+    if (selectedAgentId && !candidateAgents && brokerageId) {
+      try {
+        candidateAgents = (await fetchAgents(brokerageId)).agents
+      } catch (agentError) {
+        console.warn('Unable to resolve preferred agent before price tracker submit', agentError)
+      }
+    }
+
+    const selectedAgent = candidateAgents?.find((agent) => agent.id === selectedAgentId && agentBrokerageMatchesListing(agent, listing))
     captureAnalyticsEvent('lead_form_submitted', { listing_id: listing.id, lead_type: 'price_tracker' })
     mutation.mutate({
       listing_id: listing.id,
@@ -4215,14 +4231,15 @@ function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean
     enabled: open && isClerkEnabled && isSignedIn && Boolean(userId),
     retry: false,
   })
+  const brokerageId = listingBrokerageId(listing)
   const { data: agentsData } = useQuery({
-    queryKey: ['agents', listing.brokerage?.id, 'lead-modal'],
-    queryFn: () => fetchAgents(listing.brokerage?.id),
-    enabled: open,
+    queryKey: ['agents', brokerageId, 'lead-modal'],
+    queryFn: () => fetchAgents(brokerageId ?? undefined),
+    enabled: open && Boolean(brokerageId),
   })
   const profile = meData?.user
   const agents = agentsData?.agents ?? []
-  const listingAgents = agents.length > 0 ? agents : listing.agent && listing.agent.status !== 'inactive' ? [listing.agent] : []
+  const listingAgents = agents.length > 0 ? agents : listing.agent && listing.agent.status !== 'inactive' && agentBrokerageMatchesListing(listing.agent, listing) ? [listing.agent] : []
   const defaultAgentId = (() => {
     const stored = storedSelectedAgentId()
     const storedAgent = listingAgents.find((agent) => agent.id === stored && agentBrokerageMatchesListing(agent, listing))
