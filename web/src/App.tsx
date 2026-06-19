@@ -2657,7 +2657,7 @@ function LeadsPage() {
               </div>
               <div className="mt-4 grid gap-3 md:grid-cols-3">
                 <LeadMeta icon={<Building2 size={16} />} label="Brokerage" value={lead.brokerage?.name ?? 'Unassigned brokerage'} />
-                <LeadMeta icon={<UserRound size={16} />} label="Requested agent" value={lead.requested_agent?.name ?? lead.listing?.agent?.name ?? 'Brokerage team'} />
+                <LeadMeta icon={<UserRound size={16} />} label="Requested agent" value={lead.requested_agent?.name ?? 'Brokerage team'} />
                 <LeadMeta icon={<ClipboardList size={16} />} label="Assigned agent" value={lead.assigned_agent?.name ?? 'Needs assignment'} />
               </div>
               {lead.listing && <p className="mt-4 rounded-2xl bg-[#f6f1e8] p-3 text-sm font-semibold text-[#304942]">Interested in {lead.listing.title} · {lead.listing.village} · {currency(lead.listing.price, lead.listing.listing_kind)}</p>}
@@ -2738,7 +2738,7 @@ function LeadDetailPage() {
                 <Building2 className="text-[#bdebdc]" />
                 <p className="mt-5 text-xs font-bold uppercase tracking-[0.2em] text-white/55">Brokerage routing</p>
                 <h2 className="mt-2 text-2xl font-semibold tracking-[-0.05em] sm:text-3xl">{lead.brokerage?.name ?? 'Unassigned brokerage'}</h2>
-                <p className="mt-3 text-sm leading-6 text-white/70">Requested agent: {lead.requested_agent?.name ?? lead.listing?.agent?.name ?? 'Brokerage team'}</p>
+                <p className="mt-3 text-sm leading-6 text-white/70">Requested agent: {lead.requested_agent?.name ?? 'Brokerage team'}</p>
                 <p className="mt-1 text-sm leading-6 text-white/70">Assigned agent: {lead.assigned_agent?.name ?? 'Not assigned yet'}</p>
                 <label className="mt-5 grid gap-2 text-sm font-semibold text-white/80">
                   Assign agent

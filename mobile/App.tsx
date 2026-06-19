@@ -1430,7 +1430,7 @@ function RequestHistoryCard({ request }: { request: ConsumerLead }) {
         <Text style={styles.requestHistoryMeta}>Submitted {formatRequestDate(request.created_at)}</Text>
         <View style={styles.showingSummaryCard}>
           <Text style={styles.requestHistoryStatus}>Agent and brokerage</Text>
-          <Text style={styles.requestHistoryMeta}>Requested agent: {request.requested_agent?.name || request.listing?.agent?.name || 'Brokerage team'}</Text>
+          <Text style={styles.requestHistoryMeta}>Requested agent: {request.requested_agent?.name || 'Brokerage team'}</Text>
           <Text style={styles.requestHistoryMeta}>Assigned agent: {request.assigned_agent?.name || 'Pending assignment'}</Text>
           {request.assigned_agent?.phone && <Text style={styles.requestHistoryMeta}>Agent phone: {request.assigned_agent.phone}</Text>}
           {request.assigned_agent?.email && <Text style={styles.requestHistoryMeta}>Agent email: {request.assigned_agent.email}</Text>}
