@@ -477,13 +477,19 @@ function AppContent({ auth }: { auth: AppAuth }) {
   }, [])
 
   useEffect(() => {
+    if (!auth.isSignedIn) {
+      setSelectedAgentId(null)
+      if (auth.clerkEnabled) AsyncStorage.removeItem(SELECTED_AGENT_ID_KEY).catch((storageError) => console.warn('Unable to clear selected agent', storageError))
+      return
+    }
+
     AsyncStorage.getItem(SELECTED_AGENT_ID_KEY)
       .then((value) => {
         const parsed = value ? Number(value) : null
         if (parsed && Number.isFinite(parsed)) setSelectedAgentId(parsed)
       })
       .catch((storageError) => console.warn('Unable to load selected agent', storageError))
-  }, [])
+  }, [auth.clerkEnabled, auth.isSignedIn])
 
   useEffect(() => {
     const targetAgentsScope: 'global' | null = activeTab === 'agents' || Boolean(selectedListing) ? 'global' : null
@@ -580,10 +586,18 @@ function AppContent({ auth }: { auth: AppAuth }) {
   )
 
   const selectAgent = useCallback((agentId: number | null) => {
+    if (!auth.isSignedIn || !auth.getToken) {
+      openAuthPrompt({
+        title: 'Sign in to choose an agent',
+        copy: 'Create a free Hafa Homes account before setting a preferred agent for future requests.',
+      })
+      return
+    }
+
     setSelectedAgentId(agentId)
     if (agentId) AsyncStorage.setItem(SELECTED_AGENT_ID_KEY, String(agentId)).catch((storageError) => console.warn('Unable to save selected agent', storageError))
     else AsyncStorage.removeItem(SELECTED_AGENT_ID_KEY).catch((storageError) => console.warn('Unable to clear selected agent', storageError))
-  }, [])
+  }, [auth.getToken, auth.isSignedIn])
 
   useEffect(() => {
     let cancelled = false
@@ -840,7 +854,7 @@ function AppContent({ auth }: { auth: AppAuth }) {
               />
         )}
         {activeTab === 'agents' && (
-          <AgentsScreen agents={directoryAgents} loading={agentsLoading || agentsScope !== 'global'} selectedAgentId={selectedAgentId} onSelectAgent={selectAgent} />
+          <AgentsScreen agents={directoryAgents} loading={agentsLoading || agentsScope !== 'global'} selectedAgentId={selectedAgentId} canSelectAgent={auth.isSignedIn} onSelectAgent={selectAgent} />
         )}
         {activeTab === 'saved' && (
           !auth.isSignedIn
@@ -1186,16 +1200,16 @@ function buildMapHtml(points: Listing[]) {
 </html>`
 }
 
-function AgentsScreen({ agents, loading, selectedAgentId, onSelectAgent }: { agents: Agent[]; loading: boolean; selectedAgentId: number | null; onSelectAgent: (agentId: number | null) => void }) {
+function AgentsScreen({ agents, loading, selectedAgentId, canSelectAgent, onSelectAgent }: { agents: Agent[]; loading: boolean; selectedAgentId: number | null; canSelectAgent: boolean; onSelectAgent: (agentId: number | null) => void }) {
   return (
     <ScrollView contentContainerStyle={styles.listContent}>
       <View style={styles.screenIntro}>
         <Text style={styles.kicker}>Agent network</Text>
         <Text style={styles.screenTitle}>Choose who you want to work with</Text>
-        <Text style={styles.screenCopy}>Your selected agent is added to future showing and price requests when the listing belongs to their brokerage. Listing attribution remains unchanged.</Text>
+        <Text style={styles.screenCopy}>{canSelectAgent ? 'Your selected agent is added to future showing and price requests while listing attribution remains unchanged.' : 'Browse active brokerage agents. Sign in before choosing a preferred agent for future requests.'}</Text>
       </View>
 
-      {selectedAgentId && (
+      {canSelectAgent && selectedAgentId && (
         <Pressable style={styles.secondaryCta} onPress={() => onSelectAgent(null)} accessibilityRole="button">
           <Text style={styles.secondaryCtaText}>Clear selected agent</Text>
         </Pressable>
@@ -1220,7 +1234,7 @@ function AgentsScreen({ agents, loading, selectedAgentId, onSelectAgent }: { age
             {agent.bio && <Text style={styles.agentBio}>{agent.bio}</Text>}
             {(agent.phone || agent.email) && <Text style={styles.agentBio}>{[agent.phone, agent.email].filter(Boolean).join(' · ')}</Text>}
             <Pressable style={[styles.primaryCta, selected && styles.selectedAgentCta]} onPress={() => onSelectAgent(agent.id)} accessibilityRole="button">
-              <Text style={[styles.primaryCtaText, selected && styles.selectedAgentCtaText]}>{selected ? 'Selected for future requests' : `Work with ${agent.name.split(' ')[0]}`}</Text>
+              <Text style={[styles.primaryCtaText, selected && styles.selectedAgentCtaText]}>{canSelectAgent ? (selected ? 'Selected for future requests' : `Work with ${agent.name.split(' ')[0]}`) : `Sign in to work with ${agent.name.split(' ')[0]}`}</Text>
             </Pressable>
           </View>
         )
@@ -2005,7 +2019,7 @@ function ListingDetailScreen({ listing, saved, auth, agents, selectedAgent, onSe
 
   const photos = detailListing.photos?.length ? detailListing.photos : [{ id: 0, url: detailListing.primary_photo_url || FALLBACK_IMAGE, position: 1, alt_text: detailListing.title }]
   const routingAgents = agents
-  const requestedAgent = selectedAgent
+  const requestedAgent = auth.isSignedIn ? selectedAgent : null
   const listingAgent = detailListing.agent || null
 
   function showPhoto(index: number) {
@@ -2055,18 +2069,26 @@ function ListingDetailScreen({ listing, saved, auth, agents, selectedAgent, onSe
               <Text style={styles.agentMeta}>Listing attribution</Text>
             </View>
           </View>
-          {routingAgents.length > 0 && (
-            <View style={styles.agentChoiceList}>
-              <Text style={styles.sectionTitle}>Work with an agent</Text>
-              <Text style={styles.detailCopy}>Choose who should follow up and coordinate next steps. The listing attribution above stays unchanged.</Text>
-              <Text style={styles.requestLabel}>Preferred agent for requests</Text>
-              {routingAgents.map((agent) => (
-                <Pressable key={agent.id} style={[styles.agentChoice, requestedAgent?.id === agent.id && styles.agentChoiceActive]} onPress={() => onSelectAgent(agent.id)} accessibilityRole="button">
-                  <Text style={[styles.agentChoiceText, requestedAgent?.id === agent.id && styles.agentChoiceTextActive]}>{agent.name}</Text>
-                </Pressable>
-              ))}
-            </View>
-          )}
+          <View style={styles.agentChoiceList}>
+            <Text style={styles.sectionTitle}>Work with an agent</Text>
+            <Text style={styles.detailCopy}>Choose who should follow up and coordinate next steps. The listing attribution above stays unchanged.</Text>
+            {auth.isSignedIn ? (
+              routingAgents.length > 0 ? (
+                <>
+                  <Text style={styles.requestLabel}>Preferred agent for requests</Text>
+                  {routingAgents.map((agent) => (
+                    <Pressable key={agent.id} style={[styles.agentChoice, requestedAgent?.id === agent.id && styles.agentChoiceActive]} onPress={() => onSelectAgent(agent.id)} accessibilityRole="button">
+                      <Text style={[styles.agentChoiceText, requestedAgent?.id === agent.id && styles.agentChoiceTextActive]}>{agent.name}</Text>
+                    </Pressable>
+                  ))}
+                </>
+              ) : <Text style={styles.detailCopy}>No preferred-agent options are available yet. Requests will route to the brokerage team.</Text>
+            ) : (
+              <Pressable style={styles.secondaryCta} onPress={() => onOpenAuth({ title: 'Sign in to choose an agent', copy: 'Create a free Hafa Homes account before setting a preferred agent for future requests.' })} accessibilityRole="button">
+                <Text style={styles.secondaryCtaText}>Sign in to choose a preferred agent</Text>
+              </Pressable>
+            )}
+          </View>
           <Pressable disabled={Boolean(detailError)} style={[styles.primaryCta, detailError && styles.ctaDisabled]} onPress={() => setShowRequestForm(true)}>
             <Text style={styles.primaryCtaText}>Request a showing</Text>
           </Pressable>

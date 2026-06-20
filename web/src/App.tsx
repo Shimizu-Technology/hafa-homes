@@ -429,13 +429,17 @@ function storeSelectedAgentId(agentId: number | null) {
   else window.localStorage.removeItem(SELECTED_AGENT_ID_KEY)
 }
 
-function agentInitials(agent: Agent) {
-  return agent.name
+function initialsFromName(name?: string | null) {
+  return (name || '')
     .split(/\s+/)
     .filter(Boolean)
     .slice(0, 2)
     .map((part) => part.charAt(0).toUpperCase())
     .join('') || 'HH'
+}
+
+function agentInitials(agent: Agent) {
+  return initialsFromName(agent.name)
 }
 
 function buildQuery(params: Record<string, string | undefined>) {
@@ -838,6 +842,12 @@ function RequireStaff({ children }: { children: React.ReactNode }) {
 }
 
 function App() {
+  const { isClerkEnabled, isSignedIn, isLoading } = useAuthContext()
+
+  useEffect(() => {
+    if (isClerkEnabled && !isLoading && !isSignedIn) storeSelectedAgentId(null)
+  }, [isClerkEnabled, isLoading, isSignedIn])
+
   return (
     <>
       <PostHogPageView />
@@ -1441,12 +1451,15 @@ function ListingDetailPage() {
   const [leadOpen, setLeadOpen] = useState(false)
   const [priceTrackerOpen, setPriceTrackerOpen] = useState(false)
   const { isClerkEnabled, isSignedIn, userId } = useAuthContext()
+  const [selectedAgentId, setSelectedAgentId] = useState<number | null>(null)
   const [localSaved, setLocalSaved] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [photoIndex, setPhotoIndex] = useState(0)
   const { data, isLoading, isError } = useQuery({ queryKey: ['listing', id], queryFn: () => fetchListing(id), enabled: Boolean(id) })
   const { data: savedData, refetch: refetchSaved } = useQuery({ queryKey: ['saved-listings', userId], queryFn: fetchSavedListings, enabled: isClerkEnabled && isSignedIn })
+  const { data: routingAgentsData, isLoading: routingAgentsLoading } = useQuery({ queryKey: ['agents', 'routing', 'listing-detail'], queryFn: () => fetchAgents(), enabled: isClerkEnabled && isSignedIn && Boolean(data?.listing) })
   const listing = data?.listing
+  const routingAgents = routingAgentsData?.agents ?? []
   const saved = listing ? (savedData?.listing_ids?.includes(listing.id) ?? localSaved) : false
   const saveMutation = useMutation({
     mutationFn: () => listing && saved ? removeSavedListingForUser(listing.id) : listing ? saveListingForUser(listing.id) : Promise.reject(new Error('No listing loaded')),
@@ -1455,6 +1468,19 @@ function ListingDetailPage() {
     onError: () => setLocalSaved((current) => !current),
   })
   const photos = listing?.photos?.length ? listing.photos : listing ? [{ id: 0, url: listing.primary_photo_url, position: 1, alt_text: listing.title }] : []
+
+  useEffect(() => {
+    if (isClerkEnabled && isSignedIn) setSelectedAgentId(storedSelectedAgentId())
+    else setSelectedAgentId(null)
+  }, [isClerkEnabled, isSignedIn, listing?.id])
+
+  function selectPreferredAgent(agentId: number | null) {
+    if (!isClerkEnabled || !isSignedIn) return
+
+    setSelectedAgentId(agentId)
+    storeSelectedAgentId(agentId)
+    captureAnalyticsEvent(agentId ? 'agent_selected' : 'agent_selection_cleared', { agent_id: agentId ?? undefined, source: 'listing_detail' })
+  }
 
   async function shareListing() {
     if (!listing) return
@@ -1540,6 +1566,7 @@ function ListingDetailPage() {
 
                   <p className="mt-7 max-w-3xl text-base leading-8 text-[#3d4d48]">{listing.description}</p>
                   <FeaturePills features={listing.features} />
+                  <ListingAgentRoutingPanel listing={listing} routingAgents={routingAgents} selectedAgentId={selectedAgentId} canSelectAgent={isClerkEnabled && isSignedIn} isClerkEnabled={isClerkEnabled} isLoadingAgents={routingAgentsLoading} onSelectAgent={selectPreferredAgent} className="mt-6 lg:hidden" />
                   {listing.listing_kind === 'sale' && <WebMortgageCalculator listing={listing} />}
                   <LocalIntelPanel listing={listing} />
                   {listing.brokerage?.compliance_disclaimer && <p className="mt-6 rounded-2xl bg-[#f6f1e8] p-4 text-xs font-semibold leading-6 text-[#66746f]">{listing.brokerage.compliance_disclaimer}</p>}
@@ -1564,10 +1591,11 @@ function ListingDetailPage() {
                   ) : (
                     <SignInButton mode="modal"><button className="mt-3 w-full rounded-2xl border border-[#d7ded9] px-4 py-3 text-sm font-bold text-[#0f3d35]">Sign in to save</button></SignInButton>
                   )}
+                  <ListingAgentRoutingPanel listing={listing} routingAgents={routingAgents} selectedAgentId={selectedAgentId} canSelectAgent={isClerkEnabled && isSignedIn} isClerkEnabled={isClerkEnabled} isLoadingAgents={routingAgentsLoading} onSelectAgent={selectPreferredAgent} className="mt-6" />
                   <dl className="mt-6 space-y-3 text-sm">
                     <InfoRow label="Listing ID" value={listing.external_id || `HH-${listing.id}`} />
-                    <InfoRow label="Agent" value={listing.agent_name || 'Hafa Homes Team'} />
-                    <InfoRow label="Brokerage" value={listing.brokerage_name || 'Hafa Homes'} />
+                    <InfoRow label="Listed by" value={listing.agent_name || 'Listing agent'} />
+                    <InfoRow label="Listing brokerage" value={listing.brokerage_name || 'Listing brokerage'} />
                   </dl>
                 </div>
               </aside>
@@ -1596,6 +1624,85 @@ function ListingDetailPage() {
         </>
       )}
     </main>
+  )
+}
+
+function ListingAgentRoutingPanel({
+  listing,
+  routingAgents,
+  selectedAgentId,
+  canSelectAgent,
+  isClerkEnabled,
+  isLoadingAgents,
+  onSelectAgent,
+  className = '',
+}: {
+  listing: Listing
+  routingAgents: Agent[]
+  selectedAgentId: number | null
+  canSelectAgent: boolean
+  isClerkEnabled: boolean
+  isLoadingAgents: boolean
+  onSelectAgent: (agentId: number | null) => void
+  className?: string
+}) {
+  const listedAgentName = listing.agent?.name || listing.agent_name || 'Listing agent unavailable'
+  const listedBrokerageName = listing.agent?.brokerage?.name || listing.brokerage?.name || listing.brokerage_name || 'Listing brokerage'
+  const selectedAgent = routingAgents.find((agent) => agent.id === selectedAgentId)
+
+  return (
+    <section className={`${className} rounded-[1.5rem] border border-[#dfe8e2] bg-[#fbfcf8] p-4`}>
+      <div>
+        <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#0f705e]">Listed by</p>
+        <div className="mt-3 flex items-center gap-3">
+          <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-[#0f3d35] text-sm font-black text-[#f5c16c]">
+            {listing.agent?.photo_url ? <img src={listing.agent.photo_url} alt="" className="h-full w-full rounded-2xl object-cover" /> : initialsFromName(listedAgentName)}
+          </div>
+          <div className="min-w-0">
+            <p className="truncate text-base font-extrabold tracking-[-0.03em] text-[#17211f]">{listedAgentName}</p>
+            <p className="truncate text-sm font-semibold text-[#66746f]">{listedBrokerageName}</p>
+            <p className="text-xs font-bold uppercase tracking-[0.14em] text-[#7b8a84]">Listing attribution</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-5 border-t border-[#e5ede8] pt-5">
+        <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#0f705e]">Work with</p>
+        <h3 className="mt-2 text-lg font-semibold tracking-[-0.04em] text-[#17211f]">Choose your preferred Hafa Homes agent.</h3>
+        <p className="mt-2 text-sm leading-6 text-[#66746f]">This controls who follows up with you. The listing attribution above stays unchanged for MLS/brokerage compliance.</p>
+
+        {!canSelectAgent ? (
+          <div className="mt-4 rounded-2xl bg-[#e9f5ef] p-4">
+            <p className="text-sm font-semibold leading-6 text-[#304942]">Sign in to choose a preferred agent for future requests. You can still send a showing request without an account.</p>
+            {isClerkEnabled ? (
+              <SignInButton mode="modal">
+                <button type="button" className="mt-3 min-h-11 rounded-full bg-[#0f3d35] px-5 text-sm font-bold text-white">Sign in to choose</button>
+              </SignInButton>
+            ) : (
+              <button type="button" disabled className="mt-3 min-h-11 rounded-full bg-[#0f3d35]/60 px-5 text-sm font-bold text-white">Sign-in coming online</button>
+            )}
+          </div>
+        ) : isLoadingAgents ? (
+          <p className="mt-4 rounded-2xl bg-[#f6f1e8] p-4 text-sm font-semibold text-[#66746f]">Loading brokerage agents...</p>
+        ) : routingAgents.length > 0 ? (
+          <div className="mt-4 grid gap-2">
+            <button type="button" onClick={() => onSelectAgent(null)} className={`min-h-11 rounded-2xl border px-4 text-left text-sm font-bold transition ${selectedAgent ? 'border-[#d7ded9] text-[#304942] hover:border-[#0f705e]' : 'border-[#0f705e] bg-[#e9f5ef] text-[#0f705e]'}`}>
+              Brokerage team / no preference
+            </button>
+            {routingAgents.map((agent) => {
+              const selected = selectedAgentId === agent.id
+              return (
+                <button key={agent.id} type="button" onClick={() => onSelectAgent(agent.id)} className={`min-h-11 rounded-2xl border px-4 text-left text-sm font-bold transition ${selected ? 'border-[#0f705e] bg-[#e9f5ef] text-[#0f705e]' : 'border-[#d7ded9] text-[#304942] hover:border-[#0f705e]'}`}>
+                  {agent.name}
+                </button>
+              )
+            })}
+          </div>
+        ) : (
+          <p className="mt-4 rounded-2xl bg-[#f6f1e8] p-4 text-sm font-semibold text-[#66746f]">No preferred-agent options are available yet. Requests will route to the brokerage team.</p>
+        )}
+      </div>
+    </section>
   )
 }
 
@@ -1693,17 +1800,28 @@ function VillagesPage() {
 }
 
 function AgentsPage() {
+  const { isClerkEnabled, isSignedIn } = useAuthContext()
   const { data, isLoading, isError } = useQuery({ queryKey: ['agents'], queryFn: () => fetchAgents() })
-  const [selectedAgentId, setSelectedAgentId] = useState<number | null>(() => storedSelectedAgentId())
+  const [selectedAgentId, setSelectedAgentId] = useState<number | null>(null)
   const agents = data?.agents ?? []
+  const canSelectAgent = isClerkEnabled && isSignedIn
+
+  useEffect(() => {
+    if (canSelectAgent) setSelectedAgentId(storedSelectedAgentId())
+    else setSelectedAgentId(null)
+  }, [canSelectAgent])
 
   function selectAgent(agent: Agent) {
+    if (!canSelectAgent) return
+
     setSelectedAgentId(agent.id)
     storeSelectedAgentId(agent.id)
     captureAnalyticsEvent('agent_selected', { agent_id: agent.id, brokerage_id: agent.brokerage_id, source: 'agents_page' })
   }
 
   function clearSelectedAgent() {
+    if (!canSelectAgent) return
+
     setSelectedAgentId(null)
     storeSelectedAgentId(null)
     captureAnalyticsEvent('agent_selection_cleared', { source: 'agents_page' })
@@ -1714,18 +1832,18 @@ function AgentsPage() {
       <ContentHeader
         kicker="Agent network"
         title="Choose who you want to work with."
-        description="Browse active brokerage agents, pick a preferred contact, and Hafa Homes will route future showing requests to that agent when the listing belongs to their brokerage."
+        description="Browse active brokerage agents. Sign in to set a preferred contact, and Hafa Homes can route future requests to that agent while listing attribution stays intact."
       />
       <section className="mx-auto max-w-7xl px-5 pb-10">
         <div className="mb-5 rounded-[2rem] bg-[#0f3d35] p-5 text-white shadow-xl shadow-[#0f3d35]/10 md:p-6">
           <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-center">
             <div>
               <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#bdebdc]">Lead routing</p>
-              <h2 className="mt-2 text-2xl font-semibold tracking-[-0.05em] md:text-3xl">Your selected agent follows you into showing requests.</h2>
-              <p className="mt-3 max-w-3xl text-sm leading-6 text-white/72">Listing attribution stays intact for MLS/brokerage compliance, while the customer-selected agent can own the follow-up in the CRM.</p>
+              <h2 className="mt-2 text-2xl font-semibold tracking-[-0.05em] md:text-3xl">{canSelectAgent ? 'Your selected agent follows you into showing requests.' : 'Sign in before choosing a preferred agent.'}</h2>
+              <p className="mt-3 max-w-3xl text-sm leading-6 text-white/72">Listing attribution stays intact for MLS/brokerage compliance, while signed-in customers can choose the agent who owns follow-up in the CRM.</p>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row md:flex-col lg:flex-row">
-              {selectedAgentId && <button type="button" onClick={clearSelectedAgent} className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/25 px-5 text-sm font-bold text-white">Clear preference</button>}
+              {canSelectAgent && selectedAgentId && <button type="button" onClick={clearSelectedAgent} className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/25 px-5 text-sm font-bold text-white">Clear preference</button>}
               <Link to="/" className="inline-flex min-h-12 items-center justify-center rounded-full bg-white px-5 text-sm font-bold text-[#0f3d35]">Search listings</Link>
             </div>
           </div>
@@ -1753,13 +1871,21 @@ function AgentsPage() {
                   {agent.email && <span className="inline-flex items-center gap-2"><Mail size={15} /> {agent.email}</span>}
                   {agent.phone && <span className="inline-flex items-center gap-2"><Phone size={15} /> {agent.phone}</span>}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => selectAgent(agent)}
-                  className={`mt-5 w-full rounded-2xl px-4 py-3 text-sm font-bold transition ${selected ? 'bg-[#e9f5ef] text-[#0f705e]' : 'bg-[#0f3d35] text-white hover:bg-[#174c43]'}`}
-                >
-                  {selected ? 'Selected for future requests' : `Work with ${agent.name.split(' ')[0]}`}
-                </button>
+                {canSelectAgent ? (
+                  <button
+                    type="button"
+                    onClick={() => selectAgent(agent)}
+                    className={`mt-5 w-full rounded-2xl px-4 py-3 text-sm font-bold transition ${selected ? 'bg-[#e9f5ef] text-[#0f705e]' : 'bg-[#0f3d35] text-white hover:bg-[#174c43]'}`}
+                  >
+                    {selected ? 'Selected for future requests' : `Work with ${agent.name.split(' ')[0]}`}
+                  </button>
+                ) : isClerkEnabled ? (
+                  <SignInButton mode="modal">
+                    <button type="button" className="mt-5 w-full rounded-2xl bg-[#0f3d35] px-4 py-3 text-sm font-bold text-white transition hover:bg-[#174c43]">Sign in to work with {agent.name.split(' ')[0]}</button>
+                  </SignInButton>
+                ) : (
+                  <button type="button" disabled className="mt-5 w-full rounded-2xl bg-[#0f3d35]/60 px-4 py-3 text-sm font-bold text-white">Sign-in coming online</button>
+                )}
               </article>
             )
           })}
@@ -4131,6 +4257,7 @@ function PriceTrackerModal({ listing, open, onClose }: { listing: Listing; open:
   const submittingRef = useRef(false)
   const [submitting, setSubmitting] = useState(false)
   const { isClerkEnabled, isSignedIn, userId } = useAuthContext()
+  const canSelectAgent = isClerkEnabled && isSignedIn
   const { data: meData } = useQuery({
     queryKey: ['me', userId, 'price-tracker-prefill'],
     queryFn: fetchMe,
@@ -4140,7 +4267,7 @@ function PriceTrackerModal({ listing, open, onClose }: { listing: Listing; open:
   const { data: agentsData } = useQuery({
     queryKey: ['agents', 'routing', 'price-tracker'],
     queryFn: () => fetchAgents(),
-    enabled: open,
+    enabled: open && canSelectAgent,
   })
   const profile = meData?.user
   if (!open) return null
@@ -4154,7 +4281,7 @@ function PriceTrackerModal({ listing, open, onClose }: { listing: Listing; open:
 
     try {
       const form = new FormData(event.currentTarget)
-      const selectedAgentId = storedSelectedAgentId()
+      const selectedAgentId = canSelectAgent ? storedSelectedAgentId() : null
       let candidateAgents = agentsData?.agents
 
       if (selectedAgentId && !candidateAgents) {
@@ -4229,6 +4356,7 @@ function PriceTrackerModal({ listing, open, onClose }: { listing: Listing; open:
 function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean; onClose: () => void }) {
   const mutation = useMutation({ mutationFn: createLead })
   const { isClerkEnabled, isSignedIn, userId } = useAuthContext()
+  const canSelectAgent = isClerkEnabled && isSignedIn
   const { data: meData } = useQuery({
     queryKey: ['me', userId, 'lead-prefill'],
     queryFn: fetchMe,
@@ -4238,11 +4366,13 @@ function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean
   const { data: agentsData } = useQuery({
     queryKey: ['agents', 'routing', 'lead-modal'],
     queryFn: () => fetchAgents(),
-    enabled: open,
+    enabled: open && canSelectAgent,
   })
   const profile = meData?.user
-  const routingAgents = agentsData?.agents ?? []
+  const routingAgents = canSelectAgent ? agentsData?.agents ?? [] : []
   const defaultAgentId = (() => {
+    if (!canSelectAgent) return null
+
     const stored = storedSelectedAgentId()
     const storedAgent = routingAgents.find((agent) => agent.id === stored)
     return storedAgent?.id ?? null
@@ -4256,6 +4386,7 @@ function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const form = new FormData(event.currentTarget)
+    const requestedAgentId = canSelectAgent && form.get('requested_agent_id') ? Number(form.get('requested_agent_id')) : undefined
     captureAnalyticsEvent('lead_form_submitted', { listing_id: listing.id, lead_type: 'showing_request' })
     mutation.mutate({
       listing_id: listing.id,
@@ -4270,11 +4401,13 @@ function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean
       source_campaign: currentUtmCampaign(),
       source_url: window.location.href,
       message: String(form.get('message') || ''),
-      requested_agent_id: form.get('requested_agent_id') ? Number(form.get('requested_agent_id')) : undefined,
+      requested_agent_id: requestedAgentId,
     })
   }
 
   function handleAgentChange(value: string) {
+    if (!canSelectAgent) return
+
     const nextAgentId = value ? Number(value) : null
     setAgentSelectionOverride({ listingId: listing.id, agentId: nextAgentId })
 
@@ -4318,7 +4451,7 @@ function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean
                   <p className="text-xs font-semibold text-[#66746f] md:text-sm">{listing.address}</p>
                 </div>
               </div>
-              {routingAgents.length > 0 && (
+              {canSelectAgent && routingAgents.length > 0 ? (
                 <label className="mt-4 grid gap-2 text-sm font-semibold text-[#304942]">
                   Preferred agent
                   <select name="requested_agent_id" value={effectiveSelectedAgentId ?? ''} onChange={(event) => handleAgentChange(event.target.value)} className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
@@ -4326,7 +4459,11 @@ function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean
                     {routingAgents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
                   </select>
                 </label>
-              )}
+              ) : isClerkEnabled && !isSignedIn ? (
+                <div className="mt-4 rounded-2xl bg-white p-4 text-sm font-semibold leading-6 text-[#53645f]">
+                  Sign in to choose a preferred agent. You can still send this showing request to the brokerage team without an account.
+                </div>
+              ) : null}
             </div>
             <div className="mt-4 grid grid-cols-2 gap-3 md:mt-5">
               <label className="cursor-pointer">
