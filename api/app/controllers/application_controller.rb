@@ -1,6 +1,10 @@
 class ApplicationController < ActionController::API
   private
 
+  def current_routing_brokerage
+    @current_routing_brokerage ||= Brokerage.active.order(:id).first
+  end
+
   def record_audit_event(action:, target: nil, target_label: nil, brokerage: nil, lead: nil, metadata: {}, changes: {})
     AuditLogger.record!(
       action: action,

@@ -24,12 +24,14 @@ module Api
             listing_id: lead.listing_id,
             user_id: lead.user_id,
             brokerage_id: lead.brokerage_id,
+            requested_agent_id: lead.requested_agent_id,
             assigned_agent_id: lead.assigned_agent_id,
             created_at: lead.created_at,
             updated_at: lead.updated_at,
             consumer_status_label: consumer_status_label(lead.status),
             listing: listing_json(lead.listing),
             brokerage: brokerage_json(lead.brokerage),
+            requested_agent: agent_json(lead.requested_agent),
             assigned_agent: agent_json(lead.assigned_agent),
             latest_showing_appointment: showing_json(latest_showing(lead))
           }

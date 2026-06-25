@@ -46,7 +46,7 @@ sample_agents = [
     email: "mia@hafahomes.com",
     phone: "(671) 555-0123",
     license_number: "Demo-001",
-    bio: "Demo buyer and relocation specialist for broker-platform workflows."
+    bio: "Buyer and relocation specialist for military families comparing north-island commutes, schools, and island-ready features."
   ),
   Agent.create!(
     brokerage: hafa_brokerage,
@@ -54,7 +54,23 @@ sample_agents = [
     email: "daniel@hafahomes.com",
     phone: "(671) 555-0145",
     license_number: "Demo-002",
-    bio: "Demo rental and property-management specialist for broker-platform workflows."
+    bio: "Rental and property-management specialist focused on OHA-friendly leases, furnished inventory, pets, and arrival timelines."
+  ),
+  Agent.create!(
+    brokerage: hafa_brokerage,
+    name: "Leilani Reyes",
+    email: "leilani@hafahomes.com",
+    phone: "(671) 555-0166",
+    license_number: "Demo-003",
+    bio: "Central Guam condo and investment specialist for Tamuning, Tumon, Hagatna-adjacent, and beach-access searches."
+  ),
+  Agent.create!(
+    brokerage: hafa_brokerage,
+    name: "Noah Taitano",
+    email: "noah@hafahomes.com",
+    phone: "(671) 555-0188",
+    license_number: "Demo-004",
+    bio: "Single-family and land specialist for Dededo, Yigo, Barrigada, and southern village searches with larger-lot needs."
   )
 ]
 

@@ -41,8 +41,8 @@ class ShowingAppointment < ApplicationRecord
     return unless lead
 
     self.listing ||= lead.listing
-    self.brokerage ||= lead.brokerage || listing&.brokerage
-    self.agent ||= lead.assigned_agent || listing&.agent unless skip_agent_inference
+    self.brokerage ||= lead.brokerage
+    self.agent ||= lead.assigned_agent unless skip_agent_inference
     self.location ||= listing&.address if tour_type == "in_person"
   end
 

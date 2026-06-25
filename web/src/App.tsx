@@ -123,6 +123,7 @@ type Agent = {
   phone?: string
   license_number?: string
   photo_url?: string
+  bio?: string
   status?: string
   brokerage?: Brokerage
 }
@@ -158,6 +159,7 @@ type Listing = {
 type ListingsResponse = { listings: Listing[] }
 type ListingResponse = { listing: Listing }
 type VillagesResponse = { villages: Village[] }
+type AgentsResponse = { agents: Agent[] }
 type SyncRun = {
   id: number
   provider: string
@@ -296,6 +298,7 @@ type Lead = {
   listing_id?: number
   user_id?: number
   brokerage_id?: number
+  requested_agent_id?: number
   assigned_agent_id?: number
   created_at: string
   updated_at?: string
@@ -309,6 +312,7 @@ type Lead = {
   crm_summary?: CrmSummary
   listing?: { id: number; title: string; address?: string; price: number; listing_kind: 'sale' | 'rent'; property_type?: string; village: string; primary_photo_url?: string; brokerage?: Brokerage | null; agent?: Agent | null } | null
   brokerage?: Brokerage | null
+  requested_agent?: Agent | null
   assigned_agent?: Agent | null
 }
 
@@ -384,6 +388,7 @@ type LeadPayload = {
   source_url?: string
   message: string
   listing_id?: number
+  requested_agent_id?: number
 }
 
 type LeadUpdatePayload = Partial<Omit<LeadPayload, 'listing_id'>> & {
@@ -410,6 +415,33 @@ const propertyTypes = [
   { label: 'Land', value: 'land' },
 ]
 
+const SELECTED_AGENT_ID_KEY = 'hafaHomes:selectedAgentId'
+
+function storedSelectedAgentId() {
+  if (typeof window === 'undefined') return null
+  const stored = Number(window.localStorage.getItem(SELECTED_AGENT_ID_KEY))
+  return Number.isFinite(stored) && stored > 0 ? stored : null
+}
+
+function storeSelectedAgentId(agentId: number | null) {
+  if (typeof window === 'undefined') return
+  if (agentId) window.localStorage.setItem(SELECTED_AGENT_ID_KEY, String(agentId))
+  else window.localStorage.removeItem(SELECTED_AGENT_ID_KEY)
+}
+
+function initialsFromName(name?: string | null) {
+  return (name || '')
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join('') || 'HH'
+}
+
+function agentInitials(agent: Agent) {
+  return initialsFromName(agent.name)
+}
+
 function buildQuery(params: Record<string, string | undefined>) {
   const search = new URLSearchParams()
   Object.entries(params).forEach(([key, value]) => {
@@ -434,6 +466,13 @@ async function fetchListing(id: string): Promise<ListingResponse> {
 async function fetchVillages(): Promise<VillagesResponse> {
   const response = await fetch(`${API_URL}/api/v1/villages`)
   if (!response.ok) throw new Error('Unable to load villages')
+  return response.json()
+}
+
+async function fetchAgents(brokerageId?: number): Promise<AgentsResponse> {
+  const query = brokerageId ? `?brokerage_id=${brokerageId}` : ''
+  const response = await fetch(`${API_URL}/api/v1/agents${query}`)
+  if (!response.ok) throw new Error('Unable to load agents')
   return response.json()
 }
 
@@ -467,8 +506,9 @@ async function fetchSyncRuns(): Promise<SyncRunsResponse> {
   return response.json()
 }
 
-async function fetchLeads(): Promise<LeadsResponse> {
-  const response = await fetch(`${API_URL}/api/v1/leads`, { headers: await authHeaders() })
+async function fetchLeads(params: { assigned_agent_id?: string } = {}): Promise<LeadsResponse> {
+  const query = buildQuery(params)
+  const response = await fetch(`${API_URL}/api/v1/leads${query ? `?${query}` : ''}`, { headers: await authHeaders() })
   if (!response.ok) throw new Error('Unable to load leads')
   return response.json()
 }
@@ -802,6 +842,12 @@ function RequireStaff({ children }: { children: React.ReactNode }) {
 }
 
 function App() {
+  const { isClerkEnabled, isSignedIn, isLoading } = useAuthContext()
+
+  useEffect(() => {
+    if (isClerkEnabled && !isLoading && !isSignedIn) storeSelectedAgentId(null)
+  }, [isClerkEnabled, isLoading, isSignedIn])
+
   return (
     <>
       <PostHogPageView />
@@ -810,6 +856,7 @@ function App() {
         <Route path="/listings/:id" element={<ListingDetailPage />} />
         <Route path="/villages" element={<VillagesPage />} />
         <Route path="/villages/:slug" element={<VillageDetailPage />} />
+        <Route path="/agents" element={<AgentsPage />} />
         <Route path="/military" element={<MilitaryPage />} />
         <Route path="/saved" element={<SavedPage />} />
         <Route path="/account" element={<AccountPage />} />
@@ -1404,12 +1451,15 @@ function ListingDetailPage() {
   const [leadOpen, setLeadOpen] = useState(false)
   const [priceTrackerOpen, setPriceTrackerOpen] = useState(false)
   const { isClerkEnabled, isSignedIn, userId } = useAuthContext()
+  const [selectedAgentId, setSelectedAgentId] = useState<number | null>(null)
   const [localSaved, setLocalSaved] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [photoIndex, setPhotoIndex] = useState(0)
   const { data, isLoading, isError } = useQuery({ queryKey: ['listing', id], queryFn: () => fetchListing(id), enabled: Boolean(id) })
   const { data: savedData, refetch: refetchSaved } = useQuery({ queryKey: ['saved-listings', userId], queryFn: fetchSavedListings, enabled: isClerkEnabled && isSignedIn })
+  const { data: routingAgentsData, isLoading: routingAgentsLoading } = useQuery({ queryKey: ['agents', 'routing', 'listing-detail'], queryFn: () => fetchAgents(), enabled: isClerkEnabled && isSignedIn && Boolean(data?.listing) })
   const listing = data?.listing
+  const routingAgents = routingAgentsData?.agents ?? []
   const saved = listing ? (savedData?.listing_ids?.includes(listing.id) ?? localSaved) : false
   const saveMutation = useMutation({
     mutationFn: () => listing && saved ? removeSavedListingForUser(listing.id) : listing ? saveListingForUser(listing.id) : Promise.reject(new Error('No listing loaded')),
@@ -1418,6 +1468,19 @@ function ListingDetailPage() {
     onError: () => setLocalSaved((current) => !current),
   })
   const photos = listing?.photos?.length ? listing.photos : listing ? [{ id: 0, url: listing.primary_photo_url, position: 1, alt_text: listing.title }] : []
+
+  useEffect(() => {
+    if (isClerkEnabled && isSignedIn) setSelectedAgentId(storedSelectedAgentId())
+    else setSelectedAgentId(null)
+  }, [isClerkEnabled, isSignedIn, listing?.id])
+
+  function selectPreferredAgent(agentId: number | null) {
+    if (!isClerkEnabled || !isSignedIn) return
+
+    setSelectedAgentId(agentId)
+    storeSelectedAgentId(agentId)
+    captureAnalyticsEvent(agentId ? 'agent_selected' : 'agent_selection_cleared', { agent_id: agentId ?? undefined, source: 'listing_detail' })
+  }
 
   async function shareListing() {
     if (!listing) return
@@ -1503,6 +1566,7 @@ function ListingDetailPage() {
 
                   <p className="mt-7 max-w-3xl text-base leading-8 text-[#3d4d48]">{listing.description}</p>
                   <FeaturePills features={listing.features} />
+                  <ListingAgentRoutingPanel listing={listing} routingAgents={routingAgents} selectedAgentId={selectedAgentId} canSelectAgent={isClerkEnabled && isSignedIn} isClerkEnabled={isClerkEnabled} isLoadingAgents={routingAgentsLoading} onSelectAgent={selectPreferredAgent} className="mt-6 lg:hidden" />
                   {listing.listing_kind === 'sale' && <WebMortgageCalculator listing={listing} />}
                   <LocalIntelPanel listing={listing} />
                   {listing.brokerage?.compliance_disclaimer && <p className="mt-6 rounded-2xl bg-[#f6f1e8] p-4 text-xs font-semibold leading-6 text-[#66746f]">{listing.brokerage.compliance_disclaimer}</p>}
@@ -1527,10 +1591,11 @@ function ListingDetailPage() {
                   ) : (
                     <SignInButton mode="modal"><button className="mt-3 w-full rounded-2xl border border-[#d7ded9] px-4 py-3 text-sm font-bold text-[#0f3d35]">Sign in to save</button></SignInButton>
                   )}
+                  <ListingAgentRoutingPanel listing={listing} routingAgents={routingAgents} selectedAgentId={selectedAgentId} canSelectAgent={isClerkEnabled && isSignedIn} isClerkEnabled={isClerkEnabled} isLoadingAgents={routingAgentsLoading} onSelectAgent={selectPreferredAgent} className="mt-6" />
                   <dl className="mt-6 space-y-3 text-sm">
                     <InfoRow label="Listing ID" value={listing.external_id || `HH-${listing.id}`} />
-                    <InfoRow label="Agent" value={listing.agent_name || 'Hafa Homes Team'} />
-                    <InfoRow label="Brokerage" value={listing.brokerage_name || 'Hafa Homes'} />
+                    <InfoRow label="Listed by" value={listing.agent_name || 'Listing agent'} />
+                    <InfoRow label="Listing brokerage" value={listing.brokerage_name || 'Listing brokerage'} />
                   </dl>
                 </div>
               </aside>
@@ -1559,6 +1624,85 @@ function ListingDetailPage() {
         </>
       )}
     </main>
+  )
+}
+
+function ListingAgentRoutingPanel({
+  listing,
+  routingAgents,
+  selectedAgentId,
+  canSelectAgent,
+  isClerkEnabled,
+  isLoadingAgents,
+  onSelectAgent,
+  className = '',
+}: {
+  listing: Listing
+  routingAgents: Agent[]
+  selectedAgentId: number | null
+  canSelectAgent: boolean
+  isClerkEnabled: boolean
+  isLoadingAgents: boolean
+  onSelectAgent: (agentId: number | null) => void
+  className?: string
+}) {
+  const listedAgentName = listing.agent?.name || listing.agent_name || 'Listing agent unavailable'
+  const listedBrokerageName = listing.agent?.brokerage?.name || listing.brokerage?.name || listing.brokerage_name || 'Listing brokerage'
+  const selectedAgent = routingAgents.find((agent) => agent.id === selectedAgentId)
+
+  return (
+    <section className={`${className} rounded-[1.5rem] border border-[#dfe8e2] bg-[#fbfcf8] p-4`}>
+      <div>
+        <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#0f705e]">Listed by</p>
+        <div className="mt-3 flex items-center gap-3">
+          <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-[#0f3d35] text-sm font-black text-[#f5c16c]">
+            {listing.agent?.photo_url ? <img src={listing.agent.photo_url} alt="" className="h-full w-full rounded-2xl object-cover" /> : initialsFromName(listedAgentName)}
+          </div>
+          <div className="min-w-0">
+            <p className="truncate text-base font-extrabold tracking-[-0.03em] text-[#17211f]">{listedAgentName}</p>
+            <p className="truncate text-sm font-semibold text-[#66746f]">{listedBrokerageName}</p>
+            <p className="text-xs font-bold uppercase tracking-[0.14em] text-[#7b8a84]">Listing attribution</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-5 border-t border-[#e5ede8] pt-5">
+        <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#0f705e]">Work with</p>
+        <h3 className="mt-2 text-lg font-semibold tracking-[-0.04em] text-[#17211f]">Choose your preferred Hafa Homes agent.</h3>
+        <p className="mt-2 text-sm leading-6 text-[#66746f]">This controls who follows up with you. The listing attribution above stays unchanged for MLS/brokerage compliance.</p>
+
+        {!canSelectAgent ? (
+          <div className="mt-4 rounded-2xl bg-[#e9f5ef] p-4">
+            <p className="text-sm font-semibold leading-6 text-[#304942]">Sign in to choose a preferred agent for future requests. You can still send a showing request without an account.</p>
+            {isClerkEnabled ? (
+              <SignInButton mode="modal">
+                <button type="button" className="mt-3 min-h-11 rounded-full bg-[#0f3d35] px-5 text-sm font-bold text-white">Sign in to choose</button>
+              </SignInButton>
+            ) : (
+              <button type="button" disabled className="mt-3 min-h-11 rounded-full bg-[#0f3d35]/60 px-5 text-sm font-bold text-white">Sign-in coming online</button>
+            )}
+          </div>
+        ) : isLoadingAgents ? (
+          <p className="mt-4 rounded-2xl bg-[#f6f1e8] p-4 text-sm font-semibold text-[#66746f]">Loading brokerage agents...</p>
+        ) : routingAgents.length > 0 ? (
+          <div className="mt-4 grid gap-2">
+            <button type="button" onClick={() => onSelectAgent(null)} className={`min-h-11 rounded-2xl border px-4 text-left text-sm font-bold transition ${selectedAgent ? 'border-[#d7ded9] text-[#304942] hover:border-[#0f705e]' : 'border-[#0f705e] bg-[#e9f5ef] text-[#0f705e]'}`}>
+              Brokerage team / no preference
+            </button>
+            {routingAgents.map((agent) => {
+              const selected = selectedAgentId === agent.id
+              return (
+                <button key={agent.id} type="button" onClick={() => onSelectAgent(agent.id)} className={`min-h-11 rounded-2xl border px-4 text-left text-sm font-bold transition ${selected ? 'border-[#0f705e] bg-[#e9f5ef] text-[#0f705e]' : 'border-[#d7ded9] text-[#304942] hover:border-[#0f705e]'}`}>
+                  {agent.name}
+                </button>
+              )
+            })}
+          </div>
+        ) : (
+          <p className="mt-4 rounded-2xl bg-[#f6f1e8] p-4 text-sm font-semibold text-[#66746f]">No preferred-agent options are available yet. Requests will route to the brokerage team.</p>
+        )}
+      </div>
+    </section>
   )
 }
 
@@ -1650,6 +1794,103 @@ function VillagesPage() {
             <p className="mt-5 inline-flex items-center gap-2 text-sm font-bold text-[#0f3d35]">Explore listings <ChevronRight size={16} /></p>
           </Link>
         ))}
+      </section>
+    </Shell>
+  )
+}
+
+function AgentsPage() {
+  const { isClerkEnabled, isSignedIn } = useAuthContext()
+  const { data, isLoading, isError } = useQuery({ queryKey: ['agents'], queryFn: () => fetchAgents() })
+  const [selectedAgentId, setSelectedAgentId] = useState<number | null>(null)
+  const agents = data?.agents ?? []
+  const canSelectAgent = isClerkEnabled && isSignedIn
+
+  useEffect(() => {
+    if (canSelectAgent) setSelectedAgentId(storedSelectedAgentId())
+    else setSelectedAgentId(null)
+  }, [canSelectAgent])
+
+  function selectAgent(agent: Agent) {
+    if (!canSelectAgent) return
+
+    setSelectedAgentId(agent.id)
+    storeSelectedAgentId(agent.id)
+    captureAnalyticsEvent('agent_selected', { agent_id: agent.id, brokerage_id: agent.brokerage_id, source: 'agents_page' })
+  }
+
+  function clearSelectedAgent() {
+    if (!canSelectAgent) return
+
+    setSelectedAgentId(null)
+    storeSelectedAgentId(null)
+    captureAnalyticsEvent('agent_selection_cleared', { source: 'agents_page' })
+  }
+
+  return (
+    <Shell compact>
+      <ContentHeader
+        kicker="Agent network"
+        title="Choose who you want to work with."
+        description="Browse active brokerage agents. Sign in to set a preferred contact, and Hafa Homes can route future requests to that agent while listing attribution stays intact."
+      />
+      <section className="mx-auto max-w-7xl px-5 pb-10">
+        <div className="mb-5 rounded-[2rem] bg-[#0f3d35] p-5 text-white shadow-xl shadow-[#0f3d35]/10 md:p-6">
+          <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-center">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#bdebdc]">Lead routing</p>
+              <h2 className="mt-2 text-2xl font-semibold tracking-[-0.05em] md:text-3xl">{canSelectAgent ? 'Your selected agent follows you into showing requests.' : 'Sign in before choosing a preferred agent.'}</h2>
+              <p className="mt-3 max-w-3xl text-sm leading-6 text-white/72">Listing attribution stays intact for MLS/brokerage compliance, while signed-in customers can choose the agent who owns follow-up in the CRM.</p>
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row md:flex-col lg:flex-row">
+              {canSelectAgent && selectedAgentId && <button type="button" onClick={clearSelectedAgent} className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/25 px-5 text-sm font-bold text-white">Clear preference</button>}
+              <Link to="/" className="inline-flex min-h-12 items-center justify-center rounded-full bg-white px-5 text-sm font-bold text-[#0f3d35]">Search listings</Link>
+            </div>
+          </div>
+        </div>
+
+        {isLoading && <StateCard>Loading agents...</StateCard>}
+        {isError && <StateCard tone="error">Unable to load agents right now.</StateCard>}
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {agents.map((agent) => {
+            const selected = selectedAgentId === agent.id
+            return (
+              <article key={agent.id} className={`rounded-[2rem] bg-white p-5 shadow-sm ring-1 transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[#0f3d35]/10 ${selected ? 'ring-[#0f705e]' : 'ring-black/5'}`}>
+                <div className="flex items-start gap-4">
+                  <div className="grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-2xl bg-[#0f3d35] text-lg font-black text-[#f5c16c]">
+                    {agent.photo_url ? <img src={agent.photo_url} alt="" className="h-full w-full object-cover" /> : agentInitials(agent)}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xl font-semibold tracking-[-0.04em] text-[#17211f]">{agent.name}</p>
+                    <p className="mt-1 text-sm font-semibold text-[#66746f]">{agent.brokerage?.name ?? 'Brokerage partner'}</p>
+                    {agent.license_number && <p className="mt-1 text-xs font-bold uppercase tracking-[0.14em] text-[#7b8a84]">License {agent.license_number}</p>}
+                  </div>
+                </div>
+                {agent.bio && <p className="mt-4 line-clamp-3 text-sm leading-6 text-[#53645f]">{agent.bio}</p>}
+                <div className="mt-5 grid gap-2 text-sm font-semibold text-[#53645f]">
+                  {agent.email && <span className="inline-flex items-center gap-2"><Mail size={15} /> {agent.email}</span>}
+                  {agent.phone && <span className="inline-flex items-center gap-2"><Phone size={15} /> {agent.phone}</span>}
+                </div>
+                {canSelectAgent ? (
+                  <button
+                    type="button"
+                    onClick={() => selectAgent(agent)}
+                    className={`mt-5 w-full rounded-2xl px-4 py-3 text-sm font-bold transition ${selected ? 'bg-[#e9f5ef] text-[#0f705e]' : 'bg-[#0f3d35] text-white hover:bg-[#174c43]'}`}
+                  >
+                    {selected ? 'Selected for future requests' : `Work with ${agent.name.split(' ')[0]}`}
+                  </button>
+                ) : isClerkEnabled ? (
+                  <SignInButton mode="modal">
+                    <button type="button" className="mt-5 w-full rounded-2xl bg-[#0f3d35] px-4 py-3 text-sm font-bold text-white transition hover:bg-[#174c43]">Sign in to work with {agent.name.split(' ')[0]}</button>
+                  </SignInButton>
+                ) : (
+                  <button type="button" disabled className="mt-5 w-full rounded-2xl bg-[#0f3d35]/60 px-4 py-3 text-sm font-bold text-white">Sign-in coming online</button>
+                )}
+              </article>
+            )
+          })}
+        </div>
+        {agents.length === 0 && !isLoading && <StateCard>No active agents are published yet.</StateCard>}
       </section>
     </Shell>
   )
@@ -2489,12 +2730,14 @@ function ShowingCompactRow({ showing }: { showing: ShowingAppointment }) {
 }
 
 function LeadsPage() {
-  const { data, isLoading, isError, refetch } = useQuery({ queryKey: ['leads'], queryFn: fetchLeads })
+  const [agentFilter, setAgentFilter] = useState('')
+  const { data, isLoading, isError, refetch } = useQuery({ queryKey: ['leads', agentFilter], queryFn: () => fetchLeads({ assigned_agent_id: agentFilter || undefined }) })
   const statusMutation = useMutation({
     mutationFn: ({ id, status }: { id: number; status: LeadStatus }) => updateLead(id, { status }),
     onSuccess: () => refetch(),
   })
   const leads = data?.leads ?? []
+  const assignableAgents = data?.assignable_agents ?? []
   const openLeads = leads.filter((lead) => ['new', 'contacted', 'showing_scheduled', 'nurturing'].includes(lead.status)).length
   const newLeads = leads.filter((lead) => lead.status === 'new').length
   const scheduledLeads = leads.filter((lead) => lead.status === 'showing_scheduled').length
@@ -2506,6 +2749,16 @@ function LeadsPage() {
           <div className="rounded-[1.75rem] bg-[#0f3d35] p-5 text-white"><p className="text-xs font-bold uppercase tracking-[0.18em] text-white/55">Open leads</p><p className="mt-2 text-4xl font-semibold tracking-[-0.06em]">{openLeads}</p></div>
           <div className="rounded-[1.75rem] bg-white p-5"><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#7b8a84]">New</p><p className="mt-2 text-4xl font-semibold tracking-[-0.06em]">{newLeads}</p></div>
           <div className="rounded-[1.75rem] bg-white p-5"><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#7b8a84]">Showings</p><p className="mt-2 text-4xl font-semibold tracking-[-0.06em]">{scheduledLeads}</p></div>
+        </div>
+        <div className="mb-5 rounded-[1.75rem] bg-white p-4 shadow-sm sm:p-5">
+          <label className="grid gap-2 text-sm font-semibold text-[#304942] md:max-w-md">
+            Filter by assigned agent
+            <select value={agentFilter} onChange={(event) => setAgentFilter(event.target.value)} className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
+              <option value="">All assigned agents</option>
+              <option value="unassigned">Unassigned leads</option>
+              {assignableAgents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name} · {agent.brokerage?.name}</option>)}
+            </select>
+          </label>
         </div>
         {isLoading && <StateCard>Loading leads...</StateCard>}
         {isError && <StateCard tone="error">Unable to load leads.</StateCard>}
@@ -2530,8 +2783,8 @@ function LeadsPage() {
               </div>
               <div className="mt-4 grid gap-3 md:grid-cols-3">
                 <LeadMeta icon={<Building2 size={16} />} label="Brokerage" value={lead.brokerage?.name ?? 'Unassigned brokerage'} />
-                <LeadMeta icon={<UserRound size={16} />} label="Assigned agent" value={lead.assigned_agent?.name ?? 'Needs assignment'} />
-                <LeadMeta icon={<ClipboardList size={16} />} label="Created" value={formatDateTime(lead.created_at)} />
+                <LeadMeta icon={<UserRound size={16} />} label="Requested agent" value={lead.requested_agent?.name ?? 'Brokerage team'} />
+                <LeadMeta icon={<ClipboardList size={16} />} label="Assigned agent" value={lead.assigned_agent?.name ?? 'Needs assignment'} />
               </div>
               {lead.listing && <p className="mt-4 rounded-2xl bg-[#f6f1e8] p-3 text-sm font-semibold text-[#304942]">Interested in {lead.listing.title} · {lead.listing.village} · {currency(lead.listing.price, lead.listing.listing_kind)}</p>}
               {lead.message && <p className="mt-4 line-clamp-2 text-sm leading-6 text-[#66746f]">{lead.message}</p>}
@@ -2611,7 +2864,8 @@ function LeadDetailPage() {
                 <Building2 className="text-[#bdebdc]" />
                 <p className="mt-5 text-xs font-bold uppercase tracking-[0.2em] text-white/55">Brokerage routing</p>
                 <h2 className="mt-2 text-2xl font-semibold tracking-[-0.05em] sm:text-3xl">{lead.brokerage?.name ?? 'Unassigned brokerage'}</h2>
-                <p className="mt-3 text-sm leading-6 text-white/70">Assigned agent: {lead.assigned_agent?.name ?? 'Not assigned yet'}</p>
+                <p className="mt-3 text-sm leading-6 text-white/70">Requested agent: {lead.requested_agent?.name ?? 'Brokerage team'}</p>
+                <p className="mt-1 text-sm leading-6 text-white/70">Assigned agent: {lead.assigned_agent?.name ?? 'Not assigned yet'}</p>
                 <label className="mt-5 grid gap-2 text-sm font-semibold text-white/80">
                   Assign agent
                   <select
@@ -3958,6 +4212,7 @@ function MobileMenuDrawer({ open, onClose }: { open: boolean; onClose: () => voi
   const links = [
     ['Search', '/'],
     ['Villages', '/villages'],
+    ['Agents', '/agents'],
     ['Military relocation', '/military'],
     ['Saved homes', '/saved'],
     ['My requests', '/account/requests'],
@@ -3999,32 +4254,65 @@ function MobileMenuDrawer({ open, onClose }: { open: boolean; onClose: () => voi
 
 function PriceTrackerModal({ listing, open, onClose }: { listing: Listing; open: boolean; onClose: () => void }) {
   const mutation = useMutation({ mutationFn: createLead })
+  const submittingRef = useRef(false)
+  const [submitting, setSubmitting] = useState(false)
   const { isClerkEnabled, isSignedIn, userId } = useAuthContext()
+  const canSelectAgent = isClerkEnabled && isSignedIn
   const { data: meData } = useQuery({
     queryKey: ['me', userId, 'price-tracker-prefill'],
     queryFn: fetchMe,
     enabled: open && isClerkEnabled && isSignedIn && Boolean(userId),
     retry: false,
   })
+  const { data: agentsData } = useQuery({
+    queryKey: ['agents', 'routing', 'price-tracker'],
+    queryFn: () => fetchAgents(),
+    enabled: open && canSelectAgent,
+  })
   const profile = meData?.user
   if (!open) return null
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    const form = new FormData(event.currentTarget)
-    captureAnalyticsEvent('lead_form_submitted', { listing_id: listing.id, lead_type: 'price_tracker' })
-    mutation.mutate({
-      listing_id: listing.id,
-      lead_type: 'price_tracker',
-      name: String(form.get('name') || 'Price tracker user'),
-      email: String(form.get('email') || ''),
-      phone: String(form.get('phone') || ''),
-      preferred_contact_method: 'email',
-      target_price: String(form.get('target_price') || ''),
-      source_campaign: currentUtmCampaign(),
-      source_url: window.location.href,
-      message: `Target price: ${String(form.get('target_price') || '')}`, 
-    })
+    if (submittingRef.current || mutation.isPending) return
+
+    submittingRef.current = true
+    setSubmitting(true)
+
+    try {
+      const form = new FormData(event.currentTarget)
+      const selectedAgentId = canSelectAgent ? storedSelectedAgentId() : null
+      let candidateAgents = agentsData?.agents
+
+      if (selectedAgentId && !candidateAgents) {
+        try {
+          candidateAgents = (await fetchAgents()).agents
+        } catch (agentError) {
+          console.warn('Unable to resolve preferred agent before price tracker submit', agentError)
+        }
+      }
+
+      const selectedAgent = candidateAgents?.find((agent) => agent.id === selectedAgentId)
+      captureAnalyticsEvent('lead_form_submitted', { listing_id: listing.id, lead_type: 'price_tracker' })
+      await mutation.mutateAsync({
+        listing_id: listing.id,
+        lead_type: 'price_tracker',
+        name: String(form.get('name') || 'Price tracker user'),
+        email: String(form.get('email') || ''),
+        phone: String(form.get('phone') || ''),
+        preferred_contact_method: 'email',
+        target_price: String(form.get('target_price') || ''),
+        source_campaign: currentUtmCampaign(),
+        source_url: window.location.href,
+        requested_agent_id: selectedAgent?.id,
+        message: `Target price: ${String(form.get('target_price') || '')}`,
+      })
+    } catch {
+      // React Query keeps the mutation error state for the inline error message.
+    } finally {
+      submittingRef.current = false
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -4055,7 +4343,7 @@ function PriceTrackerModal({ listing, open, onClose }: { listing: Listing; open:
             </div>
             {mutation.isError && <p className="mt-3 text-sm font-semibold text-red-700">Unable to save tracker right now.</p>}
             <div className="mt-5 grid grid-cols-2 gap-3">
-              <button disabled={mutation.isPending} className="rounded-2xl bg-[#0f3d35] px-4 py-3 text-sm font-bold text-white disabled:opacity-60">{mutation.isPending ? 'Saving...' : 'Add'}</button>
+              <button disabled={submitting || mutation.isPending} className="rounded-2xl bg-[#0f3d35] px-4 py-3 text-sm font-bold text-white disabled:opacity-60">{submitting || mutation.isPending ? 'Saving...' : 'Add'}</button>
               <button type="button" onClick={onClose} className="rounded-2xl bg-[#edf0ec] px-4 py-3 text-sm font-bold text-[#17211f]">Cancel</button>
             </div>
           </form>
@@ -4068,18 +4356,37 @@ function PriceTrackerModal({ listing, open, onClose }: { listing: Listing; open:
 function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean; onClose: () => void }) {
   const mutation = useMutation({ mutationFn: createLead })
   const { isClerkEnabled, isSignedIn, userId } = useAuthContext()
+  const canSelectAgent = isClerkEnabled && isSignedIn
   const { data: meData } = useQuery({
     queryKey: ['me', userId, 'lead-prefill'],
     queryFn: fetchMe,
     enabled: open && isClerkEnabled && isSignedIn && Boolean(userId),
     retry: false,
   })
+  const { data: agentsData } = useQuery({
+    queryKey: ['agents', 'routing', 'lead-modal'],
+    queryFn: () => fetchAgents(),
+    enabled: open && canSelectAgent,
+  })
   const profile = meData?.user
+  const routingAgents = canSelectAgent ? agentsData?.agents ?? [] : []
+  const defaultAgentId = (() => {
+    if (!canSelectAgent) return null
+
+    const stored = storedSelectedAgentId()
+    const storedAgent = routingAgents.find((agent) => agent.id === stored)
+    return storedAgent?.id ?? null
+  })()
+  const [agentSelectionOverride, setAgentSelectionOverride] = useState<{ listingId: number; agentId: number | null } | null>(null)
+  const effectiveSelectedAgentId = agentSelectionOverride?.listingId === listing.id ? agentSelectionOverride.agentId : defaultAgentId
+  const selectedModalAgent = routingAgents.find((agent) => agent.id === effectiveSelectedAgentId) ?? null
+
   if (!open) return null
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const form = new FormData(event.currentTarget)
+    const requestedAgentId = canSelectAgent && form.get('requested_agent_id') ? Number(form.get('requested_agent_id')) : undefined
     captureAnalyticsEvent('lead_form_submitted', { listing_id: listing.id, lead_type: 'showing_request' })
     mutation.mutate({
       listing_id: listing.id,
@@ -4094,7 +4401,22 @@ function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean
       source_campaign: currentUtmCampaign(),
       source_url: window.location.href,
       message: String(form.get('message') || ''),
+      requested_agent_id: requestedAgentId,
     })
+  }
+
+  function handleAgentChange(value: string) {
+    if (!canSelectAgent) return
+
+    const nextAgentId = value ? Number(value) : null
+    setAgentSelectionOverride({ listingId: listing.id, agentId: nextAgentId })
+
+    if (nextAgentId) {
+      storeSelectedAgentId(nextAgentId)
+      captureAnalyticsEvent('agent_selected', { agent_id: nextAgentId, listing_id: listing.id, source: 'lead_modal' })
+    } else {
+      captureAnalyticsEvent('agent_preference_skipped', { listing_id: listing.id, source: 'lead_modal' })
+    }
   }
 
   return (
@@ -4118,14 +4440,30 @@ function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean
             </div>
             <div className="mt-4 rounded-3xl bg-[#f6f1e8] p-4 md:mt-5">
               <div className="flex items-center gap-4">
-                <img src="/hafa-homes-mark.svg" alt="" className="h-12 w-12 rounded-2xl md:h-16 md:w-16" />
-                <div>
-                  <p className="text-base font-bold text-[#17211f] md:text-lg">Hafa Homes Team</p>
-                  <p className="text-xs font-semibold text-[#66746f] md:text-sm">hello@hafahomes.com</p>
-                  <p className="text-xs font-semibold text-[#66746f] md:text-sm">(671) 555-0199</p>
+                <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-[#0f3d35] text-sm font-black text-[#f5c16c] md:h-16 md:w-16 md:text-base">
+                  {selectedModalAgent ? agentInitials(selectedModalAgent) : 'HH'}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#0f705e]">Preferred agent</p>
+                  <p className="text-base font-bold text-[#17211f] md:text-lg">{selectedModalAgent?.name || 'Brokerage team'}</p>
+                  <p className="text-xs font-semibold text-[#66746f] md:text-sm">{selectedModalAgent?.brokerage?.name || 'No agent preference selected'}</p>
+                  <p className="mt-1 text-xs font-semibold text-[#66746f] md:text-sm">Listed by {listing.agent_name || 'Listing agent'} · {listing.brokerage_name || 'Listing brokerage'}</p>
+                  <p className="text-xs font-semibold text-[#66746f] md:text-sm">{listing.address}</p>
                 </div>
               </div>
-              <p className="mt-3 text-sm font-semibold text-[#304942] md:mt-4">{listing.address}</p>
+              {canSelectAgent && routingAgents.length > 0 ? (
+                <label className="mt-4 grid gap-2 text-sm font-semibold text-[#304942]">
+                  Preferred agent
+                  <select name="requested_agent_id" value={effectiveSelectedAgentId ?? ''} onChange={(event) => handleAgentChange(event.target.value)} className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
+                    <option value="">Brokerage team / no preference for this request</option>
+                    {routingAgents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
+                  </select>
+                </label>
+              ) : isClerkEnabled && !isSignedIn ? (
+                <div className="mt-4 rounded-2xl bg-white p-4 text-sm font-semibold leading-6 text-[#53645f]">
+                  Sign in to choose a preferred agent. You can still send this showing request to the brokerage team without an account.
+                </div>
+              ) : null}
             </div>
             <div className="mt-4 grid grid-cols-2 gap-3 md:mt-5">
               <label className="cursor-pointer">
@@ -4202,6 +4540,7 @@ function TopNav() {
       <Brand light />
       <div className="hidden items-center gap-5 text-sm font-semibold text-white/82 md:flex">
         <Link to="/villages">Villages</Link>
+        <Link to="/agents">Agents</Link>
         <Link to="/military">Military</Link>
         <Link to="/saved">Saved</Link>
         <Link to="/account/requests">Requests</Link>
@@ -4224,9 +4563,10 @@ function TopNav() {
 function MobileNav() {
   return (
     <nav data-mobile-nav className="safe-bottom fixed inset-x-0 bottom-0 z-50 border-t border-black/10 bg-white/90 px-4 pt-3 backdrop-blur md:hidden">
-      <div className="mx-auto grid max-w-md grid-cols-4 text-center text-xs font-semibold text-[#53645f]">
+      <div className="mx-auto grid max-w-md grid-cols-5 text-center text-xs font-semibold text-[#53645f]">
         <Link to="/" className="flex flex-col items-center gap-1"><Home size={19} /> Search</Link>
         <Link to="/villages" className="flex flex-col items-center gap-1"><Map size={19} /> Villages</Link>
+        <Link to="/agents" className="flex flex-col items-center gap-1"><UsersRound size={19} /> Agents</Link>
         <Link to="/military" className="flex flex-col items-center gap-1"><ShieldCheck size={19} /> Military</Link>
         <Link to="/saved" className="flex flex-col items-center gap-1"><Heart size={19} /> Saved</Link>
       </div>

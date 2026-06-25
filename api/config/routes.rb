@@ -12,6 +12,7 @@ Rails.application.routes.draw do
         delete :save, on: :member, to: "saved_listings#destroy"
       end
       resources :villages, only: [:index]
+      resources :agents, only: [:index]
       resources :leads, only: [:index, :show, :create, :update] do
         post :notifications, on: :member, to: "leads#send_notification"
         resources :lead_notes, only: [:index, :create], path: "notes"

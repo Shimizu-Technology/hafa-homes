@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_10_120200) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_13_130000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -187,6 +187,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_10_120200) do
     t.string "preferred_time"
     t.date "preferred_tour_date"
     t.string "quality_status", default: "unknown", null: false
+    t.bigint "requested_agent_id"
     t.string "source_campaign"
     t.string "source_url"
     t.string "status"
@@ -202,6 +203,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_10_120200) do
     t.index ["lead_source"], name: "index_leads_on_lead_source"
     t.index ["listing_id"], name: "index_leads_on_listing_id"
     t.index ["quality_status"], name: "index_leads_on_quality_status"
+    t.index ["requested_agent_id", "created_at"], name: "index_leads_on_requested_agent_id_and_created_at"
     t.index ["source_campaign"], name: "index_leads_on_source_campaign"
     t.index ["status"], name: "index_leads_on_status"
     t.index ["user_id", "created_at"], name: "index_leads_on_user_id_and_created_at"
@@ -397,6 +399,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_10_120200) do
   add_foreign_key "lead_tasks", "users", column: "completed_by_id"
   add_foreign_key "lead_tasks", "users", column: "created_by_id"
   add_foreign_key "leads", "agents", column: "assigned_agent_id"
+  add_foreign_key "leads", "agents", column: "requested_agent_id"
   add_foreign_key "leads", "brokerages"
   add_foreign_key "leads", "listings"
   add_foreign_key "leads", "users"
