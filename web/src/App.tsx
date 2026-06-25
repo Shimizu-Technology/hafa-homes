@@ -291,6 +291,25 @@ type Lead = {
   message?: string
   status: LeadStatus
   quality_status?: string
+  quality_score?: number
+  quality_label?: string
+  qualification_summary?: string
+  prequalified_status?: string
+  prequalified_status_label?: string
+  lender_name?: string
+  purchase_timeline?: string
+  purchase_timeline_label?: string
+  budget_min?: number
+  budget_max?: number
+  budget_range_label?: string
+  desired_villages?: string
+  desired_beds?: number
+  desired_baths?: number
+  buyer_status?: string
+  buyer_status_label?: string
+  already_working_with_agent?: string
+  already_working_with_agent_label?: string
+  qualification_notes?: string
   lead_source?: string
   source_campaign?: string
   source_url?: string
@@ -384,6 +403,17 @@ type LeadPayload = {
   preferred_tour_date?: string
   tour_type?: string
   target_price?: string
+  prequalified_status?: string
+  lender_name?: string
+  purchase_timeline?: string
+  budget_min?: string
+  budget_max?: string
+  desired_villages?: string
+  desired_beds?: string
+  desired_baths?: string
+  buyer_status?: string
+  already_working_with_agent?: string
+  qualification_notes?: string
   source_campaign?: string
   source_url?: string
   message: string
@@ -718,6 +748,42 @@ const preferredContactOptions = [
   { value: 'email', label: 'Email' },
 ]
 
+const prequalifiedOptions = [
+  { value: '', label: 'Not sure / prefer to discuss' },
+  { value: 'yes', label: 'Yes, I am prequalified' },
+  { value: 'in_progress', label: 'I am working on prequalification' },
+  { value: 'no', label: 'No, not yet' },
+  { value: 'not_sure', label: 'Not sure' },
+]
+
+const purchaseTimelineOptions = [
+  { value: '', label: 'Timeline not set' },
+  { value: 'asap', label: 'ASAP' },
+  { value: '1_3_months', label: '1–3 months' },
+  { value: '3_6_months', label: '3–6 months' },
+  { value: '6_plus_months', label: '6+ months' },
+  { value: 'just_browsing', label: 'Just browsing' },
+]
+
+const buyerStatusOptions = [
+  { value: '', label: 'Not provided' },
+  { value: 'first_time', label: 'First-time buyer' },
+  { value: 'upgrading', label: 'Upgrading' },
+  { value: 'relocating', label: 'Relocating' },
+  { value: 'military', label: 'Military move' },
+  { value: 'investor', label: 'Investor' },
+  { value: 'renter', label: 'Renter' },
+  { value: 'selling', label: 'Selling too' },
+  { value: 'other', label: 'Other' },
+]
+
+const agentRelationshipOptions = [
+  { value: '', label: 'Not provided' },
+  { value: 'no', label: 'No' },
+  { value: 'yes', label: 'Yes' },
+  { value: 'not_sure', label: 'Not sure' },
+]
+
 const leadStatuses: Array<{ value: LeadStatus; label: string }> = [
   { value: 'new', label: 'New' },
   { value: 'contacted', label: 'Contacted' },
@@ -744,6 +810,42 @@ function currency(value: number, kind: string) {
   return kind === 'rent' ? `${formatted}/mo` : formatted
 }
 
+function qualityBadgeClasses(label?: string) {
+  const normalized = label?.toLowerCase()
+  if (normalized === 'hot') return 'bg-[#fee6ca] text-[#7a3a00]'
+  if (normalized === 'warm') return 'bg-[#fff5d9] text-[#6b4508]'
+  if (normalized === 'early') return 'bg-[#e9f5ef] text-[#0f705e]'
+  return 'bg-[#edf0ec] text-[#53645f]'
+}
+
+function compactMoney(value?: number) {
+  if (value === undefined || value === null) return ''
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(value)
+}
+
+function leadBudgetLabel(lead: Lead) {
+  if (lead.budget_range_label) return lead.budget_range_label
+  if (lead.budget_min && lead.budget_max) return `${compactMoney(lead.budget_min)}–${compactMoney(lead.budget_max)}`
+  if (lead.budget_min) return `${compactMoney(lead.budget_min)}+`
+  if (lead.budget_max) return `Up to ${compactMoney(lead.budget_max)}`
+  return 'Not provided'
+}
+
+function hasQualificationDetails(lead: Lead) {
+  return Boolean(lead.qualification_summary && lead.qualification_summary !== 'No qualification details captured yet')
+}
+
+function leadQualificationItems(lead: Lead) {
+  return [
+    ['Prequalified', lead.prequalified_status_label || 'Not provided'],
+    ['Timeline', lead.purchase_timeline_label || 'Not provided'],
+    ['Budget', leadBudgetLabel(lead)],
+    ['Villages', lead.desired_villages || 'Not provided'],
+    ['Beds / baths', [lead.desired_beds ? `${lead.desired_beds}+ beds` : '', lead.desired_baths ? `${lead.desired_baths}+ baths` : ''].filter(Boolean).join(' · ') || 'Not provided'],
+    ['Buyer type', lead.buyer_status_label || 'Not provided'],
+    ['Agent relationship', lead.already_working_with_agent_label || 'Not provided'],
+  ]
+}
 
 function tourDateOptions(count = 4) {
   return Array.from({ length: count }, (_, index) => {
@@ -2178,6 +2280,12 @@ function ConsumerRequestCard({ lead }: { lead: Lead }) {
           <LeadMeta icon={<Building2 size={16} />} label="Brokerage" value={lead.brokerage?.name ?? 'Hafa Homes'} />
           <LeadMeta icon={<MessageSquare size={16} />} label="Preferred contact" value={lead.preferred_contact_method || 'Not provided'} />
         </div>
+        {hasQualificationDetails(lead) && (
+          <div className="mt-4 rounded-2xl bg-[#e9f5ef] p-4">
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#0f705e]">Search readiness</p>
+            <p className="mt-2 text-sm font-semibold text-[#304942]">{lead.qualification_summary}</p>
+          </div>
+        )}
         {showing && (
           <div className="mt-4 rounded-2xl bg-[#f6f1e8] p-4">
             <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#0f705e]">Showing appointment</p>
@@ -2786,6 +2894,7 @@ function LeadsPage() {
                 <LeadMeta icon={<UserRound size={16} />} label="Requested agent" value={lead.requested_agent?.name ?? 'Brokerage team'} />
                 <LeadMeta icon={<ClipboardList size={16} />} label="Assigned agent" value={lead.assigned_agent?.name ?? 'Needs assignment'} />
               </div>
+              <div className="mt-4"><LeadQualificationCard lead={lead} compact /></div>
               {lead.listing && <p className="mt-4 rounded-2xl bg-[#f6f1e8] p-3 text-sm font-semibold text-[#304942]">Interested in {lead.listing.title} · {lead.listing.village} · {currency(lead.listing.price, lead.listing.listing_kind)}</p>}
               {lead.message && <p className="mt-4 line-clamp-2 text-sm leading-6 text-[#66746f]">{lead.message}</p>}
               <div className="mt-4 flex justify-end"><Link to={`/admin/leads/${lead.id}`} className="inline-flex items-center gap-2 rounded-full bg-[#0f3d35] px-4 py-2 text-sm font-bold text-white">Open lead <ChevronRight size={16} /></Link></div>
@@ -2856,6 +2965,8 @@ function LeadDetailPage() {
                 <LeadEditForm lead={lead} mutation={mutation} />
               </article>
 
+              <LeadQualificationCard lead={lead} />
+
               <LeadCrmPanel lead={lead} noteMutation={noteMutation} noteUpdateMutation={noteUpdateMutation} taskMutation={taskMutation} taskUpdateMutation={taskUpdateMutation} />
             </div>
 
@@ -2924,6 +3035,36 @@ type NotificationMutation = {
   error: unknown
 }
 
+function LeadQualificationCard({ lead, compact = false }: { lead: Lead; compact?: boolean }) {
+  const items = leadQualificationItems(lead)
+  const visibleItems = compact ? items.slice(0, 4) : items
+
+  return (
+    <section className={`rounded-[1.5rem] border border-[#dfe8e2] bg-[#fbfaf6] ${compact ? 'p-3' : 'p-4 sm:p-5'}`}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#0f705e]">Qualified lead snapshot</p>
+          <p className="mt-2 text-sm font-semibold leading-6 text-[#304942]">{lead.qualification_summary || 'No qualification details captured yet'}</p>
+        </div>
+        <span className={`rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.12em] ${qualityBadgeClasses(lead.quality_label)}`}>
+          {lead.quality_label || 'Unqualified'} · {lead.quality_score ?? 0}
+        </span>
+      </div>
+      <div className={`mt-4 grid gap-2 ${compact ? 'md:grid-cols-4' : 'sm:grid-cols-2'}`}>
+        {visibleItems.map(([label, value]) => (
+          <div key={label} className="rounded-2xl bg-white px-3 py-2">
+            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#7b8a84]">{label}</p>
+            <p className="mt-1 text-sm font-bold text-[#17211f]">{value}</p>
+          </div>
+        ))}
+      </div>
+      {!compact && lead.qualification_notes && (
+        <p className="mt-3 rounded-2xl bg-white p-3 text-sm font-semibold leading-6 text-[#53645f]">{lead.qualification_notes}</p>
+      )}
+    </section>
+  )
+}
+
 function LeadEditForm({ lead, mutation }: { lead: Lead; mutation: LeadMutation }) {
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -2941,6 +3082,17 @@ function LeadEditForm({ lead, mutation }: { lead: Lead; mutation: LeadMutation }
       quality_status: String(form.get('quality_status') || '').trim(),
       source_campaign: String(form.get('source_campaign') || '').trim(),
       source_url: String(form.get('source_url') || '').trim(),
+      prequalified_status: String(form.get('prequalified_status') || '').trim(),
+      lender_name: String(form.get('lender_name') || '').trim(),
+      purchase_timeline: String(form.get('purchase_timeline') || '').trim(),
+      budget_min: String(form.get('budget_min') || '').trim(),
+      budget_max: String(form.get('budget_max') || '').trim(),
+      desired_villages: String(form.get('desired_villages') || '').trim(),
+      desired_beds: String(form.get('desired_beds') || '').trim(),
+      desired_baths: String(form.get('desired_baths') || '').trim(),
+      buyer_status: String(form.get('buyer_status') || '').trim(),
+      already_working_with_agent: String(form.get('already_working_with_agent') || '').trim(),
+      qualification_notes: String(form.get('qualification_notes') || '').trim(),
       message: String(form.get('message') || '').trim(),
     })
   }
@@ -3008,7 +3160,42 @@ function LeadEditForm({ lead, mutation }: { lead: Lead; mutation: LeadMutation }
         </label>
         <Input name="source_campaign" label="Campaign/source detail" defaultValue={lead.source_campaign || ''} />
         <Input name="source_url" label="Source URL" defaultValue={lead.source_url || ''} type="url" />
+        <label className="grid gap-2 text-sm font-semibold text-[#304942]">
+          Prequalified
+          <select name="prequalified_status" defaultValue={lead.prequalified_status || ''} className="min-h-12 w-full min-w-0 rounded-2xl border border-[#dce5df] bg-white px-4">
+            {prequalifiedOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </label>
+        <label className="grid gap-2 text-sm font-semibold text-[#304942]">
+          Timeline
+          <select name="purchase_timeline" defaultValue={lead.purchase_timeline || ''} className="min-h-12 w-full min-w-0 rounded-2xl border border-[#dce5df] bg-white px-4">
+            {purchaseTimelineOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </label>
+        <Input name="lender_name" label="Lender / bank" defaultValue={lead.lender_name || ''} />
+        <label className="grid gap-2 text-sm font-semibold text-[#304942]">
+          Buyer type
+          <select name="buyer_status" defaultValue={lead.buyer_status || ''} className="min-h-12 w-full min-w-0 rounded-2xl border border-[#dce5df] bg-white px-4">
+            {buyerStatusOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </label>
+        <Input name="budget_min" label="Budget min" defaultValue={lead.budget_min ? String(lead.budget_min) : ''} type="number" min="0" step="1000" />
+        <Input name="budget_max" label="Budget max" defaultValue={lead.budget_max ? String(lead.budget_max) : ''} type="number" min="0" step="1000" />
+        <Input name="desired_villages" label="Desired villages" defaultValue={lead.desired_villages || ''} />
+        <Input name="desired_beds" label="Desired beds" defaultValue={lead.desired_beds ? String(lead.desired_beds) : ''} type="number" min="0" step="1" />
+        <Input name="desired_baths" label="Desired baths" defaultValue={lead.desired_baths ? String(lead.desired_baths) : ''} type="number" min="0" step="0.5" />
+        <label className="grid gap-2 text-sm font-semibold text-[#304942]">
+          Already working with an agent?
+          <select name="already_working_with_agent" defaultValue={lead.already_working_with_agent || ''} className="min-h-12 w-full min-w-0 rounded-2xl border border-[#dce5df] bg-white px-4">
+            {agentRelationshipOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </label>
       </div>
+
+      <label className="mt-3 grid gap-2 text-sm font-semibold text-[#304942]">
+        Qualification notes
+        <textarea name="qualification_notes" rows={3} defaultValue={lead.qualification_notes || ''} className="w-full min-w-0 rounded-2xl border border-[#dce5df] bg-white px-4 py-3" />
+      </label>
 
       <label className="mt-3 grid gap-2 text-sm font-semibold text-[#304942]">
         Message
@@ -4252,6 +4439,53 @@ function MobileMenuDrawer({ open, onClose }: { open: boolean; onClose: () => voi
   )
 }
 
+function QualificationFields({ compact = false, defaultBudgetMax }: { compact?: boolean; defaultBudgetMax?: string }) {
+  return (
+    <div className="rounded-[1.5rem] border border-[#dce5df] bg-[#fbfaf6] p-4 md:col-span-2">
+      <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#0f705e]">Buyer readiness</p>
+      <p className="mt-2 text-sm leading-6 text-[#66746f]">A few optional details help the right agent follow up with useful matches instead of a cold call.</p>
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
+        <label className="grid gap-2 text-sm font-semibold text-[#304942]">
+          Prequalified?
+          <select name="prequalified_status" defaultValue="" className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
+            {prequalifiedOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </label>
+        <label className="grid gap-2 text-sm font-semibold text-[#304942]">
+          Timeline
+          <select name="purchase_timeline" defaultValue="" className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
+            {purchaseTimelineOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </label>
+        <Input name="lender_name" label="Lender / bank optional" placeholder="Bank of Guam, Coast360..." />
+        <label className="grid gap-2 text-sm font-semibold text-[#304942]">
+          Buyer type
+          <select name="buyer_status" defaultValue="" className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
+            {buyerStatusOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </label>
+        <Input name="budget_min" label="Budget min" type="number" min="0" step="1000" placeholder="450000" />
+        <Input name="budget_max" label="Budget max" type="number" min="0" step="1000" defaultValue={defaultBudgetMax} placeholder="650000" />
+        {!compact && <Input name="desired_villages" label="Desired villages" placeholder="Dededo, Yigo, Tamuning" />}
+        {!compact && <Input name="desired_beds" label="Desired beds" type="number" min="0" step="1" placeholder="3" />}
+        {!compact && <Input name="desired_baths" label="Desired baths" type="number" min="0" step="0.5" placeholder="2" />}
+        <label className="grid gap-2 text-sm font-semibold text-[#304942]">
+          Already working with an agent?
+          <select name="already_working_with_agent" defaultValue="" className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
+            {agentRelationshipOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </label>
+      </div>
+      {!compact && (
+        <label className="mt-3 grid gap-2 text-sm font-semibold text-[#304942]">
+          Anything else the agent should know?
+          <textarea name="qualification_notes" rows={3} className="rounded-2xl border border-[#dce5df] bg-white px-4 py-3" placeholder="Relocating next month, needs pet-friendly, prefers central Guam..." />
+        </label>
+      )}
+    </div>
+  )
+}
+
 function PriceTrackerModal({ listing, open, onClose }: { listing: Listing; open: boolean; onClose: () => void }) {
   const mutation = useMutation({ mutationFn: createLead })
   const submittingRef = useRef(false)
@@ -4305,6 +4539,13 @@ function PriceTrackerModal({ listing, open, onClose }: { listing: Listing; open:
         source_campaign: currentUtmCampaign(),
         source_url: window.location.href,
         requested_agent_id: selectedAgent?.id,
+        prequalified_status: String(form.get('prequalified_status') || ''),
+        lender_name: String(form.get('lender_name') || ''),
+        purchase_timeline: String(form.get('purchase_timeline') || ''),
+        budget_min: String(form.get('budget_min') || ''),
+        budget_max: String(form.get('budget_max') || ''),
+        buyer_status: String(form.get('buyer_status') || ''),
+        already_working_with_agent: String(form.get('already_working_with_agent') || ''),
         message: `Target price: ${String(form.get('target_price') || '')}`,
       })
     } catch {
@@ -4340,6 +4581,7 @@ function PriceTrackerModal({ listing, open, onClose }: { listing: Listing; open:
               <Input name="email" label="Email for alerts" type="email" defaultValue={profile?.email || ''} required />
               <Input name="name" label="Name" defaultValue={profile?.full_name || 'Hafa Homes user'} />
               <Input name="phone" label="Phone optional" defaultValue={profile?.phone || '+1671'} inputMode="tel" />
+              <QualificationFields compact />
             </div>
             {mutation.isError && <p className="mt-3 text-sm font-semibold text-red-700">Unable to save tracker right now.</p>}
             <div className="mt-5 grid grid-cols-2 gap-3">
@@ -4402,6 +4644,17 @@ function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean
       source_url: window.location.href,
       message: String(form.get('message') || ''),
       requested_agent_id: requestedAgentId,
+      prequalified_status: String(form.get('prequalified_status') || ''),
+      lender_name: String(form.get('lender_name') || ''),
+      purchase_timeline: String(form.get('purchase_timeline') || ''),
+      budget_min: String(form.get('budget_min') || ''),
+      budget_max: String(form.get('budget_max') || ''),
+      desired_villages: String(form.get('desired_villages') || ''),
+      desired_beds: String(form.get('desired_beds') || ''),
+      desired_baths: String(form.get('desired_baths') || ''),
+      buyer_status: String(form.get('buyer_status') || ''),
+      already_working_with_agent: String(form.get('already_working_with_agent') || ''),
+      qualification_notes: String(form.get('qualification_notes') || ''),
     })
   }
 
@@ -4499,6 +4752,7 @@ function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean
                   {preferredTimeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                 </select>
               </label>
+              <QualificationFields defaultBudgetMax={String(Math.round(listing.price))} />
               <label className="grid gap-2 text-sm font-semibold text-[#304942]">
                 Message
                 <textarea name="message" rows={4} className="rounded-2xl border border-[#dce5df] px-4 py-3" defaultValue={`I'm interested in ${listing.title}.`} />

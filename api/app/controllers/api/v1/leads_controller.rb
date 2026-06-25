@@ -30,6 +30,7 @@ module Api
 
       def create
         permitted = lead_params
+        normalize_blank_lead_values(permitted)
         lead = Lead.new(permitted.except(:listing_id, :requested_agent_id))
         lead.listing = active_listing_from_params(permitted)
         return if performed?
@@ -155,23 +156,24 @@ module Api
           end
         end
 
-        normalize_blank_update_values(permitted)
+        normalize_blank_lead_values(permitted)
         @lead.assign_attributes(permitted)
         @lead.last_contacted_at = Time.current if permitted.key?(:status) && contact_status?(@lead.status)
         true
       end
 
-      def normalize_blank_update_values(permitted)
-        %i[phone preferred_time preferred_tour_date tour_type target_price message source_campaign source_url].each do |key|
+      def normalize_blank_lead_values(permitted)
+        %i[
+          phone preferred_time preferred_tour_date tour_type target_price message source_campaign source_url
+          prequalified_status lender_name purchase_timeline budget_min budget_max desired_villages desired_beds desired_baths
+          buyer_status already_working_with_agent qualification_notes
+        ].each do |key|
           permitted[key] = nil if permitted.key?(key) && permitted[key].blank?
         end
       end
 
       def record_lead_update_activity
-        trackable_fields = %w[
-          status assigned_agent_id requested_agent_id quality_status lead_type name email phone preferred_contact_method
-          preferred_time preferred_tour_date tour_type target_price message source_campaign source_url
-        ]
+        trackable_fields = lead_trackable_fields
         changed_fields = @lead.previous_changes.keys & trackable_fields
         return if changed_fields.empty?
 
@@ -193,10 +195,7 @@ module Api
       end
 
       def record_global_lead_update_audit
-        trackable_fields = %w[
-          status assigned_agent_id requested_agent_id quality_status lead_type name email phone preferred_contact_method
-          preferred_time preferred_tour_date tour_type target_price message source_campaign source_url
-        ]
+        trackable_fields = lead_trackable_fields
         changes = AuditLogger.change_details(@lead.previous_changes, trackable_fields)
         return if changes.empty?
 
@@ -205,6 +204,15 @@ module Api
 
       def contact_status?(status)
         %w[contacted showing_scheduled nurturing closed lost].include?(status)
+      end
+
+      def lead_trackable_fields
+        %w[
+          status assigned_agent_id requested_agent_id quality_status lead_type name email phone preferred_contact_method
+          preferred_time preferred_tour_date tour_type target_price message source_campaign source_url
+          prequalified_status lender_name purchase_timeline budget_min budget_max desired_villages desired_beds desired_baths
+          buyer_status already_working_with_agent qualification_notes quality_score
+        ]
       end
 
       def lead_params
@@ -221,6 +229,17 @@ module Api
           :message,
           :source_campaign,
           :source_url,
+          :prequalified_status,
+          :lender_name,
+          :purchase_timeline,
+          :budget_min,
+          :budget_max,
+          :desired_villages,
+          :desired_beds,
+          :desired_baths,
+          :buyer_status,
+          :already_working_with_agent,
+          :qualification_notes,
           :listing_id,
           :requested_agent_id
         )
@@ -279,7 +298,18 @@ module Api
           :target_price,
           :message,
           :source_campaign,
-          :source_url
+          :source_url,
+          :prequalified_status,
+          :lender_name,
+          :purchase_timeline,
+          :budget_min,
+          :budget_max,
+          :desired_villages,
+          :desired_beds,
+          :desired_baths,
+          :buyer_status,
+          :already_working_with_agent,
+          :qualification_notes
         )
       end
 

@@ -1,6 +1,6 @@
 # Roadmap
 
-_Last updated: 2026-06-10 after PR #11 account deletion merged, iOS build `1.0.1 (9)` submitted, and admin/notification QA findings were documented._
+_Last updated: 2026-06-20 after PR #16 agent selection/lead routing merged and Mike/John next-build plan was documented._
 
 ## Current product direction
 
@@ -9,10 +9,16 @@ Hafa Homes is now a broker-first Guam real estate platform, not only a consumer 
 The intended sellable bundle is:
 
 ```text
-broker-branded website + broker-branded app option + lead CRM + future property-management portal
+broker-branded website + broker-branded app option + full-market listing search + qualified lead capture + lead CRM + future property-management portal
 ```
 
 Hafa Homes remains the demo/reference public brand and possible Guam marketplace layer.
+
+Current canonical next-build plan from the Mike/John meeting:
+
+```text
+docs/product/mike-john-next-build-plan.md
+```
 
 ## Completed phases
 
@@ -126,48 +132,70 @@ Current App Store state:
 
 ```text
 iOS version 1.0.1
-build 9
-status: Waiting for Review
+build 11
+status: approved/live
 ```
 
-Build `9` includes the PR #11 self-service account deletion flow. Keep production `CLERK_SECRET_KEY` configured so Apple can test deletion if needed.
+The live build includes native Apple Sign-In and self-service account deletion. Keep production `CLERK_SECRET_KEY` configured so account lifecycle flows continue to work.
 
 See `docs/app-store-release.md`.
 
 ## Active next product phase
 
-### Phase 7 — Account, admin operations, audit, and notification hardening
+### Phase 7 — Agent selection and MLS-safe lead routing
 
-Recommended branches:
+Status: complete.
+
+Completed in PR #16:
+
+- public active agents API;
+- web Agents page;
+- mobile Agents tab;
+- sign-in-gated preferred-agent selection;
+- `Lead.requested_agent` added;
+- `Listing.agent` / `Listing.brokerage` preserved as MLS/listing attribution;
+- `Lead.brokerage` treated as routing/app brokerage;
+- requested agent validated against the routing brokerage;
+- no-preference leads stay unassigned in the brokerage queue;
+- admin assigned-agent filtering;
+- web/mobile UI copy separates `Listed by` from `Work with` / `Preferred agent`.
+
+See:
+
+- `docs/product/agent-selection-lead-routing-plan.md`
+- `docs/product/brokerage-mls-attribution-routing-questions.md`
+
+### Phase 8 — Qualified lead capture
+
+Recommended branch:
 
 ```bash
-feature/consumer-profile-settings
-feature/notification-link-polish
-feature/admin-user-lifecycle
-feature/admin-audit-log
+feature/qualified-lead-capture
 ```
 
 Goal:
 
-> Clean up the account/admin/notification gaps found in testing so the platform feels operationally credible before serious broker demos.
+> Filter out weak leads and give agents enough context to have a productive first call.
 
 Recommended scope:
 
-- Profile & settings on mobile/web.
-- Safe profile fields: first name, last name, phone, preferred contact.
-- Signed-in lead-form prefill from user profile.
-- Consumer/admin preferred-time parity, including `Flexible`.
-- Notification duplicate-greeting fix.
-- App-first notification/deep-link strategy with web fallback.
-- Admin-created users/invites for admins, agents, and consumers.
-- User edit/archive/reactivate/revoke lifecycle.
-- Global audit log/history with tenant-scoped admin visibility.
+- prequalified status;
+- lender/bank;
+- timeline;
+- budget/price range;
+- desired villages;
+- desired beds/baths;
+- buyer/renter/relocation status;
+- already-working-with-agent flag;
+- qualification notes;
+- admin qualification summary / call-prep summary;
+- optional derived lead quality score after raw fields are captured.
 
-See `docs/product/admin-ops-notification-hardening-plan.md`.
+See `docs/product/mike-john-next-build-plan.md`.
 
 ## Upcoming phases
 
-### Phase 8 — Domain-first broker-branded website/app foundation
+### Phase 9 — Domain-first broker-branded website/app foundation
 
 Recommended branch:
 
@@ -195,7 +223,7 @@ Recommended scope:
 
 See `docs/product/broker-branded-layer-plan.md`.
 
-### Phase 9 — Lead quality / CRM automation
+### Phase 10 — Lead quality / CRM automation
 
 Goal: improve broker confidence in lead quality and follow-up accountability.
 
@@ -209,7 +237,7 @@ Potential scope:
 - CSV export
 - agent follow-up reporting
 
-### Phase 10 — Property management preview
+### Phase 11 — Property management preview
 
 Goal: demo premium-tier rental/property-management value for Guam brokerages/property managers.
 
@@ -222,7 +250,7 @@ Potential scope:
 - maintenance request preview
 - owner/tenant portal concept
 
-### Phase 11 — Production deployment and demo hardening
+### Phase 12 — Production deployment and demo hardening
 
 Goal: make the latest platform safe and smooth to demo from production URLs/devices.
 
@@ -237,7 +265,7 @@ Potential scope:
 - notification gates/config verification
 - App Store/TestFlight notes update
 
-### Phase 12 — MLS/Flexmls integration path
+### Phase 13 — MLS/Flexmls integration path
 
 Start only after authorization/compliance is clear.
 

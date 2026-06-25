@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_13_130000) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_20_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -172,13 +172,21 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_13_130000) do
   end
 
   create_table "leads", force: :cascade do |t|
+    t.string "already_working_with_agent"
     t.bigint "assigned_agent_id"
     t.bigint "brokerage_id"
+    t.decimal "budget_max"
+    t.decimal "budget_min"
+    t.string "buyer_status"
     t.datetime "created_at", null: false
+    t.decimal "desired_baths"
+    t.integer "desired_beds"
+    t.text "desired_villages"
     t.string "email"
     t.datetime "last_contacted_at"
     t.string "lead_source", default: "hafa_homes", null: false
     t.string "lead_type"
+    t.string "lender_name"
     t.bigint "listing_id"
     t.text "message"
     t.string "name"
@@ -186,6 +194,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_13_130000) do
     t.string "preferred_contact_method"
     t.string "preferred_time"
     t.date "preferred_tour_date"
+    t.string "prequalified_status"
+    t.string "purchase_timeline"
+    t.text "qualification_notes"
+    t.integer "quality_score", default: 0, null: false
     t.string "quality_status", default: "unknown", null: false
     t.bigint "requested_agent_id"
     t.string "source_campaign"
@@ -202,6 +214,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_13_130000) do
     t.index ["created_at"], name: "index_leads_on_created_at"
     t.index ["lead_source"], name: "index_leads_on_lead_source"
     t.index ["listing_id"], name: "index_leads_on_listing_id"
+    t.index ["prequalified_status"], name: "index_leads_on_prequalified_status"
+    t.index ["purchase_timeline"], name: "index_leads_on_purchase_timeline"
+    t.index ["quality_score"], name: "index_leads_on_quality_score"
     t.index ["quality_status"], name: "index_leads_on_quality_status"
     t.index ["requested_agent_id", "created_at"], name: "index_leads_on_requested_agent_id_and_created_at"
     t.index ["source_campaign"], name: "index_leads_on_source_campaign"
