@@ -41,16 +41,12 @@ class Lead < ApplicationRecord
   before_validation :infer_routing_from_requested_agent
   before_validation :calculate_quality_score
 
+  def qualification_details?
+    qualification_summary_parts.any?
+  end
+
   def qualification_summary
-    parts = []
-    parts << "prequalified #{prequalified_status_label.downcase}" if prequalified_status.present?
-    parts << "timeline #{purchase_timeline_label.downcase}" if purchase_timeline.present?
-    parts << "budget #{budget_range_label}" if budget_range_label.present?
-    parts << "villages #{desired_villages}" if desired_villages.present?
-    parts << "#{desired_beds}+ beds" if desired_beds.present? && desired_beds.positive?
-    parts << "#{format_quantity(desired_baths)}+ baths" if desired_baths.present? && desired_baths.positive?
-    parts << buyer_status_label.downcase if buyer_status.present?
-    parts << already_working_with_agent_label.downcase if already_working_with_agent.present?
+    parts = qualification_summary_parts
     return "No qualification details captured yet" if parts.empty?
 
     parts.join(" · ")
@@ -115,6 +111,19 @@ class Lead < ApplicationRecord
   end
 
   private
+
+  def qualification_summary_parts
+    parts = []
+    parts << "prequalified #{prequalified_status_label.downcase}" if prequalified_status.present?
+    parts << "timeline #{purchase_timeline_label.downcase}" if purchase_timeline.present?
+    parts << "budget #{budget_range_label}" if budget_range_label.present?
+    parts << "villages #{desired_villages}" if desired_villages.present?
+    parts << "#{desired_beds}+ beds" if desired_beds.present? && desired_beds.positive?
+    parts << "#{format_quantity(desired_baths)}+ baths" if desired_baths.present? && desired_baths.positive?
+    parts << buyer_status_label.downcase if buyer_status.present?
+    parts << already_working_with_agent_label.downcase if already_working_with_agent.present?
+    parts
+  end
 
   def set_defaults
     self.status ||= "new"

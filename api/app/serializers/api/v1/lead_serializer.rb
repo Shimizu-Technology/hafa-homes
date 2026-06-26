@@ -19,6 +19,7 @@ module Api
             quality_status: lead.quality_status,
             quality_score: lead.quality_score,
             quality_label: lead.qualification_temperature,
+            has_qualification_details: lead.qualification_details?,
             qualification_summary: lead.qualification_summary,
             prequalified_status: lead.prequalified_status,
             prequalified_status_label: lead.prequalified_status_label,
@@ -68,7 +69,17 @@ module Api
         end
 
         def consumer(lead)
-          summary(lead).except(:quality_status, :quality_score, :quality_label, :lead_source, :source_campaign, :source_url, :last_contacted_at).merge(
+          summary(lead).except(
+            :quality_status,
+            :quality_score,
+            :quality_label,
+            :qualification_notes,
+            :lead_source,
+            :source_campaign,
+            :source_url,
+            :last_contacted_at
+          ).merge(
+            qualification_summary: lead.qualification_details? ? lead.qualification_summary : nil,
             message: lead.message,
             showing_appointments: showing_appointments_for(lead).map { |showing| Api::V1::ShowingAppointmentSerializer.consumer(showing) },
             latest_showing_appointment: Api::V1::ShowingAppointmentSerializer.consumer(latest_showing(lead))

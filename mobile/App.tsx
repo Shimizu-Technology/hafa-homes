@@ -135,6 +135,7 @@ type ConsumerLead = {
   prequalified_status_label?: string
   purchase_timeline_label?: string
   budget_range_label?: string
+  has_qualification_details?: boolean
   qualification_summary?: string
   latest_showing_appointment?: ShowingAppointment | null
 }
@@ -1501,7 +1502,7 @@ function RequestHistoryCard({ request }: { request: ConsumerLead }) {
           <Text style={styles.requestHistoryMeta}>Brokerage: {request.brokerage?.name || 'Hafa Homes'}</Text>
           {request.brokerage?.phone && <Text style={styles.requestHistoryMeta}>Brokerage phone: {request.brokerage.phone}</Text>}
         </View>
-        {request.qualification_summary && request.qualification_summary !== 'No qualification details captured yet' && (
+        {request.has_qualification_details && request.qualification_summary && (
           <View style={styles.showingSummaryCard}>
             <Text style={styles.requestHistoryStatus}>Search readiness</Text>
             <Text style={styles.requestHistoryMeta}>{request.qualification_summary}</Text>

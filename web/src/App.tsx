@@ -293,6 +293,7 @@ type Lead = {
   quality_status?: string
   quality_score?: number
   quality_label?: string
+  has_qualification_details?: boolean
   qualification_summary?: string
   prequalified_status?: string
   prequalified_status_label?: string
@@ -832,7 +833,7 @@ function leadBudgetLabel(lead: Lead) {
 }
 
 function hasQualificationDetails(lead: Lead) {
-  return Boolean(lead.qualification_summary && lead.qualification_summary !== 'No qualification details captured yet')
+  return Boolean(lead.has_qualification_details)
 }
 
 function leadQualificationItems(lead: Lead) {
@@ -3044,7 +3045,7 @@ function LeadQualificationCard({ lead, compact = false }: { lead: Lead; compact?
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#0f705e]">Qualified lead snapshot</p>
-          <p className="mt-2 text-sm font-semibold leading-6 text-[#304942]">{lead.qualification_summary || 'No qualification details captured yet'}</p>
+          <p className="mt-2 text-sm font-semibold leading-6 text-[#304942]">{lead.qualification_summary || 'No readiness details captured yet'}</p>
         </div>
         <span className={`rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.12em] ${qualityBadgeClasses(lead.quality_label)}`}>
           {lead.quality_label || 'Unqualified'} · {lead.quality_score ?? 0}
