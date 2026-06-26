@@ -132,6 +132,11 @@ type ConsumerLead = {
   requested_agent?: Agent | null
   assigned_agent?: { id: number; name: string; phone?: string; email?: string } | null
   brokerage?: { id: number; name: string; phone?: string } | null
+  prequalified_status_label?: string
+  purchase_timeline_label?: string
+  budget_range_label?: string
+  has_qualification_details?: boolean
+  qualification_summary?: string
   latest_showing_appointment?: ShowingAppointment | null
 }
 
@@ -192,6 +197,41 @@ const preferredContactOptions = [
   { value: 'phone', label: 'Phone' },
   { value: 'text', label: 'Text' },
   { value: 'email', label: 'Email' },
+]
+
+const prequalifiedOptions = [
+  { value: '', label: 'Not sure' },
+  { value: 'yes', label: 'Yes' },
+  { value: 'in_progress', label: 'In progress' },
+  { value: 'no', label: 'No' },
+]
+
+const purchaseTimelineOptions = [
+  { value: '', label: 'Timeline' },
+  { value: 'asap', label: 'ASAP' },
+  { value: '1_3_months', label: '1–3 months' },
+  { value: '3_6_months', label: '3–6 months' },
+  { value: '6_plus_months', label: '6+ months' },
+  { value: 'just_browsing', label: 'Browsing' },
+]
+
+const buyerStatusOptions = [
+  { value: '', label: 'Buyer type' },
+  { value: 'first_time', label: 'First-time buyer' },
+  { value: 'upgrading', label: 'Upgrading' },
+  { value: 'relocating', label: 'Relocating' },
+  { value: 'military', label: 'Military move' },
+  { value: 'investor', label: 'Investor' },
+  { value: 'renter', label: 'Renter' },
+  { value: 'selling', label: 'Selling too' },
+  { value: 'other', label: 'Other' },
+]
+
+const agentRelationshipOptions = [
+  { value: '', label: 'Agent relationship' },
+  { value: 'no', label: 'No agent yet' },
+  { value: 'yes', label: 'Already have one' },
+  { value: 'not_sure', label: 'Not sure' },
 ]
 
 class ApiRequestError extends Error {
@@ -354,6 +394,17 @@ async function createLead(payload: {
   source_campaign?: string
   source_url?: string
   requested_agent_id?: number
+  prequalified_status?: string
+  lender_name?: string
+  purchase_timeline?: string
+  budget_min?: string
+  budget_max?: string
+  desired_villages?: string
+  desired_beds?: string
+  desired_baths?: string
+  buyer_status?: string
+  already_working_with_agent?: string
+  qualification_notes?: string
   message: string
 }, getToken?: GetAuthToken) {
   const response = await fetch(`${API_URL}/api/v1/leads`, {
@@ -1451,6 +1502,12 @@ function RequestHistoryCard({ request }: { request: ConsumerLead }) {
           <Text style={styles.requestHistoryMeta}>Brokerage: {request.brokerage?.name || 'Hafa Homes'}</Text>
           {request.brokerage?.phone && <Text style={styles.requestHistoryMeta}>Brokerage phone: {request.brokerage.phone}</Text>}
         </View>
+        {request.has_qualification_details && request.qualification_summary && (
+          <View style={styles.showingSummaryCard}>
+            <Text style={styles.requestHistoryStatus}>Search readiness</Text>
+            <Text style={styles.requestHistoryMeta}>{request.qualification_summary}</Text>
+          </View>
+        )}
         {showing && (
           <View style={styles.showingSummaryCard}>
             <Text style={styles.requestHistoryStatus}>Showing appointment</Text>
@@ -2169,6 +2226,17 @@ function ShowingRequestSheet({ listing, auth, requestedAgent, open, onOpenAuth, 
   const [preferredContact, setPreferredContact] = useState('phone')
   const [preferredTime, setPreferredTime] = useState('flexible')
   const [tourType, setTourType] = useState('in_person')
+  const [prequalifiedStatus, setPrequalifiedStatus] = useState('')
+  const [purchaseTimeline, setPurchaseTimeline] = useState('')
+  const [lenderName, setLenderName] = useState('')
+  const [budgetMin, setBudgetMin] = useState('')
+  const [budgetMax, setBudgetMax] = useState(String(Math.round(listing.price)))
+  const [desiredVillages, setDesiredVillages] = useState(listing.village.name || '')
+  const [desiredBeds, setDesiredBeds] = useState(listing.beds ? String(listing.beds) : '')
+  const [desiredBaths, setDesiredBaths] = useState(listing.baths ? String(listing.baths) : '')
+  const [buyerStatus, setBuyerStatus] = useState('')
+  const [alreadyWorkingWithAgent, setAlreadyWorkingWithAgent] = useState('')
+  const [qualificationNotes, setQualificationNotes] = useState('')
   const [message, setMessage] = useState(`I'm interested in ${listing.title}.`)
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
@@ -2177,6 +2245,10 @@ function ShowingRequestSheet({ listing, auth, requestedAgent, open, onOpenAuth, 
   useEffect(() => {
     if (!open) return
     setMessage(`I'm interested in ${listing.title}.`)
+    setBudgetMax(String(Math.round(listing.price)))
+    setDesiredVillages(listing.village.name || '')
+    setDesiredBeds(listing.beds ? String(listing.beds) : '')
+    setDesiredBaths(listing.baths ? String(listing.baths) : '')
     setSubmitted(false)
     setError(null)
     if (auth.isSignedIn) {
@@ -2216,6 +2288,17 @@ function ShowingRequestSheet({ listing, auth, requestedAgent, open, onOpenAuth, 
         tour_type: tourType,
         source_url: `hafahomes:///listings/${listing.id}`,
         requested_agent_id: requestedAgent?.id,
+        prequalified_status: prequalifiedStatus,
+        lender_name: lenderName.trim(),
+        purchase_timeline: purchaseTimeline,
+        budget_min: budgetMin.trim(),
+        budget_max: budgetMax.trim(),
+        desired_villages: desiredVillages.trim(),
+        desired_beds: desiredBeds.trim(),
+        desired_baths: desiredBaths.trim(),
+        buyer_status: buyerStatus,
+        already_working_with_agent: alreadyWorkingWithAgent,
+        qualification_notes: qualificationNotes.trim(),
         message: `${message.trim()}\n\nListing: ${listing.title} — ${listing.address}, ${listing.village.name}`,
       }, auth.isSignedIn ? auth.getToken : undefined)
       setSubmitted(true)
@@ -2288,6 +2371,20 @@ function ShowingRequestSheet({ listing, auth, requestedAgent, open, onOpenAuth, 
                     </Pressable>
                   ))}
                 </View>
+                <Text style={styles.requestLabel}>Buyer readiness</Text>
+                <Text style={styles.requestCopy}>These optional details help the agent follow up with useful matches instead of starting from scratch.</Text>
+                <QualificationChoiceGroup label="Prequalified?" options={prequalifiedOptions} value={prequalifiedStatus} onChange={setPrequalifiedStatus} />
+                <QualificationChoiceGroup label="Timeline" options={purchaseTimelineOptions} value={purchaseTimeline} onChange={setPurchaseTimeline} />
+                <QualificationChoiceGroup label="Buyer type" options={buyerStatusOptions} value={buyerStatus} onChange={setBuyerStatus} />
+                <QualificationChoiceGroup label="Working with an agent?" options={agentRelationshipOptions} value={alreadyWorkingWithAgent} onChange={setAlreadyWorkingWithAgent} />
+                <RequestInput label="Lender / bank optional" value={lenderName} onChangeText={setLenderName} placeholder="Bank of Guam, Coast360..." />
+                <RequestInput label="Budget min" value={budgetMin} onChangeText={setBudgetMin} placeholder="450000" keyboardType="number-pad" />
+                <RequestInput label="Budget max" value={budgetMax} onChangeText={setBudgetMax} placeholder="650000" keyboardType="number-pad" />
+                <RequestInput label="Desired villages" value={desiredVillages} onChangeText={setDesiredVillages} placeholder="Dededo, Yigo, Tamuning" />
+                <RequestInput label="Desired beds" value={desiredBeds} onChangeText={setDesiredBeds} placeholder="3" keyboardType="number-pad" />
+                <RequestInput label="Desired baths" value={desiredBaths} onChangeText={setDesiredBaths} placeholder="2" keyboardType="number-pad" />
+                <Text style={styles.requestLabel}>Qualification notes</Text>
+                <TextInput value={qualificationNotes} onChangeText={setQualificationNotes} multiline style={[styles.requestInput, styles.requestMessageInput]} placeholder="Relocating soon, needs pet-friendly, prefers central Guam..." placeholderTextColor="#7b8a84" />
                 <Text style={styles.requestLabel}>Message</Text>
                 <TextInput value={message} onChangeText={setMessage} multiline style={[styles.requestInput, styles.requestMessageInput]} />
               </View>
@@ -2308,6 +2405,13 @@ function PriceAlertSheet({ listing, auth, requestedAgent, open, onClose }: { lis
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('+1671')
   const [targetPrice, setTargetPrice] = useState(String(Math.round(listing.price * 0.97)))
+  const [prequalifiedStatus, setPrequalifiedStatus] = useState('')
+  const [purchaseTimeline, setPurchaseTimeline] = useState('')
+  const [lenderName, setLenderName] = useState('')
+  const [budgetMin, setBudgetMin] = useState('')
+  const [budgetMax, setBudgetMax] = useState('')
+  const [buyerStatus, setBuyerStatus] = useState('')
+  const [alreadyWorkingWithAgent, setAlreadyWorkingWithAgent] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -2317,6 +2421,7 @@ function PriceAlertSheet({ listing, auth, requestedAgent, open, onClose }: { lis
     setSubmitted(false)
     setError(null)
     setTargetPrice(String(Math.round(listing.price * 0.97)))
+    setBudgetMax('')
     if (auth.isSignedIn) {
       setName((current) => current || auth.userName || '')
       setEmail((current) => current || auth.userEmail || '')
@@ -2352,6 +2457,13 @@ function PriceAlertSheet({ listing, auth, requestedAgent, open, onClose }: { lis
         target_price: targetPrice.trim(),
         source_url: `hafahomes:///listings/${listing.id}`,
         requested_agent_id: requestedAgent?.id,
+        prequalified_status: prequalifiedStatus,
+        lender_name: lenderName.trim(),
+        purchase_timeline: purchaseTimeline,
+        budget_min: budgetMin.trim(),
+        budget_max: budgetMax.trim(),
+        buyer_status: buyerStatus,
+        already_working_with_agent: alreadyWorkingWithAgent,
         message: `Target price: ${targetPrice.trim()}\n\nListing: ${listing.title} — ${listing.address}, ${listing.village.name}`,
       }, auth.isSignedIn ? auth.getToken : undefined)
       setSubmitted(true)
@@ -2396,6 +2508,15 @@ function PriceAlertSheet({ listing, auth, requestedAgent, open, onClose }: { lis
                 <RequestInput label="Email" value={email} onChangeText={setEmail} placeholder="you@example.com" keyboardType="email-address" autoCapitalize="none" />
                 <RequestInput label="Name" value={name} onChangeText={setName} placeholder="Your name" />
                 <RequestInput label="Phone optional" value={phone} onChangeText={setPhone} placeholder="+1671" keyboardType="phone-pad" />
+                <Text style={styles.requestLabel}>Buyer readiness</Text>
+                <Text style={styles.requestCopy}>Optional details help the team understand how serious and soon your search is.</Text>
+                <QualificationChoiceGroup label="Prequalified?" options={prequalifiedOptions} value={prequalifiedStatus} onChange={setPrequalifiedStatus} />
+                <QualificationChoiceGroup label="Timeline" options={purchaseTimelineOptions} value={purchaseTimeline} onChange={setPurchaseTimeline} />
+                <QualificationChoiceGroup label="Buyer type" options={buyerStatusOptions} value={buyerStatus} onChange={setBuyerStatus} />
+                <QualificationChoiceGroup label="Working with an agent?" options={agentRelationshipOptions} value={alreadyWorkingWithAgent} onChange={setAlreadyWorkingWithAgent} />
+                <RequestInput label="Lender / bank optional" value={lenderName} onChangeText={setLenderName} placeholder="Bank of Guam, Coast360..." />
+                <RequestInput label="Budget min" value={budgetMin} onChangeText={setBudgetMin} placeholder="450000" keyboardType="number-pad" />
+                <RequestInput label="Budget max optional" value={budgetMax} onChangeText={setBudgetMax} placeholder={targetPrice || '650000'} keyboardType="number-pad" />
               </View>
               {error && <Text style={styles.requestError}>{error}</Text>}
               <Pressable disabled={submitting} style={[styles.primaryCta, submitting && styles.ctaDisabled]} onPress={handleSubmit}>
@@ -2406,6 +2527,21 @@ function PriceAlertSheet({ listing, auth, requestedAgent, open, onClose }: { lis
         </View>
       </KeyboardAvoidingView>
     </Modal>
+  )
+}
+
+function QualificationChoiceGroup({ label, options, value, onChange }: { label: string; options: Array<{ value: string; label: string }>; value: string; onChange: (value: string) => void }) {
+  return (
+    <View>
+      <Text style={styles.requestLabel}>{label}</Text>
+      <View style={styles.qualificationChoiceRow}>
+        {options.map((option) => (
+          <Pressable key={option.value || 'blank'} onPress={() => onChange(option.value)} style={[styles.qualificationChoice, value === option.value && styles.qualificationChoiceActive]} accessibilityRole="button">
+            <Text style={[styles.qualificationChoiceText, value === option.value && styles.qualificationChoiceTextActive]}>{option.label}</Text>
+          </Pressable>
+        ))}
+      </View>
+    </View>
   )
 }
 
@@ -2696,6 +2832,11 @@ const styles = StyleSheet.create({
   contactSegmentActive: { backgroundColor: 'white', shadowColor: colors.green, shadowOpacity: 0.08, shadowRadius: 10, shadowOffset: { width: 0, height: 4 } },
   contactSegmentText: { color: colors.muted, fontSize: 13, fontWeight: '900', textTransform: 'capitalize' },
   contactSegmentTextActive: { color: colors.green },
+  qualificationChoiceRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  qualificationChoice: { backgroundColor: colors.sand, borderColor: colors.line, borderRadius: 999, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 9 },
+  qualificationChoiceActive: { backgroundColor: colors.mint, borderColor: colors.green2 },
+  qualificationChoiceText: { color: colors.muted, fontSize: 12, fontWeight: '900' },
+  qualificationChoiceTextActive: { color: colors.green2 },
   requestError: { color: '#a33b2f', fontSize: 13, fontWeight: '800', lineHeight: 19, marginTop: 12 },
   requestSuccess: { paddingVertical: 20 },
   requestHistoryCard: { backgroundColor: 'white', borderRadius: 26, marginTop: 12, overflow: 'hidden', shadowColor: colors.green, shadowOpacity: 0.08, shadowRadius: 18, shadowOffset: { width: 0, height: 8 } },

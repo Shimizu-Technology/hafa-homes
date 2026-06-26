@@ -17,6 +17,26 @@ module Api
             message: lead.message,
             status: lead.status,
             quality_status: lead.quality_status,
+            quality_score: lead.quality_score,
+            quality_label: lead.qualification_temperature,
+            has_qualification_details: lead.qualification_details?,
+            qualification_summary: lead.qualification_summary,
+            prequalified_status: lead.prequalified_status,
+            prequalified_status_label: lead.prequalified_status_label,
+            lender_name: lead.lender_name,
+            purchase_timeline: lead.purchase_timeline,
+            purchase_timeline_label: lead.purchase_timeline_label,
+            budget_min: lead.budget_min&.to_f,
+            budget_max: lead.budget_max&.to_f,
+            budget_range_label: lead.budget_range_label,
+            desired_villages: lead.desired_villages,
+            desired_beds: lead.desired_beds,
+            desired_baths: lead.desired_baths&.to_f,
+            buyer_status: lead.buyer_status,
+            buyer_status_label: lead.buyer_status_label,
+            already_working_with_agent: lead.already_working_with_agent,
+            already_working_with_agent_label: lead.already_working_with_agent_label,
+            qualification_notes: lead.qualification_notes,
             lead_source: lead.lead_source,
             source_campaign: lead.source_campaign,
             source_url: lead.source_url,
@@ -49,7 +69,17 @@ module Api
         end
 
         def consumer(lead)
-          summary(lead).except(:quality_status, :lead_source, :source_campaign, :source_url, :last_contacted_at).merge(
+          summary(lead).except(
+            :quality_status,
+            :quality_score,
+            :quality_label,
+            :qualification_notes,
+            :lead_source,
+            :source_campaign,
+            :source_url,
+            :last_contacted_at
+          ).merge(
+            qualification_summary: lead.qualification_details? ? lead.qualification_summary : nil,
             message: lead.message,
             showing_appointments: showing_appointments_for(lead).map { |showing| Api::V1::ShowingAppointmentSerializer.consumer(showing) },
             latest_showing_appointment: Api::V1::ShowingAppointmentSerializer.consumer(latest_showing(lead))
