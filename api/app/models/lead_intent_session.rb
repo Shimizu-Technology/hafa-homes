@@ -7,6 +7,8 @@ class LeadIntentSession < ApplicationRecord
   DEFAULT_SNOOZE_HOURS = 24
   MAX_SUMMARY_IDS = 20
 
+  class ScopeMismatchError < StandardError; end
+
   belongs_to :user, optional: true
   belongs_to :brokerage, optional: true
   belongs_to :requested_agent, class_name: "Agent", optional: true
@@ -29,15 +31,28 @@ class LeadIntentSession < ApplicationRecord
 
   def self.find_or_create_for_token!(token, user: nil, brokerage: nil)
     digest = digest_token(token)
-    session = find_or_initialize_by(token_digest: digest)
-    session.user ||= user if user
-    session.brokerage ||= brokerage if brokerage
-    session.prompt_mode ||= prompt_mode_for(brokerage)
-    session.last_seen_at = Time.current
-    session.save!
-    session
+    session = find_by(token_digest: digest)
+    if session
+      validate_context!(session, user:, brokerage:)
+      session.claim_context!(user:, brokerage:)
+      return session
+    end
+
+    create!(token_digest: digest, user: user, brokerage: brokerage, prompt_mode: prompt_mode_for(brokerage), last_seen_at: Time.current)
   rescue ActiveRecord::RecordNotUnique
-    find_by!(token_digest: digest)
+    session = find_by!(token_digest: digest)
+    validate_context!(session, user:, brokerage:)
+    session.claim_context!(user:, brokerage:)
+    session
+  end
+
+  def self.find_scoped_by_token(token, user: nil, brokerage: nil)
+    session = find_by_token(token)
+    return nil unless session
+
+    validate_context!(session, user:, brokerage:)
+    session.claim_context!(user:, brokerage:)
+    session
   end
 
   def self.find_by_token(token)
@@ -49,6 +64,34 @@ class LeadIntentSession < ApplicationRecord
   def self.prompt_mode_for(brokerage)
     mode = brokerage&.settings&.dig("lead_prompt_mode").presence
     PROMPT_MODES.include?(mode) ? mode : "balanced"
+  end
+
+  def self.validate_context!(session, user:, brokerage:)
+    return if session.usable_for_context?(user:, brokerage:)
+
+    raise ScopeMismatchError, "Intent session belongs to a different user, brokerage, or converted lead"
+  end
+
+  def usable_for_context?(user:, brokerage:, allow_converted: false)
+    return false if converted? && !allow_converted
+    return false if brokerage_id.present? && brokerage.blank?
+    return false if brokerage_id.present? && brokerage.present? && brokerage_id != brokerage.id
+
+    if user
+      return false if user_id.present? && user_id != user.id
+    elsif user_id.present?
+      return false
+    end
+
+    true
+  end
+
+  def claim_context!(user:, brokerage:)
+    self.user ||= user if user
+    self.brokerage ||= brokerage if brokerage
+    self.prompt_mode = self.class.prompt_mode_for(self.brokerage) if prompt_mode.blank?
+    self.last_seen_at = Time.current
+    save! if changed?
   end
 
   def record_event!(event_name:, client_event_id: nil, user: nil, brokerage: nil, listing: nil, village: nil, agent: nil, source: nil, metadata: {}, occurred_at: Time.current)

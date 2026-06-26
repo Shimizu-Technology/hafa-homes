@@ -37,6 +37,8 @@ module Api
           lead_intent_event: { id: event.id, event_name: event.event_name, occurred_at: event.occurred_at },
           prompt: session.prompt_payload(latest_event: event)
         }, status: :created
+      rescue LeadIntentSession::ScopeMismatchError => e
+        render_session_scope_mismatch(e)
       rescue ActionController::ParameterMissing, ArgumentError => e
         render json: { errors: [e.message] }, status: :unprocessable_entity
       rescue ActiveRecord::RecordInvalid => e
@@ -45,7 +47,7 @@ module Api
 
       def dismiss
         permitted = dismiss_params
-        session = LeadIntentSession.find_by_token(permitted[:session_token])
+        session = LeadIntentSession.find_scoped_by_token(permitted[:session_token], user: current_user, brokerage: current_routing_brokerage)
         unless session
           render json: { errors: ["Lead intent session not found"] }, status: :not_found
           return
@@ -56,6 +58,8 @@ module Api
           lead_intent_session: Api::V1::LeadIntentSessionSerializer.summary(session),
           prompt: { eligible: false, reason: "snoozed", summary: session.public_summary }
         }
+      rescue LeadIntentSession::ScopeMismatchError => e
+        render_session_scope_mismatch(e)
       rescue ActionController::ParameterMissing, ArgumentError => e
         render json: { errors: [e.message] }, status: :unprocessable_entity
       rescue ActiveRecord::RecordInvalid => e
@@ -63,6 +67,14 @@ module Api
       end
 
       private
+
+      def render_session_scope_mismatch(error)
+        render json: {
+          errors: [error.message],
+          reset_session: true,
+          prompt: { eligible: false, reason: "session_scope_mismatch" }
+        }, status: :conflict
+      end
 
       def event_params
         params.require(:lead_intent_event).permit(

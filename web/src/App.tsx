@@ -87,23 +87,31 @@ function leadIntentSessionToken() {
   return token
 }
 
+function resetLeadIntentSessionToken() {
+  if (typeof window === 'undefined') return ''
+
+  window.localStorage.removeItem(LEAD_INTENT_SESSION_TOKEN_KEY)
+  return leadIntentSessionToken()
+}
+
 function leadIntentClientEventId(eventName: string) {
   return `${eventName}:${Date.now()}:${Math.random().toString(36).slice(2)}`
 }
 
 async function recordLeadIntentEvent(eventName: string, payload: { listing_id?: number; village_id?: number; agent_id?: number; source?: string; metadata?: Record<string, unknown> } = {}) {
-  const sessionToken = leadIntentSessionToken()
+  let sessionToken = leadIntentSessionToken()
   if (!sessionToken) return null
+  const clientEventId = leadIntentClientEventId(eventName)
 
-  try {
-    const response = await fetch(`${API_URL}/api/v1/lead_intent/events`, {
+  async function postEvent(token: string) {
+    return fetch(`${API_URL}/api/v1/lead_intent/events`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
       body: JSON.stringify({
         lead_intent_event: {
-          session_token: sessionToken,
+          session_token: token,
           event_name: eventName,
-          client_event_id: leadIntentClientEventId(eventName),
+          client_event_id: clientEventId,
           source: payload.source || 'web',
           listing_id: payload.listing_id,
           village_id: payload.village_id,
@@ -112,6 +120,15 @@ async function recordLeadIntentEvent(eventName: string, payload: { listing_id?: 
         },
       }),
     })
+  }
+
+  try {
+    let response = await postEvent(sessionToken)
+    if (response.status === 409) {
+      sessionToken = resetLeadIntentSessionToken()
+      if (!sessionToken) return null
+      response = await postEvent(sessionToken)
+    }
     if (!response.ok) return null
 
     const result = await response.json() as LeadIntentEventResponse
@@ -130,11 +147,12 @@ async function dismissLeadIntentPrompt(promptKey?: string, reason = 'dismissed')
   if (!sessionToken) return
 
   try {
-    await fetch(`${API_URL}/api/v1/lead_intent/dismiss`, {
+    const response = await fetch(`${API_URL}/api/v1/lead_intent/dismiss`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
       body: JSON.stringify({ lead_intent: { session_token: sessionToken, prompt_key: promptKey, reason } }),
     })
+    if (response.status === 409) resetLeadIntentSessionToken()
   } catch (intentError) {
     console.warn('Unable to dismiss Hafa Homes lead intent prompt', intentError)
   }

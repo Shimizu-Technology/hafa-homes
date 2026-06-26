@@ -288,11 +288,12 @@ module Api
       def lead_intent_session_from_token(token)
         return nil if token.blank?
 
-        session = LeadIntentSession.find_by_token(token)
+        brokerage = current_routing_brokerage
+        session = LeadIntentSession.find_scoped_by_token(token, user: current_user, brokerage: brokerage)
         return session if session
 
-        LeadIntentSession.find_or_create_for_token!(token, user: current_user, brokerage: current_routing_brokerage)
-      rescue ArgumentError
+        LeadIntentSession.find_or_create_for_token!(token, user: current_user, brokerage: brokerage)
+      rescue ArgumentError, LeadIntentSession::ScopeMismatchError
         nil
       end
 
