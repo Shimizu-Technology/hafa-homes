@@ -16,7 +16,7 @@ module Api
         leads = leads.order(created_at: :desc).limit(100)
 
         render json: {
-          leads: leads.map { |lead| LeadSerializer.summary(lead) },
+          leads: leads.map { |lead| LeadSerializer.staff_summary(lead) },
           assignable_agents: assignable_agents_for_scope.map(&:as_api_json)
         }
       end
@@ -49,7 +49,7 @@ module Api
         if lead.save
           mark_intent_session_converted(lead, intent_session)
           record_audit_event(action: "lead_created", target: lead, lead: lead, metadata: { lead_type: lead.lead_type, source: lead.lead_source, lead_intent_session_id: intent_session&.id })
-          render json: { lead: LeadSerializer.summary(lead) }, status: :created
+          render json: { lead: serialized_created_lead(lead) }, status: :created
         else
           render json: { errors: lead.errors.full_messages }, status: :unprocessable_entity
         end
@@ -306,6 +306,10 @@ module Api
           summary: "Search intent captured before lead conversion",
           metadata: Api::V1::LeadIntentSessionSerializer.summary(intent_session).to_h.except(:id, :requested_agent)
         )
+      end
+
+      def serialized_created_lead(lead)
+        current_user&.staff? ? LeadSerializer.staff_summary(lead) : LeadSerializer.consumer(lead)
       end
 
       def lead_update_params

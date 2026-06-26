@@ -53,13 +53,18 @@ module Api
             brokerage: brokerage_json(lead.brokerage),
             requested_agent: agent_json(lead.requested_agent),
             assigned_agent: agent_json(lead.assigned_agent),
-            latest_showing_appointment: showing_json(latest_showing(lead)),
-            intent_summary: intent_summary_json(lead.lead_intent_session)
+            latest_showing_appointment: showing_json(latest_showing(lead))
           }
         end
 
-        def detail(lead)
+        def staff_summary(lead)
           summary(lead).merge(
+            intent_summary: intent_summary_json(lead.lead_intent_session)
+          )
+        end
+
+        def detail(lead)
+          staff_summary(lead).merge(
             showing_appointments: showing_appointments_for(lead).map { |showing| showing_json(showing) },
             notification_deliveries: notification_deliveries_for(lead).map { |delivery| Api::V1::NotificationDeliverySerializer.summary(delivery) },
             lead_notes: lead_notes_for(lead).map { |note| Api::V1::LeadNoteSerializer.summary(note) },

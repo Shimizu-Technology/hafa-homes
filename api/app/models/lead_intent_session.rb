@@ -52,13 +52,18 @@ class LeadIntentSession < ApplicationRecord
   end
 
   def record_event!(event_name:, client_event_id: nil, user: nil, brokerage: nil, listing: nil, village: nil, agent: nil, source: nil, metadata: {}, occurred_at: Time.current)
-    event = nil
+    normalized_client_event_id = client_event_id.presence
+    existing_event = lead_intent_events.find_by(client_event_id: normalized_client_event_id) if normalized_client_event_id
+    if existing_event
+      refresh_summary!
+      return existing_event
+    end
 
     with_lock do
       associate_context!(user:, brokerage:, agent:)
       event = lead_intent_events.create!(
         event_name: event_name,
-        client_event_id: client_event_id.presence,
+        client_event_id: normalized_client_event_id,
         user: user,
         brokerage: brokerage || self.brokerage,
         listing: listing,
@@ -69,11 +74,13 @@ class LeadIntentSession < ApplicationRecord
         occurred_at: occurred_at
       )
       refresh_summary!
-    rescue ActiveRecord::RecordNotUnique
-      event = lead_intent_events.find_by!(client_event_id: client_event_id)
-      refresh_summary!
+      event
     end
+  rescue ActiveRecord::RecordNotUnique
+    raise unless normalized_client_event_id
 
+    event = lead_intent_events.find_by!(client_event_id: normalized_client_event_id)
+    refresh_summary!
     event
   end
 

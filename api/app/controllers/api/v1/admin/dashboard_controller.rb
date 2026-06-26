@@ -21,7 +21,7 @@ module Api
               upcoming_showings: upcoming_showings.count,
               overdue_followups: scoped_leads.where(status: %w[new contacted]).where("last_contacted_at IS NULL OR last_contacted_at < ?", stale_cutoff).count
             },
-            recent_leads: scoped_leads.order(created_at: :desc).limit(8).map { |lead| LeadSerializer.summary(lead) },
+            recent_leads: scoped_leads.order(created_at: :desc).limit(8).map { |lead| LeadSerializer.staff_summary(lead) },
             upcoming_showing_appointments: upcoming_showings.includes(:lead, :listing, :brokerage, :agent, :created_by).order(Arel.sql("scheduled_starts_at ASC NULLS LAST"), created_at: :desc).limit(8).map { |showing| ShowingAppointmentSerializer.summary(showing) }
           }
         end
