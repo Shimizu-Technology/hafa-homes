@@ -2,6 +2,7 @@ class LeadActivity < ApplicationRecord
   ACTIONS = %w[
     lead_created
     lead_updated
+    search_intent_captured
     note_added
     note_updated
     note_archived

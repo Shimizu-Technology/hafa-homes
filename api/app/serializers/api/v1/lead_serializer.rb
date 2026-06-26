@@ -53,7 +53,8 @@ module Api
             brokerage: brokerage_json(lead.brokerage),
             requested_agent: agent_json(lead.requested_agent),
             assigned_agent: agent_json(lead.assigned_agent),
-            latest_showing_appointment: showing_json(latest_showing(lead))
+            latest_showing_appointment: showing_json(latest_showing(lead)),
+            intent_summary: intent_summary_json(lead.lead_intent_session)
           }
         end
 
@@ -74,6 +75,7 @@ module Api
             :quality_score,
             :quality_label,
             :qualification_notes,
+            :intent_summary,
             :lead_source,
             :source_campaign,
             :source_url,
@@ -140,6 +142,10 @@ module Api
           return nil unless showing
 
           Api::V1::ShowingAppointmentSerializer.summary(showing)
+        end
+
+        def intent_summary_json(session)
+          Api::V1::LeadIntentSessionSerializer.summary(session)
         end
 
         def latest_showing(lead)

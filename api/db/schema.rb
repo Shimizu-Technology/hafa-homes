@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_20_120000) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_25_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -131,6 +131,57 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_20_120000) do
     t.index ["subject_type", "subject_id"], name: "index_lead_activities_on_subject_type_and_subject_id"
   end
 
+  create_table "lead_intent_events", force: :cascade do |t|
+    t.bigint "agent_id"
+    t.bigint "brokerage_id"
+    t.string "client_event_id"
+    t.datetime "created_at", null: false
+    t.string "event_name", null: false
+    t.bigint "lead_intent_session_id", null: false
+    t.bigint "listing_id"
+    t.jsonb "metadata", default: {}, null: false
+    t.datetime "occurred_at", null: false
+    t.string "source"
+    t.datetime "updated_at", null: false
+    t.bigint "user_id"
+    t.bigint "village_id"
+    t.index ["agent_id"], name: "index_lead_intent_events_on_agent_id"
+    t.index ["brokerage_id"], name: "index_lead_intent_events_on_brokerage_id"
+    t.index ["lead_intent_session_id", "client_event_id"], name: "index_lead_intent_events_on_session_client_event", unique: true, where: "(client_event_id IS NOT NULL)"
+    t.index ["lead_intent_session_id", "event_name", "occurred_at"], name: "index_lead_intent_events_on_session_event_time"
+    t.index ["lead_intent_session_id"], name: "index_lead_intent_events_on_lead_intent_session_id"
+    t.index ["listing_id", "event_name", "occurred_at"], name: "idx_on_listing_id_event_name_occurred_at_a65b25e76e"
+    t.index ["listing_id"], name: "index_lead_intent_events_on_listing_id"
+    t.index ["user_id"], name: "index_lead_intent_events_on_user_id"
+    t.index ["village_id", "event_name", "occurred_at"], name: "idx_on_village_id_event_name_occurred_at_c4566182d2"
+    t.index ["village_id"], name: "index_lead_intent_events_on_village_id"
+  end
+
+  create_table "lead_intent_sessions", force: :cascade do |t|
+    t.bigint "brokerage_id"
+    t.datetime "converted_at"
+    t.bigint "converted_lead_id"
+    t.datetime "created_at", null: false
+    t.integer "events_count", default: 0, null: false
+    t.string "last_prompt_key"
+    t.datetime "last_seen_at"
+    t.string "prompt_mode", default: "balanced", null: false
+    t.datetime "prompt_snoozed_until"
+    t.bigint "requested_agent_id"
+    t.string "status", default: "active", null: false
+    t.jsonb "summary", default: {}, null: false
+    t.string "token_digest", null: false
+    t.datetime "updated_at", null: false
+    t.bigint "user_id"
+    t.index ["brokerage_id", "status", "last_seen_at"], name: "index_lead_intent_sessions_on_brokerage_status_seen"
+    t.index ["brokerage_id"], name: "index_lead_intent_sessions_on_brokerage_id"
+    t.index ["converted_lead_id"], name: "index_lead_intent_sessions_on_converted_lead_id"
+    t.index ["requested_agent_id"], name: "index_lead_intent_sessions_on_requested_agent_id"
+    t.index ["token_digest"], name: "index_lead_intent_sessions_on_token_digest", unique: true
+    t.index ["user_id", "last_seen_at"], name: "index_lead_intent_sessions_on_user_id_and_last_seen_at"
+    t.index ["user_id"], name: "index_lead_intent_sessions_on_user_id"
+  end
+
   create_table "lead_notes", force: :cascade do |t|
     t.datetime "archived_at"
     t.bigint "archived_by_id"
@@ -184,6 +235,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_20_120000) do
     t.text "desired_villages"
     t.string "email"
     t.datetime "last_contacted_at"
+    t.bigint "lead_intent_session_id"
     t.string "lead_source", default: "hafa_homes", null: false
     t.string "lead_type"
     t.string "lender_name"
@@ -212,6 +264,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_20_120000) do
     t.index ["brokerage_id", "created_at"], name: "index_leads_on_brokerage_id_and_created_at"
     t.index ["brokerage_id"], name: "index_leads_on_brokerage_id"
     t.index ["created_at"], name: "index_leads_on_created_at"
+    t.index ["lead_intent_session_id"], name: "index_leads_on_lead_intent_session_id"
     t.index ["lead_source"], name: "index_leads_on_lead_source"
     t.index ["listing_id"], name: "index_leads_on_listing_id"
     t.index ["prequalified_status"], name: "index_leads_on_prequalified_status"
@@ -405,6 +458,16 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_20_120000) do
   add_foreign_key "brokerage_memberships", "users"
   add_foreign_key "lead_activities", "leads"
   add_foreign_key "lead_activities", "users", column: "actor_id"
+  add_foreign_key "lead_intent_events", "agents"
+  add_foreign_key "lead_intent_events", "brokerages"
+  add_foreign_key "lead_intent_events", "lead_intent_sessions"
+  add_foreign_key "lead_intent_events", "listings"
+  add_foreign_key "lead_intent_events", "users"
+  add_foreign_key "lead_intent_events", "villages"
+  add_foreign_key "lead_intent_sessions", "agents", column: "requested_agent_id"
+  add_foreign_key "lead_intent_sessions", "brokerages"
+  add_foreign_key "lead_intent_sessions", "leads", column: "converted_lead_id", on_delete: :nullify
+  add_foreign_key "lead_intent_sessions", "users"
   add_foreign_key "lead_notes", "leads"
   add_foreign_key "lead_notes", "users", column: "archived_by_id"
   add_foreign_key "lead_notes", "users", column: "author_id"
@@ -416,6 +479,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_20_120000) do
   add_foreign_key "leads", "agents", column: "assigned_agent_id"
   add_foreign_key "leads", "agents", column: "requested_agent_id"
   add_foreign_key "leads", "brokerages"
+  add_foreign_key "leads", "lead_intent_sessions", on_delete: :nullify
   add_foreign_key "leads", "listings"
   add_foreign_key "leads", "users"
   add_foreign_key "listing_features", "features"

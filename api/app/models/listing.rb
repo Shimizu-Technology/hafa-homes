@@ -7,6 +7,7 @@ class Listing < ApplicationRecord
   has_many :listing_features, dependent: :destroy
   has_many :features, through: :listing_features
   has_many :leads, dependent: :nullify
+  has_many :lead_intent_events, dependent: :nullify
   has_many :saved_listings, dependent: :destroy
 
   validates :title, :listing_kind, :property_type, :status, :price, presence: true

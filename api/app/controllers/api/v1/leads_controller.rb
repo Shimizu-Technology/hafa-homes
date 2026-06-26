@@ -31,6 +31,7 @@ module Api
       def create
         permitted = lead_params
         normalize_blank_lead_values(permitted)
+        intent_session = lead_intent_session_from_token(permitted.delete(:intent_session_token))
         lead = Lead.new(permitted.except(:listing_id, :requested_agent_id))
         lead.listing = active_listing_from_params(permitted)
         return if performed?
@@ -42,10 +43,12 @@ module Api
         return if performed?
 
         lead.user = current_user if current_user
+        lead.lead_intent_session = intent_session if intent_session
         lead.queue_request_received_notification = true
 
         if lead.save
-          record_audit_event(action: "lead_created", target: lead, lead: lead, metadata: { lead_type: lead.lead_type, source: lead.lead_source })
+          mark_intent_session_converted(lead, intent_session)
+          record_audit_event(action: "lead_created", target: lead, lead: lead, metadata: { lead_type: lead.lead_type, source: lead.lead_source, lead_intent_session_id: intent_session&.id })
           render json: { lead: LeadSerializer.summary(lead) }, status: :created
         else
           render json: { errors: lead.errors.full_messages }, status: :unprocessable_entity
@@ -166,7 +169,7 @@ module Api
         %i[
           phone preferred_time preferred_tour_date tour_type target_price message source_campaign source_url
           prequalified_status lender_name purchase_timeline budget_min budget_max desired_villages desired_beds desired_baths
-          buyer_status already_working_with_agent qualification_notes
+          buyer_status already_working_with_agent qualification_notes intent_session_token
         ].each do |key|
           permitted[key] = nil if permitted.key?(key) && permitted[key].blank?
         end
@@ -240,6 +243,7 @@ module Api
           :buyer_status,
           :already_working_with_agent,
           :qualification_notes,
+          :intent_session_token,
           :listing_id,
           :requested_agent_id
         )
@@ -279,6 +283,29 @@ module Api
         Listing.active.find_by(id: permitted[:listing_id]).tap do |listing|
           render json: { errors: ["Listing not found"] }, status: :unprocessable_entity unless listing
         end
+      end
+
+      def lead_intent_session_from_token(token)
+        return nil if token.blank?
+
+        session = LeadIntentSession.find_by_token(token)
+        return session if session
+
+        LeadIntentSession.find_or_create_for_token!(token, user: current_user, brokerage: current_routing_brokerage)
+      rescue ArgumentError
+        nil
+      end
+
+      def mark_intent_session_converted(lead, intent_session)
+        return unless intent_session
+
+        intent_session.mark_converted!(lead)
+        LeadActivity.record!(
+          lead: lead,
+          action: "search_intent_captured",
+          summary: "Search intent captured before lead conversion",
+          metadata: Api::V1::LeadIntentSessionSerializer.summary(intent_session).to_h.except(:id, :requested_agent)
+        )
       end
 
       def lead_update_params

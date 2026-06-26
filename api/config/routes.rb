@@ -13,6 +13,10 @@ Rails.application.routes.draw do
       end
       resources :villages, only: [:index]
       resources :agents, only: [:index]
+      resource :lead_intent, only: [], controller: :lead_intents do
+        post :events
+        post :dismiss
+      end
       resources :leads, only: [:index, :show, :create, :update] do
         post :notifications, on: :member, to: "leads#send_notification"
         resources :lead_notes, only: [:index, :create], path: "notes"

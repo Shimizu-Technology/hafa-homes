@@ -246,9 +246,15 @@ If adding derived `quality_score`, calculate it server-side.
 
 ## Next after qualified lead capture
 
-### 1. Progressive prompts and lead scoring
+### 1. Progressive prompts and first-party lead intent tracking
 
-Add behavior-aware conversion prompts:
+Branch:
+
+```bash
+feature/progressive-lead-prompts
+```
+
+Add behavior-aware conversion prompts without relying on PostHog or third-party analytics as CRM source-of-truth:
 
 - after 3 listing views;
 - after saving a home;
@@ -264,14 +270,18 @@ Want to save this search?
 Want help narrowing homes near Andersen/Navy Base?
 ```
 
-Track activity and score intent later:
+Track first-party activity in Rails and attach it to converted leads:
 
 - listing views;
 - saved listings;
 - search filters;
 - villages viewed;
 - repeat visits;
-- request started/submitted.
+- request started/submitted;
+- request abandoned;
+- preferred-agent selection.
+
+V1 should create a normal `search_assist` lead when the prompt converts and show admin CRM context such as viewed listings, top villages, viewed price range, saved homes, and trigger reason.
 
 ### 2. Domain-first broker-branded foundation
 
@@ -356,10 +366,10 @@ This depends heavily on data access and should not block the brokerage website/a
 
 ```text
 1. Qualified lead capture
-2. Production/demo hardening for current merged platform
-3. Broker pitch/package docs
-4. Domain-first broker-branded foundation
-5. Progressive prompts + behavioral lead scoring
+2. Progressive prompts + first-party intent tracking
+3. Production/demo hardening for current merged platform
+4. Broker pitch/package docs
+5. Domain-first broker-branded foundation
 6. MLS/FlexMLS integration path once authorized
 7. Property-management preview
 8. Property/data intelligence research
