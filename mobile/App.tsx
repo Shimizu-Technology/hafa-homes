@@ -2102,21 +2102,39 @@ function AccountCard({ auth, onOpenAuth }: { auth: AppAuth; onOpenAuth: (prompt?
 
   useEffect(() => {
     let cancelled = false
+
     async function loadProfile() {
       if (!auth.isSignedIn || !auth.getToken) return
+
+      let loadedUser: CurrentUser | null = null
       setProfileLoading(true)
       setProfileError(null)
+      setSearchProfileError(null)
+
       try {
-        const [result, searchResult] = await Promise.all([fetchMe(auth.getToken), fetchSearchProfile(auth.getToken)])
+        const result = await fetchMe(auth.getToken)
+        loadedUser = result.user
         if (!cancelled) {
           setProfile(result.user)
           setFirstName(result.user.first_name || '')
           setLastName(result.user.last_name || '')
           setPhone(result.user.phone || '')
           setPreferredContact(result.user.preferred_contact_method || 'email')
+          setSearchPreferredContact(result.user.preferred_contact_method || 'email')
+          setSearchPhone(result.user.phone || '')
+        }
+      } catch (error) {
+        if (!cancelled) setProfileError(error instanceof Error ? error.message : 'Unable to load profile')
+      } finally {
+        if (!cancelled) setProfileLoading(false)
+      }
+
+      try {
+        const searchResult = await fetchSearchProfile(auth.getToken)
+        if (!cancelled) {
           setSearchProfile(searchResult.search_profile)
-          setSearchPreferredContact(searchResult.search_profile.preferred_contact_method || result.user.preferred_contact_method || 'email')
-          setSearchPhone(searchResult.search_profile.phone || result.user.phone || '')
+          setSearchPreferredContact(searchResult.search_profile.preferred_contact_method || loadedUser?.preferred_contact_method || 'email')
+          setSearchPhone(searchResult.search_profile.phone || loadedUser?.phone || '')
           setSearchPrequalifiedStatus(searchResult.search_profile.prequalified_status || '')
           setSearchLenderName(searchResult.search_profile.lender_name || '')
           setSearchPurchaseTimeline(searchResult.search_profile.purchase_timeline || '')
@@ -2130,11 +2148,10 @@ function AccountCard({ auth, onOpenAuth }: { auth: AppAuth; onOpenAuth: (prompt?
           setSearchNotes(searchResult.search_profile.notes || '')
         }
       } catch (error) {
-        if (!cancelled) setProfileError(error instanceof Error ? error.message : 'Unable to load profile')
-      } finally {
-        if (!cancelled) setProfileLoading(false)
+        if (!cancelled) setSearchProfileError(error instanceof Error ? error.message : 'Unable to load search profile')
       }
     }
+
     loadProfile()
     return () => { cancelled = true }
   }, [auth.getToken, auth.isSignedIn])
