@@ -26,6 +26,7 @@ import {
 
 type TabKey = 'search' | 'map' | 'agents' | 'saved' | 'requests' | 'more'
 type ListingKind = 'sale' | 'rent'
+type MapCamera = { center: [number, number]; zoom: number }
 
 type Feature = {
   id: number
@@ -606,6 +607,7 @@ function AppContent({ auth }: { auth: AppAuth }) {
   const [leadIntentPrompt, setLeadIntentPrompt] = useState<LeadIntentPrompt | null>(null)
   const [dismissedLeadIntentPromptKey, setDismissedLeadIntentPromptKey] = useState<string | null>(null)
   const [fullMapOpen, setFullMapOpen] = useState(false)
+  const [mapCamera, setMapCamera] = useState<MapCamera | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -1047,6 +1049,8 @@ function AppContent({ auth }: { auth: AppAuth }) {
                 onOpen={setSelectedListing}
                 onToggleSaved={toggleSaved}
                 fullMap={fullMapOpen}
+                initialCamera={mapCamera}
+                onCameraChange={setMapCamera}
                 onToggleFullMap={() => setFullMapOpen((current) => !current)}
               />
         )}
@@ -1267,11 +1271,12 @@ function SearchScreen({ listings, savedIds, onOpen, onToggleSaved }: { listings:
   )
 }
 
-function MapScreen({ listings, savedIds, onOpen, onToggleSaved, fullMap, onToggleFullMap }: { listings: Listing[]; savedIds: number[]; onOpen: (listing: Listing) => void; onToggleSaved: (listingId: number) => void; fullMap: boolean; onToggleFullMap: () => void }) {
+function MapScreen({ listings, savedIds, onOpen, onToggleSaved, fullMap, initialCamera, onCameraChange, onToggleFullMap }: { listings: Listing[]; savedIds: number[]; onOpen: (listing: Listing) => void; onToggleSaved: (listingId: number) => void; fullMap: boolean; initialCamera: MapCamera | null; onCameraChange: (camera: MapCamera) => void; onToggleFullMap: () => void }) {
   const [mapLoading, setMapLoading] = useState(true)
   const [previewListing, setPreviewListing] = useState<Listing | null>(null)
+  const initialCameraRef = useRef(initialCamera)
   const points = useMemo(() => listings.filter((listing) => listing.latitude && listing.longitude), [listings])
-  const mapHtml = useMemo(() => buildMapHtml(points), [points])
+  const mapHtml = useMemo(() => buildMapHtml(points, initialCameraRef.current), [points])
   const mapSource = useMemo(() => ({ html: mapHtml }), [mapHtml])
 
   useEffect(() => {
@@ -1302,6 +1307,13 @@ function MapScreen({ listings, savedIds, onOpen, onToggleSaved, fullMap, onToggl
                 if (message.type === 'listing-preview') {
                   const listing = listings.find((item) => item.id === Number(message.id))
                   if (listing) setPreviewListing(listing)
+                  return
+                }
+                if (message.type === 'map-camera' && Array.isArray(message.center) && typeof message.zoom === 'number') {
+                  const [longitude, latitude] = message.center.map(Number)
+                  if (Number.isFinite(longitude) && Number.isFinite(latitude) && Number.isFinite(message.zoom)) {
+                    onCameraChange({ center: [longitude, latitude], zoom: message.zoom })
+                  }
                   return
                 }
               } catch {
@@ -1395,7 +1407,7 @@ function htmlSafeJson(value: unknown) {
     .replace(/\u2029/g, '\\u2029')
 }
 
-function buildMapHtml(points: Listing[]) {
+function buildMapHtml(points: Listing[], initialCamera?: MapCamera | null) {
   const safePoints = points.map((listing) => ({
     id: listing.id,
     price: currency(listing.price, listing.listing_kind).replace('/mo', ''),
@@ -1404,6 +1416,9 @@ function buildMapHtml(points: Listing[]) {
     title: listing.title,
     village: listing.village.name,
   }))
+  const safeInitialCamera = initialCamera && Array.isArray(initialCamera.center) && Number.isFinite(initialCamera.center[0]) && Number.isFinite(initialCamera.center[1]) && Number.isFinite(initialCamera.zoom)
+    ? { center: initialCamera.center, zoom: initialCamera.zoom }
+    : null
 
   return `<!doctype html>
 <html>
@@ -1456,6 +1471,7 @@ function buildMapHtml(points: Listing[]) {
     <script>
       mapboxgl.accessToken = ${htmlSafeJson(MAPBOX_TOKEN || '')};
       const points = ${htmlSafeJson(safePoints)};
+      const initialCamera = ${htmlSafeJson(safeInitialCamera)};
       const map = new mapboxgl.Map({
         container: 'map',
         style: 'mapbox://styles/mapbox/outdoors-v12',
@@ -1521,13 +1537,26 @@ function buildMapHtml(points: Listing[]) {
         clusterMarkers.forEach((marker) => { marker.getElement().style.display = showPrices ? 'none' : 'inline-flex'; });
       }
 
-      map.on('zoomend', updateMarkerVisibility);
-      map.on('moveend', updateMarkerVisibility);
+      function postCamera() {
+        const center = map.getCenter();
+        postMessage({ type: 'map-camera', center: [center.lng, center.lat], zoom: map.getZoom() });
+      }
+
+      function updateAfterMove() {
+        updateMarkerVisibility();
+        postCamera();
+      }
+
+      map.on('zoomend', updateAfterMove);
+      map.on('moveend', updateAfterMove);
       map.on('load', () => {
-        if (!bounds.isEmpty()) {
+        if (initialCamera && Array.isArray(initialCamera.center) && Number.isFinite(initialCamera.zoom)) {
+          map.jumpTo({ center: initialCamera.center, zoom: initialCamera.zoom });
+        } else if (!bounds.isEmpty()) {
           map.fitBounds(bounds, { padding: { top: 130, right: 70, bottom: 120, left: 70 }, maxZoom: 12.2, duration: 650 });
         }
         updateMarkerVisibility();
+        postCamera();
         map.once('idle', () => postMessage({ type: 'map-ready' }));
       });
     </script>
