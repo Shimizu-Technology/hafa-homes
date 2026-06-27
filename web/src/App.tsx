@@ -2709,7 +2709,7 @@ function AccountPage() {
     enabled: isClerkEnabled && isSignedIn && Boolean(userId),
     retry: false,
   })
-  const { data: searchProfileData, isLoading: isSearchProfileLoading, refetch: refetchSearchProfile } = useQuery({
+  const { data: searchProfileData, isLoading: isSearchProfileLoading, isError: isSearchProfileError, error: searchProfileError, refetch: refetchSearchProfile } = useQuery({
     queryKey: ['me', userId, 'search-profile', 'account'],
     queryFn: fetchSearchProfile,
     enabled: isClerkEnabled && isSignedIn && Boolean(userId),
@@ -2730,7 +2730,7 @@ function AccountPage() {
     },
   })
 
-  if (isLoading || isMeLoading || isSearchProfileLoading) return <Shell compact><StateCard>Checking account...</StateCard></Shell>
+  if (isLoading || isMeLoading) return <Shell compact><StateCard>Checking account...</StateCard></Shell>
 
   if (!isClerkEnabled) {
     return (
@@ -2814,7 +2814,7 @@ function AccountPage() {
           </div>
         </form>
 
-        <SearchProfileCard key={searchProfileData?.search_profile?.updated_at || searchProfileData?.search_profile?.id || 'new-search-profile'} profile={searchProfileData?.search_profile} mutation={searchProfileMutation} />
+        <SearchProfileCard key={searchProfileData?.search_profile?.updated_at || searchProfileData?.search_profile?.id || 'new-search-profile'} profile={searchProfileData?.search_profile} mutation={searchProfileMutation} isLoading={isSearchProfileLoading} error={isSearchProfileError ? searchProfileError : null} />
 
         <div className="rounded-[2rem] border border-red-200 bg-[#fff8f6] p-6 shadow-sm">
           <p className="text-sm font-semibold uppercase tracking-[0.2em] text-red-700">Delete account</p>
@@ -2850,10 +2850,20 @@ function AccountPage() {
 
 type SearchProfileMutation = { mutate: (payload: SearchProfilePayload) => void; isPending: boolean; isError: boolean; isSuccess: boolean; error: unknown }
 
-function SearchProfileCard({ profile, mutation }: { profile?: SearchProfile; mutation: SearchProfileMutation }) {
+function SearchProfileCard({ profile, mutation, isLoading = false, error = null }: { profile?: SearchProfile; mutation: SearchProfileMutation; isLoading?: boolean; error?: unknown }) {
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     mutation.mutate(searchProfilePayloadFromForm(new FormData(event.currentTarget)))
+  }
+
+  if (isLoading) {
+    return (
+      <section className="rounded-[2rem] bg-[#102f2a] p-6 text-white shadow-2xl shadow-[#0f3d35]/15 lg:col-span-2">
+        <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#bdebdc]">Search profile</p>
+        <h2 className="mt-3 text-3xl font-semibold tracking-[-0.05em]">Loading saved search preferences.</h2>
+        <p className="mt-3 text-sm leading-6 text-white/70">Your contact details are ready above. This search profile section will appear as soon as saved preferences load.</p>
+      </section>
+    )
   }
 
   return (
@@ -2863,6 +2873,7 @@ function SearchProfileCard({ profile, mutation }: { profile?: SearchProfile; mut
           <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#bdebdc]">Search profile</p>
           <h2 className="mt-3 text-3xl font-semibold tracking-[-0.05em]">Save what you are looking for once.</h2>
           <p className="mt-3 text-sm leading-6 text-white/70">These preferences prefill showing requests, price alerts, and future prompts. Complete profiles avoid the longer qualification popup.</p>
+          {Boolean(error) && <p className="mt-3 rounded-2xl bg-[#fff8f6] p-3 text-xs font-bold leading-5 text-red-700">{displayErrorMessage(error, 'Unable to load your saved search profile. You can still edit contact details above and retry this section later.')}</p>}
           <div className="mt-5 rounded-3xl bg-white/10 p-4">
             <div className="flex items-center justify-between gap-3">
               <span className="text-xs font-bold uppercase tracking-[0.16em] text-white/55">Completion</span>
