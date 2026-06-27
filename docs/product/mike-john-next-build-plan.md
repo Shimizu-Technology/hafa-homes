@@ -314,7 +314,22 @@ Signed-in complete profile -> no long prompt; only lightweight contextual CTA or
 
 See `docs/product/buyer-search-profile-prompt-plan.md`.
 
-### 3. Domain-first broker-branded foundation
+### 3. Android Play Store release
+
+Not in PR #18 and not in the buyer/search profile PR, but soon after the mobile/product flow is stable.
+
+Build:
+
+- Google Play Developer/Console setup;
+- Android production EAS build;
+- internal testing track;
+- Data Safety and account deletion declarations;
+- physical Android smoke testing;
+- staged production rollout.
+
+See `docs/android-play-store-release-plan.md`.
+
+### 4. Domain-first broker-branded foundation
 
 Recommended branch:
 
@@ -332,7 +347,7 @@ Build:
 - broker-owned domain story;
 - slug fallback for preview/dev only.
 
-### 4. Broker pitch/package docs
+### 5. Broker pitch/package docs
 
 Mike and John need broker-facing materials:
 
@@ -345,7 +360,7 @@ Mike and John need broker-facing materials:
 - “local platform provider, not a brokerage” positioning;
 - customization/support story.
 
-### 5. Production/demo hardening
+### 6. Production/demo hardening
 
 Before serious broker demos:
 
@@ -360,7 +375,7 @@ Before serious broker demos:
 - seed realistic demo broker/agent/listing data;
 - ensure notification sends remain gated unless intentionally enabled.
 
-### 6. MLS/FlexMLS/GAR discovery
+### 7. MLS/FlexMLS/GAR discovery
 
 Questions still needing real answers:
 
@@ -370,7 +385,7 @@ Questions still needing real answers:
 - Can a broker-branded app show all Guam MLS listings?
 - Are there lead routing restrictions for other brokerages' listings?
 
-### 7. Property-management preview
+### 8. Property-management preview
 
 Later premium-tier demo, not next:
 
@@ -381,7 +396,7 @@ Later premium-tier demo, not next:
 - document placeholder;
 - future online payments note.
 
-### 8. Property/data intelligence research
+### 9. Property/data intelligence research
 
 Longer-term possible product line inspired by Ryan/title-data discussion:
 
@@ -400,9 +415,10 @@ This depends heavily on data access and should not block the brokerage website/a
 2. Progressive prompts + first-party intent tracking
 3. Buyer/search profile settings + prompt personalization
 4. Production/demo hardening for current merged platform
-5. Broker pitch/package docs
-6. Domain-first broker-branded foundation
-7. MLS/FlexMLS integration path once authorized
-8. Property-management preview
-9. Property/data intelligence research
+5. Android Play Store release
+6. Broker pitch/package docs
+7. Domain-first broker-branded foundation
+8. MLS/FlexMLS integration path once authorized
+9. Property-management preview
+10. Property/data intelligence research
 ```

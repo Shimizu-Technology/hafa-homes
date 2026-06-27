@@ -452,7 +452,7 @@ async function noteLeadIntentCurrentContextEvent(sessionToken: string, eventName
     startedAt: guard.startedAt || Date.now(),
   }
 
-  if (nextGuard.eventCount >= 2 && nextGuard.meaningfulEventCount > 0) {
+  if (nextGuard.meaningfulEventCount >= 2) {
     await clearLeadIntentCurrentContextRequired()
   } else {
     await saveLeadIntentCurrentContextGuard(nextGuard)

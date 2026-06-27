@@ -20,6 +20,12 @@ Current canonical next-build plan from the Mike/John meeting:
 docs/product/mike-john-next-build-plan.md
 ```
 
+Android Play Store release plan:
+
+```text
+docs/android-play-store-release-plan.md
+```
+
 ## Completed phases
 
 ### Phase 0 — Planning and validation
@@ -232,7 +238,24 @@ Recommended scope:
 
 See `docs/product/buyer-search-profile-prompt-plan.md`.
 
-### Phase 11 — Domain-first broker-branded website/app foundation
+### Phase 11 — Android Play Store release
+
+Goal:
+
+> Ship Hafa Homes on Google Play after PR #18 and buyer/search profile prompt work are stable.
+
+Recommended scope:
+
+- Google Play Developer/Console setup;
+- Android production EAS build;
+- internal testing track;
+- Data Safety and account deletion declarations;
+- physical Android smoke testing;
+- staged production rollout.
+
+See `docs/android-play-store-release-plan.md`.
+
+### Phase 12 — Domain-first broker-branded website/app foundation
 
 Recommended branch:
 
@@ -260,7 +283,7 @@ Recommended scope:
 
 See `docs/product/broker-branded-layer-plan.md`.
 
-### Phase 12 — Lead quality / CRM automation
+### Phase 13 — Lead quality / CRM automation
 
 Goal: improve broker confidence in lead quality and follow-up accountability.
 
@@ -274,7 +297,7 @@ Potential scope:
 - CSV export
 - agent follow-up reporting
 
-### Phase 13 — Property management preview
+### Phase 14 — Property management preview
 
 Goal: demo premium-tier rental/property-management value for Guam brokerages/property managers.
 
@@ -287,7 +310,7 @@ Potential scope:
 - maintenance request preview
 - owner/tenant portal concept
 
-### Phase 14 — Production deployment and demo hardening
+### Phase 15 — Production deployment and demo hardening
 
 Goal: make the latest platform safe and smooth to demo from production URLs/devices.
 
@@ -302,7 +325,7 @@ Potential scope:
 - notification gates/config verification
 - App Store/TestFlight notes update
 
-### Phase 15 — MLS/Flexmls integration path
+### Phase 16 — MLS/Flexmls integration path
 
 Start only after authorization/compliance is clear.
 

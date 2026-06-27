@@ -331,7 +331,7 @@ module Api
 
       def sufficient_lead_intent_context?(session)
         events = session.lead_intent_events
-        events.count >= MINIMUM_INTENT_EVENTS_FOR_LEAD_LINK && events.where(event_name: MEANINGFUL_INTENT_EVENTS_FOR_LEAD_LINK).exists?
+        events.where(event_name: MEANINGFUL_INTENT_EVENTS_FOR_LEAD_LINK).count >= MINIMUM_INTENT_EVENTS_FOR_LEAD_LINK
       end
 
       def mark_intent_session_converted(lead, intent_session)

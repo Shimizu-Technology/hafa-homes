@@ -159,7 +159,7 @@ function noteLeadIntentCurrentContextEvent(sessionToken: string, eventName: stri
     startedAt: guard.startedAt || Date.now(),
   }
 
-  if (nextGuard.eventCount >= 2 && nextGuard.meaningfulEventCount > 0) {
+  if (nextGuard.meaningfulEventCount >= 2) {
     clearLeadIntentCurrentContextRequired()
   } else {
     saveLeadIntentCurrentContextGuard(nextGuard)
