@@ -196,6 +196,7 @@ type Brokerage = {
   website_url?: string
   app_display_name?: string
   compliance_disclaimer?: string
+  settings?: Record<string, unknown>
 }
 
 type Agent = {
@@ -747,6 +748,22 @@ async function fetchAdminUsers(): Promise<AdminUsersResponse> {
   return response.json()
 }
 
+async function fetchAdminBrokerages(): Promise<{ brokerages: Brokerage[] }> {
+  const response = await fetch(`${API_URL}/api/v1/admin/brokerages`, { headers: await authHeaders() })
+  if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to load brokerages'), response.status)
+  return response.json()
+}
+
+async function updateAdminBrokerage(id: number, payload: Record<string, unknown>): Promise<{ brokerage: Brokerage }> {
+  const response = await fetch(`${API_URL}/api/v1/admin/brokerages/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+    body: JSON.stringify({ brokerage: payload }),
+  })
+  if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to update brokerage'), response.status)
+  return response.json()
+}
+
 async function fetchAuditEvents(): Promise<AuditEventsResponse> {
   const response = await fetch(`${API_URL}/api/v1/admin/audit_events`, { headers: await authHeaders() })
   if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to load audit history'), response.status)
@@ -913,7 +930,12 @@ async function submitLead(payload: LeadPayload, retryAfterIntentReset: boolean):
   if (response.status === 409 && retryAfterIntentReset && payload.intent_session_token) {
     const conflictPayload = await response.clone().json().catch(() => null) as { reset_session?: boolean } | null
     if (conflictPayload?.reset_session) {
-      return submitLead({ ...payload, intent_session_token: resetLeadIntentSessionToken() }, false)
+      resetLeadIntentSessionToken()
+      if (payload.lead_type === 'search_assist') {
+        throw new ApiFetchError('Your search session refreshed after sign-in. Please keep browsing or reopen the prompt so we can attach the right search context.', response.status)
+      }
+
+      return submitLead({ ...payload, intent_session_token: undefined }, false)
     }
   }
 
@@ -3197,6 +3219,11 @@ function AdminIntentPage() {
     queryKey: ['admin-lead-intent-sessions', statusFilter, identityFilter, sortBy, searchQuery, page],
     queryFn: () => fetchAdminLeadIntentSessions({ status: statusFilter || undefined, identity: identityFilter || undefined, sort: sortBy || undefined, q: searchQuery || undefined, page: String(page), per_page: '10' }),
   })
+  const { data: brokeragesData, refetch: refetchBrokerages } = useQuery({ queryKey: ['admin-brokerages', 'prompt-settings'], queryFn: fetchAdminBrokerages })
+  const promptSettingsMutation = useMutation({
+    mutationFn: ({ id, payload }: { id: number; payload: Record<string, unknown> }) => updateAdminBrokerage(id, payload),
+    onSuccess: () => refetchBrokerages(),
+  })
   const sessions = data?.lead_intent_sessions ?? []
   const metrics = data?.metrics
   const pagination = data?.pagination
@@ -3287,6 +3314,9 @@ function AdminIntentPage() {
                 {data?.top_listings?.length === 0 && <p className="text-sm font-semibold leading-6 text-[#66746f]">Listing-level view counts will appear after shoppers open property detail pages.</p>}
               </div>
             </div>
+            {(brokeragesData?.brokerages ?? []).map((brokerage) => (
+              <PromptSettingsCard key={brokerage.id} brokerage={brokerage} mutation={promptSettingsMutation} />
+            ))}
             <div className="rounded-[1.75rem] border border-[#dfe8e2] bg-white p-5 shadow-sm sm:rounded-[2rem]">
               <ShieldCheck className="text-[#0f705e]" />
               <h2 className="mt-4 text-xl font-semibold tracking-[-0.04em]">Privacy guardrails</h2>
@@ -3297,6 +3327,78 @@ function AdminIntentPage() {
       </section>
     </AdminShell>
   )
+}
+
+function PromptSettingsCard({ brokerage, mutation }: { brokerage: Brokerage; mutation: { mutate: (variables: { id: number; payload: Record<string, unknown> }) => void; isPending: boolean; isError: boolean; error: unknown } }) {
+  const settings = brokerage.settings || {}
+  const mode = String(settings.lead_prompt_mode || 'balanced')
+  const enabled = settings.progressive_prompts_enabled === false ? 'false' : 'true'
+  const listingThreshold = String(settings.listing_views_threshold || '')
+  const snoozeHours = String(settings.prompt_snooze_hours || '')
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const form = new FormData(event.currentTarget)
+    mutation.mutate({
+      id: brokerage.id,
+      payload: {
+        lead_prompt_mode: String(form.get('lead_prompt_mode') || 'balanced'),
+        progressive_prompts_enabled: String(form.get('progressive_prompts_enabled') || 'true'),
+        listing_views_threshold: String(form.get('listing_views_threshold') || '').trim() || defaultPromptThreshold(String(form.get('lead_prompt_mode') || 'balanced')),
+        prompt_snooze_hours: String(form.get('prompt_snooze_hours') || '').trim() || defaultPromptSnooze(String(form.get('lead_prompt_mode') || 'balanced')),
+      },
+    })
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="rounded-[1.75rem] border border-[#dfe8e2] bg-white p-5 shadow-sm sm:rounded-[2rem]">
+      <SlidersHorizontal className="text-[#0f705e]" />
+      <p className="mt-5 text-xs font-bold uppercase tracking-[0.2em] text-[#7b8a84]">Prompt intensity</p>
+      <h2 className="mt-2 text-xl font-semibold tracking-[-0.04em]">{brokerage.name}</h2>
+      <p className="mt-2 text-sm font-semibold leading-6 text-[#66746f]">Tune lead capture by broker appetite: growth for newer brokers, selective for established teams.</p>
+      <div className="mt-4 grid gap-3">
+        <label className="grid gap-2 text-sm font-bold text-[#304942]">
+          Mode
+          <select name="lead_prompt_mode" defaultValue={mode} className="min-h-11 rounded-2xl border border-[#dce5df] bg-white px-3">
+            <option value="growth">Growth · prompt sooner</option>
+            <option value="balanced">Balanced</option>
+            <option value="selective">Selective · prompt less</option>
+          </select>
+        </label>
+        <label className="grid gap-2 text-sm font-bold text-[#304942]">
+          Prompts enabled
+          <select name="progressive_prompts_enabled" defaultValue={enabled} className="min-h-11 rounded-2xl border border-[#dce5df] bg-white px-3">
+            <option value="true">Enabled</option>
+            <option value="false">Disabled</option>
+          </select>
+        </label>
+        <div className="grid grid-cols-2 gap-2">
+          <label className="grid gap-2 text-sm font-bold text-[#304942]">
+            Listing views
+            <input name="listing_views_threshold" type="number" min="1" max="20" defaultValue={listingThreshold} placeholder="Auto" className="min-h-11 rounded-2xl border border-[#dce5df] bg-white px-3" />
+          </label>
+          <label className="grid gap-2 text-sm font-bold text-[#304942]">
+            Snooze hrs
+            <input name="prompt_snooze_hours" type="number" min="1" max="168" defaultValue={snoozeHours} placeholder="Auto" className="min-h-11 rounded-2xl border border-[#dce5df] bg-white px-3" />
+          </label>
+        </div>
+      </div>
+      {mutation.isError && <p className="mt-3 text-sm font-semibold text-[#b42318]">{displayErrorMessage(mutation.error, 'Unable to save prompt settings.')}</p>}
+      <button disabled={mutation.isPending} className="mt-4 min-h-11 w-full rounded-2xl bg-[#0f3d35] px-4 text-sm font-bold text-white disabled:opacity-55">{mutation.isPending ? 'Saving...' : 'Save prompt settings'}</button>
+    </form>
+  )
+}
+
+function defaultPromptThreshold(mode: string) {
+  if (mode === 'growth') return '2'
+  if (mode === 'selective') return '5'
+  return '3'
+}
+
+function defaultPromptSnooze(mode: string) {
+  if (mode === 'growth') return '8'
+  if (mode === 'selective') return '72'
+  return '24'
 }
 
 function AdminIntentSessionCard({ session }: { session: AdminLeadIntentSession }) {

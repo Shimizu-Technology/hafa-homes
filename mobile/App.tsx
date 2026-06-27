@@ -519,7 +519,12 @@ async function createLead(payload: CreateLeadPayload, getToken?: GetAuthToken, r
   if (response.status === 409 && retryAfterIntentReset && payload.intent_session_token) {
     const conflictPayload = await response.clone().json().catch(() => null) as { reset_session?: boolean } | null
     if (conflictPayload?.reset_session) {
-      return createLead({ ...payload, intent_session_token: await resetLeadIntentSessionToken() }, getToken, false)
+      await resetLeadIntentSessionToken()
+      if (payload.lead_type === 'search_assist') {
+        throw new ApiRequestError('Your search session refreshed after sign-in. Please keep browsing or reopen the prompt so we can attach the right search context.', response.status)
+      }
+
+      return createLead({ ...payload, intent_session_token: undefined }, getToken, false)
     }
   }
 

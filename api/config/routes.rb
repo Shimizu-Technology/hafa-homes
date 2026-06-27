@@ -31,7 +31,7 @@ Rails.application.routes.draw do
 
       namespace :admin do
         get "dashboard", to: "dashboard#show"
-        resources :brokerages, only: [:index]
+        resources :brokerages, only: [:index, :update]
         resources :agents, only: [:index]
         resources :users, only: [:index, :create, :update]
         resources :lead_intent_sessions, only: [:index]

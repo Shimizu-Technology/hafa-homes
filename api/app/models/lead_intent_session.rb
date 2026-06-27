@@ -2,13 +2,15 @@ require "digest"
 
 class LeadIntentSession < ApplicationRecord
   STATUSES = %w[active snoozed converted].freeze
-  PROMPT_MODES = %w[low_friction balanced strict].freeze
+  PROMPT_MODES = %w[growth balanced selective low_friction strict].freeze
   DEFAULT_LISTING_VIEW_THRESHOLD = 3
   DEFAULT_SNOOZE_HOURS = 24
   MAX_SUMMARY_IDS = 20
-  REPROMPT_UNIQUE_LISTING_DELTA = 3
-  REPROMPT_SEARCH_FILTER_DELTA = 3
-  MAX_DISMISSALS_BEFORE_HARD_SNOOZE = 2
+  DEFAULT_PROMPT_CONFIG = {
+    "growth" => { listing_views_threshold: 2, same_village_threshold: 2, search_filter_threshold: 2, reprompt_unique_listing_delta: 2, reprompt_search_filter_delta: 2, max_dismissals_before_hard_snooze: 3, snooze_hours: 8 },
+    "balanced" => { listing_views_threshold: 3, same_village_threshold: 2, search_filter_threshold: 3, reprompt_unique_listing_delta: 3, reprompt_search_filter_delta: 3, max_dismissals_before_hard_snooze: 2, snooze_hours: 24 },
+    "selective" => { listing_views_threshold: 5, same_village_threshold: 3, search_filter_threshold: 5, reprompt_unique_listing_delta: 5, reprompt_search_filter_delta: 5, max_dismissals_before_hard_snooze: 1, snooze_hours: 72 }
+  }.freeze
 
   class ScopeMismatchError < StandardError; end
 
@@ -67,6 +69,17 @@ class LeadIntentSession < ApplicationRecord
   def self.prompt_mode_for(brokerage)
     mode = brokerage&.settings&.dig("lead_prompt_mode").presence
     PROMPT_MODES.include?(mode) ? mode : "balanced"
+  end
+
+  def self.canonical_prompt_mode(mode)
+    case mode.to_s
+    when "growth", "low_friction"
+      "growth"
+    when "selective", "strict"
+      "selective"
+    else
+      "balanced"
+    end
   end
 
   def self.validate_context!(session, user:, brokerage:)
@@ -287,9 +300,9 @@ class LeadIntentSession < ApplicationRecord
   def prompt_trigger(latest_event)
     return saved_listing_trigger if latest_event&.event_name == "listing_saved"
     return abandoned_form_trigger if latest_event&.event_name == "lead_form_abandoned"
-    return same_village_trigger if top_village_count >= 2
+    return same_village_trigger if top_village_count >= same_village_threshold
     return listing_views_trigger if summary.fetch("unique_listing_view_count", 0).to_i >= listing_view_threshold
-    return search_filter_trigger if summary.fetch("search_filter_count", 0).to_i >= 3
+    return search_filter_trigger if summary.fetch("search_filter_count", 0).to_i >= search_filter_threshold
 
     nil
   end
@@ -355,13 +368,13 @@ class LeadIntentSession < ApplicationRecord
 
   def allow_reprompt_after_dismissal?(latest_event)
     return true unless actively_snoozed?
-    return false if current_prompt_dismissal_count >= MAX_DISMISSALS_BEFORE_HARD_SNOOZE
+    return false if current_prompt_dismissal_count >= max_dismissals_before_hard_snooze
 
     latest_name = latest_event&.event_name
     return true if latest_name == "listing_saved" && saved_listing_delta_since_dismissal.positive?
     return true if latest_name == "lead_form_abandoned" && form_abandon_delta_since_dismissal.positive?
-    return true if unique_listing_delta_since_dismissal >= REPROMPT_UNIQUE_LISTING_DELTA
-    return true if search_filter_delta_since_dismissal >= REPROMPT_SEARCH_FILTER_DELTA
+    return true if unique_listing_delta_since_dismissal >= reprompt_unique_listing_delta
+    return true if search_filter_delta_since_dismissal >= reprompt_search_filter_delta
 
     false
   end
@@ -418,13 +431,37 @@ class LeadIntentSession < ApplicationRecord
   def listing_view_threshold
     configured = brokerage&.settings&.dig("listing_views_threshold")
     configured_value = configured.present? ? configured.to_i : 0
-    configured_value.positive? ? configured_value : DEFAULT_LISTING_VIEW_THRESHOLD
+    configured_value.positive? ? configured_value : prompt_config.fetch(:listing_views_threshold, DEFAULT_LISTING_VIEW_THRESHOLD)
+  end
+
+  def same_village_threshold
+    prompt_config.fetch(:same_village_threshold, 2)
+  end
+
+  def search_filter_threshold
+    prompt_config.fetch(:search_filter_threshold, 3)
+  end
+
+  def reprompt_unique_listing_delta
+    prompt_config.fetch(:reprompt_unique_listing_delta, 3)
+  end
+
+  def reprompt_search_filter_delta
+    prompt_config.fetch(:reprompt_search_filter_delta, 3)
+  end
+
+  def max_dismissals_before_hard_snooze
+    prompt_config.fetch(:max_dismissals_before_hard_snooze, 2)
   end
 
   def prompt_snooze_hours
     configured = brokerage&.settings&.dig("prompt_snooze_hours")
     configured_value = configured.present? ? configured.to_i : 0
-    configured_value.positive? ? configured_value : DEFAULT_SNOOZE_HOURS
+    configured_value.positive? ? configured_value : prompt_config.fetch(:snooze_hours, DEFAULT_SNOOZE_HOURS)
+  end
+
+  def prompt_config
+    DEFAULT_PROMPT_CONFIG.fetch(self.class.canonical_prompt_mode(prompt_mode), DEFAULT_PROMPT_CONFIG.fetch("balanced"))
   end
 
   def top_village_count
