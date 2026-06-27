@@ -5,6 +5,15 @@ module Api
       include StaffLeadScoping
 
       MINIMUM_INTENT_EVENTS_FOR_LEAD_LINK = 2
+      MEANINGFUL_INTENT_EVENTS_FOR_LEAD_LINK = %w[
+        listing_detail_viewed
+        listing_saved
+        search_filter_changed
+        map_marker_clicked
+        saved_search_created
+      ].freeze
+
+      class InsufficientLeadIntentContextError < StandardError; end
 
       before_action :authenticate_user!, only: [:index, :show, :update, :send_notification]
       before_action :require_staff!, only: [:index, :show, :update, :send_notification]
@@ -57,6 +66,8 @@ module Api
         end
       rescue LeadIntentSession::ScopeMismatchError => e
         render_intent_session_scope_mismatch(e)
+      rescue InsufficientLeadIntentContextError => e
+        render_insufficient_intent_context(e)
       end
 
       def update
@@ -294,7 +305,8 @@ module Api
 
         brokerage = current_routing_brokerage
         session = LeadIntentSession.find_scoped_by_token(token, user: current_user, brokerage: brokerage)
-        return nil unless session && session.lead_intent_events.count >= MINIMUM_INTENT_EVENTS_FOR_LEAD_LINK
+        return nil unless session
+        raise InsufficientLeadIntentContextError, "Intent session needs more current browsing context before lead submission" unless sufficient_lead_intent_context?(session)
 
         session
       rescue ArgumentError
@@ -307,6 +319,19 @@ module Api
           reset_session: true,
           prompt: { eligible: false, reason: "session_scope_mismatch" }
         }, status: :conflict
+      end
+
+      def render_insufficient_intent_context(error)
+        render json: {
+          errors: [error.message],
+          rebuild_intent_context: true,
+          prompt: { eligible: false, reason: "insufficient_intent_context" }
+        }, status: :conflict
+      end
+
+      def sufficient_lead_intent_context?(session)
+        events = session.lead_intent_events
+        events.count >= MINIMUM_INTENT_EVENTS_FOR_LEAD_LINK && events.where(event_name: MEANINGFUL_INTENT_EVENTS_FOR_LEAD_LINK).exists?
       end
 
       def mark_intent_session_converted(lead, intent_session)

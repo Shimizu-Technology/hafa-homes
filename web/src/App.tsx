@@ -51,6 +51,7 @@ const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
 const FALLBACK_LISTING_IMAGE = 'https://images.unsplash.com/photo-1600047509807-ba8f99d2cdde?auto=format&fit=crop&w=1400&q=80'
 const LEAD_INTENT_SESSION_TOKEN_KEY = 'hafaHomes:leadIntentSessionToken'
 const LEAD_INTENT_CONTEXT_REQUIRED_KEY = 'hafaHomes:leadIntentContextRequired'
+const MEANINGFUL_LEAD_INTENT_EVENTS = new Set(['listing_detail_viewed', 'listing_saved', 'search_filter_changed', 'map_marker_clicked', 'saved_search_created'])
 
 class ApiFetchError extends Error {
   status: number
@@ -106,12 +107,12 @@ function resetLeadIntentSessionToken() {
   return leadIntentSessionToken()
 }
 
-type LeadIntentContextGuard = { token?: string; eventCount: number; startedAt: number }
+type LeadIntentContextGuard = { token?: string; eventCount: number; meaningfulEventCount: number; startedAt: number }
 
 function markLeadIntentCurrentContextRequired() {
   if (typeof window === 'undefined') return
 
-  window.localStorage.setItem(LEAD_INTENT_CONTEXT_REQUIRED_KEY, JSON.stringify({ eventCount: 0, startedAt: Date.now() }))
+  window.localStorage.setItem(LEAD_INTENT_CONTEXT_REQUIRED_KEY, JSON.stringify({ eventCount: 0, meaningfulEventCount: 0, startedAt: Date.now() }))
 }
 
 function leadIntentCurrentContextGuard(): LeadIntentContextGuard | null {
@@ -119,13 +120,13 @@ function leadIntentCurrentContextGuard(): LeadIntentContextGuard | null {
 
   const raw = window.localStorage.getItem(LEAD_INTENT_CONTEXT_REQUIRED_KEY)
   if (!raw) return null
-  if (raw === 'true') return { eventCount: 0, startedAt: Date.now() }
+  if (raw === 'true') return { eventCount: 0, meaningfulEventCount: 0, startedAt: Date.now() }
 
   try {
     const parsed = JSON.parse(raw) as Partial<LeadIntentContextGuard>
-    return { token: parsed.token, eventCount: Number(parsed.eventCount || 0), startedAt: Number(parsed.startedAt || Date.now()) }
+    return { token: parsed.token, eventCount: Number(parsed.eventCount || 0), meaningfulEventCount: Number(parsed.meaningfulEventCount || 0), startedAt: Number(parsed.startedAt || Date.now()) }
   } catch {
-    return { eventCount: 0, startedAt: Date.now() }
+    return { eventCount: 0, meaningfulEventCount: 0, startedAt: Date.now() }
   }
 }
 
@@ -145,18 +146,20 @@ function leadIntentCurrentContextRequired() {
   return leadIntentCurrentContextGuard() !== null
 }
 
-function noteLeadIntentCurrentContextEvent(sessionToken: string) {
+function noteLeadIntentCurrentContextEvent(sessionToken: string, eventName: string) {
   const guard = leadIntentCurrentContextGuard()
   if (!guard) return
 
   const sameToken = !guard.token || guard.token === sessionToken
+  const isMeaningfulEvent = MEANINGFUL_LEAD_INTENT_EVENTS.has(eventName)
   const nextGuard = {
     token: sessionToken,
     eventCount: sameToken ? guard.eventCount + 1 : 1,
+    meaningfulEventCount: sameToken ? guard.meaningfulEventCount + (isMeaningfulEvent ? 1 : 0) : (isMeaningfulEvent ? 1 : 0),
     startedAt: guard.startedAt || Date.now(),
   }
 
-  if (nextGuard.eventCount >= 2) {
+  if (nextGuard.eventCount >= 2 && nextGuard.meaningfulEventCount > 0) {
     clearLeadIntentCurrentContextRequired()
   } else {
     saveLeadIntentCurrentContextGuard(nextGuard)
@@ -200,7 +203,7 @@ async function recordLeadIntentEvent(eventName: string, payload: { listing_id?: 
     }
     if (!response.ok) return null
 
-    noteLeadIntentCurrentContextEvent(sessionToken)
+    noteLeadIntentCurrentContextEvent(sessionToken, eventName)
     const result = await response.json() as LeadIntentEventResponse
     if (result.prompt?.eligible && typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('hafaHomes:leadIntentPrompt', { detail: { prompt: result.prompt, sessionToken } }))

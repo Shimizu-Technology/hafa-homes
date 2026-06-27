@@ -214,6 +214,7 @@ const LEGACY_SAVED_LISTINGS_KEY = 'hafaHomes:savedListings'
 const SELECTED_AGENT_ID_KEY = 'hafaHomes:selectedAgentId'
 const LEAD_INTENT_SESSION_TOKEN_KEY = 'hafaHomes:leadIntentSessionToken'
 const LEAD_INTENT_CONTEXT_REQUIRED_KEY = 'hafaHomes:leadIntentContextRequired'
+const MEANINGFUL_LEAD_INTENT_EVENTS = new Set(['listing_detail_viewed', 'listing_saved', 'search_filter_changed', 'map_marker_clicked', 'saved_search_created'])
 const OAUTH_CALLBACK_PATH = 'oauth-native-callback'
 const AUTH_FLOW_TIMEOUT_MS = 25_000
 
@@ -407,22 +408,22 @@ async function resetLeadIntentSessionToken() {
   return leadIntentSessionToken()
 }
 
-type LeadIntentContextGuard = { token?: string; eventCount: number; startedAt: number }
+type LeadIntentContextGuard = { token?: string; eventCount: number; meaningfulEventCount: number; startedAt: number }
 
 async function markLeadIntentCurrentContextRequired() {
-  await AsyncStorage.setItem(LEAD_INTENT_CONTEXT_REQUIRED_KEY, JSON.stringify({ eventCount: 0, startedAt: Date.now() }))
+  await AsyncStorage.setItem(LEAD_INTENT_CONTEXT_REQUIRED_KEY, JSON.stringify({ eventCount: 0, meaningfulEventCount: 0, startedAt: Date.now() }))
 }
 
 async function leadIntentCurrentContextGuard(): Promise<LeadIntentContextGuard | null> {
   const raw = await AsyncStorage.getItem(LEAD_INTENT_CONTEXT_REQUIRED_KEY)
   if (!raw) return null
-  if (raw === 'true') return { eventCount: 0, startedAt: Date.now() }
+  if (raw === 'true') return { eventCount: 0, meaningfulEventCount: 0, startedAt: Date.now() }
 
   try {
     const parsed = JSON.parse(raw) as Partial<LeadIntentContextGuard>
-    return { token: parsed.token, eventCount: Number(parsed.eventCount || 0), startedAt: Number(parsed.startedAt || Date.now()) }
+    return { token: parsed.token, eventCount: Number(parsed.eventCount || 0), meaningfulEventCount: Number(parsed.meaningfulEventCount || 0), startedAt: Number(parsed.startedAt || Date.now()) }
   } catch {
-    return { eventCount: 0, startedAt: Date.now() }
+    return { eventCount: 0, meaningfulEventCount: 0, startedAt: Date.now() }
   }
 }
 
@@ -438,18 +439,20 @@ async function leadIntentCurrentContextRequired() {
   return (await leadIntentCurrentContextGuard()) !== null
 }
 
-async function noteLeadIntentCurrentContextEvent(sessionToken: string) {
+async function noteLeadIntentCurrentContextEvent(sessionToken: string, eventName: string) {
   const guard = await leadIntentCurrentContextGuard()
   if (!guard) return
 
   const sameToken = !guard.token || guard.token === sessionToken
+  const isMeaningfulEvent = MEANINGFUL_LEAD_INTENT_EVENTS.has(eventName)
   const nextGuard = {
     token: sessionToken,
     eventCount: sameToken ? guard.eventCount + 1 : 1,
+    meaningfulEventCount: sameToken ? guard.meaningfulEventCount + (isMeaningfulEvent ? 1 : 0) : (isMeaningfulEvent ? 1 : 0),
     startedAt: guard.startedAt || Date.now(),
   }
 
-  if (nextGuard.eventCount >= 2) {
+  if (nextGuard.eventCount >= 2 && nextGuard.meaningfulEventCount > 0) {
     await clearLeadIntentCurrentContextRequired()
   } else {
     await saveLeadIntentCurrentContextGuard(nextGuard)
@@ -491,7 +494,7 @@ async function recordLeadIntentEvent(eventName: string, payload: { listing_id?: 
     }
     if (!response.ok) return null
 
-    await noteLeadIntentCurrentContextEvent(sessionToken)
+    await noteLeadIntentCurrentContextEvent(sessionToken, eventName)
     return response.json() as Promise<{ prompt: LeadIntentPrompt; lead_intent_session: LeadIntentSummary }>
   } catch (intentError) {
     console.warn('Unable to record Hafa Homes lead intent', intentError)
