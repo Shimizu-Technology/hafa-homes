@@ -81,7 +81,8 @@ class LeadIntentSession < ApplicationRecord
     return false if brokerage_id.present? && brokerage.present? && brokerage_id != brokerage.id
 
     if user
-      return false if user_id.present? && user_id != user.id
+      return false if user_id.blank?
+      return false if user_id != user.id
     elsif user_id.present?
       return false
     end
