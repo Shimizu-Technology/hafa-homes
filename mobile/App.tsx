@@ -2905,41 +2905,65 @@ function ShowingRequestSheet({ listing, auth, requestedAgent, open, onOpenAuth, 
   }, [auth.getToken, auth.isSignedIn, listing.id, listing.listing_kind, open, submitted])
 
   useEffect(() => {
-    if (!open) return
-    setMessage(`I'm interested in ${listing.title}.`)
-    setBudgetMax(String(Math.round(listing.price)))
-    setDesiredVillages(listing.village.name || '')
-    setDesiredBeds(listing.beds ? String(listing.beds) : '')
-    setDesiredBaths(listing.baths ? String(listing.baths) : '')
-    setSubmitted(false)
-    setError(null)
-    if (auth.isSignedIn) {
+    if (!open) return undefined
+
+    let cancelled = false
+
+    async function loadPrefill() {
+      setMessage(`I'm interested in ${listing.title}.`)
+      setBudgetMax(String(Math.round(listing.price)))
+      setDesiredVillages(listing.village.name || '')
+      setDesiredBeds(listing.beds ? String(listing.beds) : '')
+      setDesiredBaths(listing.baths ? String(listing.baths) : '')
+      setSubmitted(false)
+      setError(null)
+
+      if (!auth.isSignedIn) return
+
+      let loadedUser: CurrentUser | null = null
       setName((current) => current || auth.userName || '')
       setEmail((current) => current || auth.userEmail || '')
-      if (auth.getToken) {
-        Promise.all([fetchMe(auth.getToken), fetchSearchProfile(auth.getToken)])
-          .then(([result, searchResult]) => {
-            const saved = searchResult.search_profile
-            setName(result.user.full_name || auth.userName || '')
-            setEmail(result.user.email || auth.userEmail || '')
-            setPhone(saved.phone || result.user.phone || '+1671')
-            setPreferredContact(saved.preferred_contact_method || result.user.preferred_contact_method || 'phone')
-            setPrequalifiedStatus(saved.prequalified_status || '')
-            setPurchaseTimeline(saved.purchase_timeline || '')
-            setLenderName(saved.lender_name || '')
-            setBudgetMin(profileValue(saved, 'budget_min'))
-            setBudgetMax(profileValue(saved, 'budget_max', String(Math.round(listing.price))))
-            setDesiredVillages(saved.desired_villages || listing.village.name || '')
-            setDesiredBeds(profileValue(saved, 'desired_beds', listing.beds ? String(listing.beds) : ''))
-            setDesiredBaths(profileValue(saved, 'desired_baths', listing.baths ? String(listing.baths) : ''))
-            setBuyerStatus(saved.buyer_status || '')
-            setAlreadyWorkingWithAgent(saved.already_working_with_agent || '')
-            setQualificationNotes(saved.notes || '')
-          })
-          .catch((profileError) => console.warn('Unable to prefill showing request profile', profileError))
+      if (!auth.getToken) return
+
+      try {
+        const result = await fetchMe(auth.getToken)
+        loadedUser = result.user
+        if (!cancelled) {
+          setName(result.user.full_name || auth.userName || '')
+          setEmail(result.user.email || auth.userEmail || '')
+          setPhone(result.user.phone || '+1671')
+          setPreferredContact(result.user.preferred_contact_method || 'phone')
+        }
+      } catch (profileError) {
+        console.warn('Unable to prefill showing request contact profile', profileError)
+      }
+
+      try {
+        const searchResult = await fetchSearchProfile(auth.getToken)
+        const saved = searchResult.search_profile
+        if (!cancelled) {
+          setPhone(saved.phone || loadedUser?.phone || '+1671')
+          setPreferredContact(saved.preferred_contact_method || loadedUser?.preferred_contact_method || 'phone')
+          setPrequalifiedStatus(saved.prequalified_status || '')
+          setPurchaseTimeline(saved.purchase_timeline || '')
+          setLenderName(saved.lender_name || '')
+          setBudgetMin(profileValue(saved, 'budget_min'))
+          setBudgetMax(profileValue(saved, 'budget_max', String(Math.round(listing.price))))
+          setDesiredVillages(saved.desired_villages || listing.village.name || '')
+          setDesiredBeds(profileValue(saved, 'desired_beds', listing.beds ? String(listing.beds) : ''))
+          setDesiredBaths(profileValue(saved, 'desired_baths', listing.baths ? String(listing.baths) : ''))
+          setBuyerStatus(saved.buyer_status || '')
+          setAlreadyWorkingWithAgent(saved.already_working_with_agent || '')
+          setQualificationNotes(saved.notes || '')
+        }
+      } catch (profileError) {
+        console.warn('Unable to prefill showing request search profile', profileError)
       }
     }
-  }, [auth.getToken, auth.isSignedIn, auth.userEmail, auth.userName, listing.title, open])
+
+    loadPrefill()
+    return () => { cancelled = true }
+  }, [auth.getToken, auth.isSignedIn, auth.userEmail, auth.userName, listing.baths, listing.beds, listing.price, listing.title, listing.village.name, open])
 
   async function handleSubmit() {
     const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
@@ -3106,32 +3130,55 @@ function PriceAlertSheet({ listing, auth, requestedAgent, open, onClose }: { lis
   }, [auth.getToken, auth.isSignedIn, listing.id, listing.listing_kind, open, submitted])
 
   useEffect(() => {
-    if (!open) return
-    setSubmitted(false)
-    setError(null)
-    setTargetPrice(String(Math.round(listing.price * 0.97)))
-    setBudgetMax('')
-    if (auth.isSignedIn) {
+    if (!open) return undefined
+
+    let cancelled = false
+
+    async function loadPrefill() {
+      setSubmitted(false)
+      setError(null)
+      setTargetPrice(String(Math.round(listing.price * 0.97)))
+      setBudgetMax('')
+
+      if (!auth.isSignedIn) return
+
+      let loadedUser: CurrentUser | null = null
       setName((current) => current || auth.userName || '')
       setEmail((current) => current || auth.userEmail || '')
-      if (auth.getToken) {
-        Promise.all([fetchMe(auth.getToken), fetchSearchProfile(auth.getToken)])
-          .then(([result, searchResult]) => {
-            const saved = searchResult.search_profile
-            setName(result.user.full_name || auth.userName || '')
-            setEmail(result.user.email || auth.userEmail || '')
-            setPhone(saved.phone || result.user.phone || '+1671')
-            setPrequalifiedStatus(saved.prequalified_status || '')
-            setPurchaseTimeline(saved.purchase_timeline || '')
-            setLenderName(saved.lender_name || '')
-            setBudgetMin(profileValue(saved, 'budget_min'))
-            setBudgetMax(profileValue(saved, 'budget_max'))
-            setBuyerStatus(saved.buyer_status || '')
-            setAlreadyWorkingWithAgent(saved.already_working_with_agent || '')
-          })
-          .catch((profileError) => console.warn('Unable to prefill price alert profile', profileError))
+      if (!auth.getToken) return
+
+      try {
+        const result = await fetchMe(auth.getToken)
+        loadedUser = result.user
+        if (!cancelled) {
+          setName(result.user.full_name || auth.userName || '')
+          setEmail(result.user.email || auth.userEmail || '')
+          setPhone(result.user.phone || '+1671')
+        }
+      } catch (profileError) {
+        console.warn('Unable to prefill price alert contact profile', profileError)
+      }
+
+      try {
+        const searchResult = await fetchSearchProfile(auth.getToken)
+        const saved = searchResult.search_profile
+        if (!cancelled) {
+          setPhone(saved.phone || loadedUser?.phone || '+1671')
+          setPrequalifiedStatus(saved.prequalified_status || '')
+          setPurchaseTimeline(saved.purchase_timeline || '')
+          setLenderName(saved.lender_name || '')
+          setBudgetMin(profileValue(saved, 'budget_min'))
+          setBudgetMax(profileValue(saved, 'budget_max'))
+          setBuyerStatus(saved.buyer_status || '')
+          setAlreadyWorkingWithAgent(saved.already_working_with_agent || '')
+        }
+      } catch (profileError) {
+        console.warn('Unable to prefill price alert search profile', profileError)
       }
     }
+
+    loadPrefill()
+    return () => { cancelled = true }
   }, [auth.getToken, auth.isSignedIn, auth.userEmail, auth.userName, listing.price, open])
 
   async function handleSubmit() {
