@@ -922,26 +922,6 @@ async function createLead(payload: LeadPayload): Promise<{ lead: Lead }> {
   return submitLead(payload, true)
 }
 
-async function recoverLeadIntentSessionForSubmission(payload: LeadPayload) {
-  const refreshedToken = resetLeadIntentSessionToken()
-  const recoveryEvent = leadSubmissionRecoveryEventName(payload.lead_type)
-  if (refreshedToken && recoveryEvent && payload.listing_id) {
-    await recordLeadIntentEvent(recoveryEvent, {
-      listing_id: payload.listing_id,
-      source: 'web',
-      metadata: { surface: 'lead_submission_recovery', source: payload.lead_type },
-    })
-  }
-
-  return refreshedToken || leadIntentSessionToken()
-}
-
-function leadSubmissionRecoveryEventName(leadType: string) {
-  if (leadType === 'showing_request') return 'showing_form_opened'
-  if (leadType === 'price_tracker') return 'price_tracker_opened'
-  return null
-}
-
 async function submitLead(payload: LeadPayload, retryAfterIntentReset: boolean): Promise<{ lead: Lead }> {
   const response = await fetch(`${API_URL}/api/v1/leads`, {
     method: 'POST',
@@ -952,13 +932,8 @@ async function submitLead(payload: LeadPayload, retryAfterIntentReset: boolean):
   if (response.status === 409 && retryAfterIntentReset && payload.intent_session_token) {
     const conflictPayload = await response.clone().json().catch(() => null) as { reset_session?: boolean } | null
     if (conflictPayload?.reset_session) {
-      if (payload.lead_type === 'search_assist') {
-        resetLeadIntentSessionToken()
-        throw new ApiFetchError('Your search session refreshed after sign-in. Please keep browsing or reopen the prompt so we can attach the right search context.', response.status)
-      }
-
-      const refreshedToken = await recoverLeadIntentSessionForSubmission(payload)
-      return submitLead({ ...payload, intent_session_token: refreshedToken }, false)
+      resetLeadIntentSessionToken()
+      throw new ApiFetchError('Your search session refreshed after sign-in. Please submit this request one more time so it attaches to your current session.', response.status)
     }
   }
 
@@ -3265,7 +3240,7 @@ function AdminIntentPage() {
               {primaryBrokerage ? promptModeSummary(promptModeFromSettings(primaryBrokerage.settings), primaryBrokerage.settings) : 'Balanced mode prompts after a few clear buying signals, then waits before asking again.'}
             </p>
           </div>
-          <button type="button" onClick={() => setSettingsOpen(true)} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl bg-[#0f3d35] px-5 text-sm font-bold text-white shadow-xl shadow-[#0f3d35]/15 transition hover:-translate-y-0.5 hover:bg-[#0c312b] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#bdebdc]">
+          <button type="button" onClick={() => setSettingsOpen(true)} className="inline-flex min-h-14 w-full items-center justify-center gap-2 whitespace-nowrap rounded-[1.35rem] bg-[#0f3d35] px-7 py-3.5 text-sm font-bold text-white shadow-xl shadow-[#0f3d35]/15 transition hover:-translate-y-0.5 hover:bg-[#0c312b] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#bdebdc] sm:w-auto sm:min-w-[190px]">
             <SlidersHorizontal size={17} /> Prompt settings
           </button>
         </div>
@@ -3279,7 +3254,7 @@ function AdminIntentPage() {
           </div>
         )}
 
-        <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
           <div className="rounded-[1.75rem] bg-white p-4 shadow-sm sm:rounded-[2rem] sm:p-5">
             <div className="flex flex-wrap items-end justify-between gap-3">
               <div>
@@ -3288,22 +3263,22 @@ function AdminIntentPage() {
               </div>
               <form onSubmit={(event) => { event.preventDefault(); setSearchQuery(searchInput.trim()) }} className="grid w-full gap-2 lg:max-w-3xl">
                 <div className="flex flex-wrap gap-2">
-                  <input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Search user, email, village, listing, or behavior" className="min-h-11 min-w-[240px] flex-1 rounded-2xl border border-[#dce5df] bg-white px-3 text-sm font-bold text-[#304942]" />
-                  <button className="min-h-11 rounded-2xl bg-[#0f3d35] px-4 text-sm font-bold text-white">Search</button>
+                  <input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Search user, email, village, listing, or behavior" className="min-h-11 min-w-0 flex-1 rounded-2xl border border-[#dce5df] bg-white px-3 text-sm font-bold text-[#304942] sm:min-w-[240px]" />
+                  <button className="min-h-11 w-full rounded-2xl bg-[#0f3d35] px-4 text-sm font-bold text-white sm:w-auto">Search</button>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="min-h-11 rounded-2xl border border-[#dce5df] bg-white px-3 text-sm font-bold text-[#304942]">
+                  <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="min-h-11 w-full rounded-2xl border border-[#dce5df] bg-white px-3 text-sm font-bold text-[#304942] sm:w-auto">
                     <option value="">All statuses</option>
                     <option value="active">Active</option>
                     <option value="snoozed">Snoozed</option>
                     <option value="converted">Converted</option>
                   </select>
-                  <select value={identityFilter} onChange={(event) => setIdentityFilter(event.target.value)} className="min-h-11 rounded-2xl border border-[#dce5df] bg-white px-3 text-sm font-bold text-[#304942]">
+                  <select value={identityFilter} onChange={(event) => setIdentityFilter(event.target.value)} className="min-h-11 w-full rounded-2xl border border-[#dce5df] bg-white px-3 text-sm font-bold text-[#304942] sm:w-auto">
                     <option value="">All visitors</option>
                     <option value="signed_in">Signed in</option>
                     <option value="anonymous">Anonymous</option>
                   </select>
-                  <select value={sortBy} onChange={(event) => setSortBy(event.target.value)} className="min-h-11 rounded-2xl border border-[#dce5df] bg-white px-3 text-sm font-bold text-[#304942]">
+                  <select value={sortBy} onChange={(event) => setSortBy(event.target.value)} className="min-h-11 w-full rounded-2xl border border-[#dce5df] bg-white px-3 text-sm font-bold text-[#304942] sm:w-auto">
                     <option value="last_seen">Last seen newest</option>
                     <option value="oldest">Last seen oldest</option>
                     <option value="views_desc">Most listings viewed</option>
@@ -3368,8 +3343,11 @@ function AdminIntentPage() {
 type PromptSettingsMutation = { mutate: (variables: { id: number; payload: Record<string, unknown> }) => void; isPending: boolean; isError: boolean; error: unknown }
 
 function PromptSettingsModal({ open, onClose, brokerages, mutation }: { open: boolean; onClose: () => void; brokerages: Brokerage[]; mutation: PromptSettingsMutation }) {
+  const [modeGuideOpen, setModeGuideOpen] = useState(false)
+
   useEffect(() => {
     if (!open) return
+    setModeGuideOpen(false)
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose()
     }
@@ -3380,33 +3358,45 @@ function PromptSettingsModal({ open, onClose, brokerages, mutation }: { open: bo
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-[80] overflow-y-auto bg-[#0b1f1b]/55 px-4 py-6 backdrop-blur-sm sm:py-10" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
-      <div role="dialog" aria-modal="true" aria-labelledby="prompt-settings-title" className="mx-auto max-w-5xl rounded-[2rem] bg-[#fbfaf6] p-4 shadow-2xl shadow-black/25 sm:rounded-[2.5rem] sm:p-6">
-        <div className="flex flex-col gap-4 border-b border-[#dfe8e2] pb-5 sm:flex-row sm:items-start sm:justify-between">
-          <div className="max-w-3xl">
-            <div className="inline-flex items-center gap-2 rounded-full bg-[#e9f5ef] px-3 py-1 text-xs font-black uppercase tracking-[0.18em] text-[#0f705e]"><SlidersHorizontal size={14} /> Prompt intensity</div>
-            <h2 id="prompt-settings-title" className="mt-3 text-3xl font-semibold tracking-[-0.06em] text-[#17211f]">Set the right level of follow-up.</h2>
-            <p className="mt-2 text-sm font-semibold leading-6 text-[#66746f]">These rules control when the progressive lead prompt appears while shoppers browse. Use Growth for lead-hungry teams, Balanced for the default experience, and Selective when you only want stronger intent.</p>
+    <div className="fixed inset-0 z-[80] overflow-y-auto bg-[#0b1f1b]/55 px-2 py-3 backdrop-blur-sm sm:px-4 sm:py-8" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
+      <div role="dialog" aria-modal="true" aria-labelledby="prompt-settings-title" className="mx-auto w-full max-w-5xl rounded-[1.75rem] bg-[#fbfaf6] p-4 shadow-2xl shadow-black/25 sm:rounded-[2.25rem] sm:p-6">
+        <div className="border-b border-[#dfe8e2] pb-4 sm:pb-5">
+          <div className="flex items-center justify-between gap-3">
+            <div className="inline-flex items-center gap-2 rounded-full bg-[#e9f5ef] px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.16em] text-[#0f705e] sm:text-xs sm:tracking-[0.18em]"><SlidersHorizontal size={14} /> Prompt intensity</div>
+            <button type="button" onClick={onClose} aria-label="Close prompt settings" className="inline-flex h-11 w-11 shrink-0 items-center justify-center gap-2 rounded-2xl border border-[#d7ded9] bg-white text-sm font-bold text-[#304942] transition hover:bg-[#f6f1e8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0f705e] sm:w-auto sm:px-4 sm:py-2.5"><X size={17} /> <span className="hidden sm:inline">Close</span></button>
           </div>
-          <button type="button" onClick={onClose} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-[#d7ded9] bg-white px-4 text-sm font-bold text-[#304942] transition hover:bg-[#f6f1e8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0f705e]"><X size={17} /> Close</button>
+          <div className="mt-4 max-w-3xl">
+            <h2 id="prompt-settings-title" className="text-2xl font-semibold leading-[1.02] tracking-[-0.06em] text-[#17211f] sm:text-3xl md:text-4xl">Set the right level of follow-up.</h2>
+            <p className="mt-3 text-sm font-semibold leading-6 text-[#66746f] sm:text-base sm:leading-7">These rules control when the progressive lead prompt appears while shoppers browse. Use Growth for lead-hungry teams, Balanced for the default experience, and Selective when you only want stronger intent.</p>
+          </div>
         </div>
 
-        <div className="mt-5 grid gap-3 md:grid-cols-3">
-          {(['growth', 'balanced', 'selective'] as PromptMode[]).map((mode) => (
-            <div key={mode} className="rounded-[1.5rem] border border-[#dfe8e2] bg-white p-4 shadow-sm">
-              <p className="text-xs font-black uppercase tracking-[0.18em] text-[#0f705e]">{promptModeTitle(mode)}</p>
-              <h3 className="mt-2 text-xl font-semibold tracking-[-0.05em] text-[#17211f]">{promptModeHeadline(mode)}</h3>
-              <p className="mt-2 text-sm font-semibold leading-6 text-[#66746f]">{promptModeDescription(mode)}</p>
-              <div className="mt-3 grid gap-1 text-xs font-black uppercase tracking-[0.12em] text-[#53645f]">
-                <span>{defaultPromptThreshold(mode)} listing views</span>
-                <span>{promptModeDefaults(mode).searchFilters} filter changes</span>
-                <span>{defaultPromptSnooze(mode)}h dismissal snooze</span>
+        <button type="button" onClick={() => setModeGuideOpen((value) => !value)} aria-expanded={modeGuideOpen} className="mt-4 flex w-full items-center justify-between gap-4 rounded-[1.35rem] border border-[#dfe8e2] bg-white px-4 py-3 text-left shadow-sm transition hover:bg-[#f8f4ed] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0f705e]">
+          <span>
+            <span className="block text-sm font-black uppercase tracking-[0.16em] text-[#0f705e]">Mode guide</span>
+            <span className="mt-1 block text-sm font-semibold leading-5 text-[#66746f]">Compare Growth, Balanced, and Selective defaults.</span>
+          </span>
+          <ChevronRight className={`shrink-0 text-[#0f705e] transition-transform ${modeGuideOpen ? 'rotate-90' : ''}`} size={20} />
+        </button>
+
+        {modeGuideOpen && (
+          <div className="mt-3 grid gap-3 md:grid-cols-3">
+            {(['growth', 'balanced', 'selective'] as PromptMode[]).map((mode) => (
+              <div key={mode} className="rounded-[1.35rem] border border-[#dfe8e2] bg-white p-4 shadow-sm">
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-[#0f705e]">{promptModeTitle(mode)}</p>
+                <h3 className="mt-2 text-lg font-semibold tracking-[-0.05em] text-[#17211f] sm:text-xl">{promptModeHeadline(mode)}</h3>
+                <p className="mt-2 text-sm font-semibold leading-6 text-[#66746f]">{promptModeDescription(mode)}</p>
+                <div className="mt-3 grid gap-1 text-xs font-black uppercase tracking-[0.12em] text-[#53645f]">
+                  <span>{defaultPromptThreshold(mode)} listing views</span>
+                  <span>{promptModeDefaults(mode).searchFilters} filter changes</span>
+                  <span>{defaultPromptSnooze(mode)}h dismissal snooze</span>
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
 
-        <div className="mt-5 grid gap-4">
+        <div className="mt-4 grid gap-4">
           {brokerages.map((brokerage) => <PromptSettingsCard key={`${brokerage.id}-${JSON.stringify(brokerage.settings || {})}`} brokerage={brokerage} mutation={mutation} />)}
           {brokerages.length === 0 && <StateCard>No brokerages are available for prompt settings.</StateCard>}
         </div>
@@ -3441,40 +3431,40 @@ function PromptSettingsCard({ brokerage, mutation }: { brokerage: Brokerage; mut
   }
 
   return (
-    <form onSubmit={handleSubmit} className="rounded-[1.75rem] border border-[#dfe8e2] bg-white p-4 shadow-sm sm:rounded-[2rem] sm:p-5">
+    <form onSubmit={handleSubmit} className="rounded-[1.5rem] border border-[#dfe8e2] bg-white p-4 shadow-sm sm:rounded-[2rem] sm:p-5">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div className="max-w-2xl">
           <p className="text-xs font-black uppercase tracking-[0.2em] text-[#7b8a84]">Brokerage</p>
           <h3 className="mt-1 text-2xl font-semibold tracking-[-0.05em] text-[#17211f]">{brokerage.name}</h3>
           <p className="mt-2 text-sm font-semibold leading-6 text-[#66746f]">{promptModeSummary(mode, settings)}</p>
         </div>
-        <button disabled={mutation.isPending} className="min-h-11 rounded-2xl bg-[#0f3d35] px-5 text-sm font-bold text-white shadow-xl shadow-[#0f3d35]/15 transition hover:-translate-y-0.5 disabled:translate-y-0 disabled:opacity-55">{mutation.isPending ? 'Saving...' : 'Save settings'}</button>
+        <button disabled={mutation.isPending} className="min-h-14 w-full whitespace-nowrap rounded-[1.35rem] bg-[#0f3d35] px-7 py-3.5 text-sm font-bold text-white shadow-xl shadow-[#0f3d35]/15 transition hover:-translate-y-0.5 disabled:translate-y-0 disabled:opacity-55 sm:w-auto">{mutation.isPending ? 'Saving...' : 'Save settings'}</button>
       </div>
 
-      <div className="mt-5 grid gap-4 lg:grid-cols-[1.2fr_0.8fr_0.8fr_0.8fr]">
-        <label className="grid gap-2 text-sm font-bold text-[#304942]">
+      <div className="mt-5 grid gap-4 lg:grid-cols-4 lg:items-start">
+        <label className="grid content-start gap-2 text-sm font-bold text-[#304942]">
           <PromptSettingLabel label="Mode" help="The mode sets the default trigger level: Growth prompts sooner, Balanced waits for a few clear signals, Selective waits for stronger repeated behavior." />
-          <select name="lead_prompt_mode" defaultValue={mode} className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0f705e]">
+          <select name="lead_prompt_mode" defaultValue={mode} className="min-h-14 min-w-0 rounded-2xl border border-[#dce5df] bg-white px-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0f705e]">
             <option value="growth">Growth · sooner prompts</option>
             <option value="balanced">Balanced · default</option>
             <option value="selective">Selective · fewer prompts</option>
           </select>
         </label>
-        <label className="grid gap-2 text-sm font-bold text-[#304942]">
+        <label className="grid content-start gap-2 text-sm font-bold text-[#304942]">
           <PromptSettingLabel label="Prompts" help="Turn this off to keep tracking search intent for admins while hiding the progressive lead prompt from public shoppers." />
-          <select name="progressive_prompts_enabled" defaultValue={enabled} className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0f705e]">
+          <select name="progressive_prompts_enabled" defaultValue={enabled} className="min-h-14 min-w-0 rounded-2xl border border-[#dce5df] bg-white px-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0f705e]">
             <option value="true">Enabled</option>
             <option value="false">Disabled</option>
           </select>
         </label>
-        <label className="grid gap-2 text-sm font-bold text-[#304942]">
+        <label className="grid content-start gap-2 text-sm font-bold text-[#304942]">
           <PromptSettingLabel label="Listing views" help="How many unique property detail pages someone can open before the multiple-listing prompt is allowed. Leave blank to use the mode default." />
-          <input name="listing_views_threshold" type="number" min="1" max="20" defaultValue={listingThreshold} placeholder={`Auto · ${defaults.listingViews}`} className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0f705e]" />
+          <input name="listing_views_threshold" type="number" min="1" max="20" defaultValue={listingThreshold} placeholder={`Auto · ${defaults.listingViews}`} className="min-h-14 min-w-0 rounded-2xl border border-[#dce5df] bg-white px-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0f705e]" />
           <span className="text-xs font-semibold leading-5 text-[#7b8a84]">Auto uses {defaults.listingViews} for {promptModeTitle(mode)}.</span>
         </label>
-        <label className="grid gap-2 text-sm font-bold text-[#304942]">
+        <label className="grid content-start gap-2 text-sm font-bold text-[#304942]">
           <PromptSettingLabel label="Snooze hours" help="How long to stay quiet after a shopper dismisses a prompt. Stronger new intent can still unlock a respectful re-prompt; repeated dismissals hard-snooze." />
-          <input name="prompt_snooze_hours" type="number" min="1" max="168" defaultValue={snoozeHours} placeholder={`Auto · ${defaults.snoozeHours}`} className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0f705e]" />
+          <input name="prompt_snooze_hours" type="number" min="1" max="168" defaultValue={snoozeHours} placeholder={`Auto · ${defaults.snoozeHours}`} className="min-h-14 min-w-0 rounded-2xl border border-[#dce5df] bg-white px-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0f705e]" />
           <span className="text-xs font-semibold leading-5 text-[#7b8a84]">Auto uses {defaults.snoozeHours} hours.</span>
         </label>
       </div>
@@ -3485,11 +3475,11 @@ function PromptSettingsCard({ brokerage, mutation }: { brokerage: Brokerage; mut
 
 function PromptSettingLabel({ label, help }: { label: string; help: string }) {
   return (
-    <span className="flex items-center gap-2">
+    <span className="flex min-h-7 items-center gap-2">
       <span>{label}</span>
       <span className="group relative inline-flex">
         <button type="button" aria-label={help} className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-[#cbd8d1] bg-[#fbfaf6] text-[#0f705e] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0f705e]"><Info size={12} /></button>
-        <span className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 hidden w-64 -translate-x-1/2 rounded-2xl bg-[#17211f] p-3 text-xs font-semibold leading-5 text-white shadow-2xl group-hover:block group-focus-within:block">{help}</span>
+        <span className="pointer-events-none absolute right-0 top-full z-20 mt-2 hidden w-64 rounded-2xl bg-[#17211f] p-3 text-xs font-semibold leading-5 text-white shadow-2xl group-hover:block group-focus-within:block sm:left-1/2 sm:right-auto sm:-translate-x-1/2">{help}</span>
       </span>
     </span>
   )

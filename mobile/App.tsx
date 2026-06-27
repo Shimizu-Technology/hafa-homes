@@ -509,26 +509,6 @@ type CreateLeadPayload = {
   message: string
 }
 
-async function recoverLeadIntentSessionForSubmission(payload: CreateLeadPayload, getToken?: GetAuthToken) {
-  const refreshedToken = await resetLeadIntentSessionToken()
-  const recoveryEvent = leadSubmissionRecoveryEventName(payload.lead_type)
-  if (refreshedToken && recoveryEvent && payload.listing_id) {
-    await recordLeadIntentEvent(recoveryEvent, {
-      listing_id: payload.listing_id,
-      source: 'mobile',
-      metadata: { surface: 'lead_submission_recovery', source: payload.lead_type },
-    }, getToken)
-  }
-
-  return refreshedToken || leadIntentSessionToken()
-}
-
-function leadSubmissionRecoveryEventName(leadType: CreateLeadPayload['lead_type']) {
-  if (leadType === 'showing_request') return 'showing_form_opened'
-  if (leadType === 'price_tracker') return 'price_tracker_opened'
-  return null
-}
-
 async function createLead(payload: CreateLeadPayload, getToken?: GetAuthToken, retryAfterIntentReset = true) {
   const response = await fetch(`${API_URL}/api/v1/leads`, {
     method: 'POST',
@@ -539,13 +519,8 @@ async function createLead(payload: CreateLeadPayload, getToken?: GetAuthToken, r
   if (response.status === 409 && retryAfterIntentReset && payload.intent_session_token) {
     const conflictPayload = await response.clone().json().catch(() => null) as { reset_session?: boolean } | null
     if (conflictPayload?.reset_session) {
-      if (payload.lead_type === 'search_assist') {
-        await resetLeadIntentSessionToken()
-        throw new ApiRequestError('Your search session refreshed after sign-in. Please keep browsing or reopen the prompt so we can attach the right search context.', response.status)
-      }
-
-      const refreshedToken = await recoverLeadIntentSessionForSubmission(payload, getToken)
-      return createLead({ ...payload, intent_session_token: refreshedToken }, getToken, false)
+      await resetLeadIntentSessionToken()
+      throw new ApiRequestError('Your search session refreshed after sign-in. Please submit this request one more time so it attaches to your current session.', response.status)
     }
   }
 
