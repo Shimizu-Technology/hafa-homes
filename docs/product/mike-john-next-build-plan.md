@@ -1,6 +1,6 @@
 # Mike/John Next Build Plan
 
-_Last updated: 2026-06-20 after PR #16 agent selection/lead routing merged into `main`._
+_Last updated: 2026-06-27 after PR #18 progressive prompt follow-up planning._
 
 ## Source context
 
@@ -15,6 +15,7 @@ Related product docs:
 - `docs/product/agent-selection-lead-routing-plan.md`
 - `docs/product/brokerage-mls-attribution-routing-questions.md`
 - `docs/product/broker-branded-layer-plan.md`
+- `docs/product/buyer-search-profile-prompt-plan.md`
 - `docs/product/august-1-demo-plan.md`
 - `docs/product/platform-strategy.md`
 - `docs/research/realgeeks-competitive-analysis.md`
@@ -283,7 +284,37 @@ Track first-party activity in Rails and attach it to converted leads:
 
 V1 should create a normal `search_assist` lead when the prompt converts, show admin CRM context such as viewed listings, top villages, viewed price range, saved homes, and trigger reason, and include a staff-only search-intent dashboard for active/unconverted sessions. Signed-in shoppers can be identified for appropriate follow-up; anonymous sessions remain anonymous until they submit a lead.
 
-### 2. Domain-first broker-branded foundation
+### 2. Buyer/search profile settings and prompt personalization
+
+Recommended follow-up branch:
+
+```bash
+feature/buyer-search-profile-prompts
+```
+
+The same readiness/search fields collected by progressive prompts should become a durable signed-in search profile that users can edit on web and mobile.
+
+Build:
+
+- signed-in buyer/search profile API;
+- web `/account` search profile card;
+- mobile account/search profile screen;
+- form prefill for showing, price, and search-assist flows;
+- prompt rules that suppress the long qualification prompt when a user already has a complete profile;
+- lighter “finish/update your search profile” prompts for incomplete or changed preferences;
+- lead snapshots that preserve answers at submission time.
+
+Important prompt rule:
+
+```text
+Anonymous/no profile -> current qualification prompt.
+Signed-in incomplete profile -> finish/search profile prompt.
+Signed-in complete profile -> no long prompt; only lightweight contextual CTA or profile-update prompt when behavior changes.
+```
+
+See `docs/product/buyer-search-profile-prompt-plan.md`.
+
+### 3. Domain-first broker-branded foundation
 
 Recommended branch:
 
@@ -301,7 +332,7 @@ Build:
 - broker-owned domain story;
 - slug fallback for preview/dev only.
 
-### 3. Broker pitch/package docs
+### 4. Broker pitch/package docs
 
 Mike and John need broker-facing materials:
 
@@ -314,7 +345,7 @@ Mike and John need broker-facing materials:
 - “local platform provider, not a brokerage” positioning;
 - customization/support story.
 
-### 4. Production/demo hardening
+### 5. Production/demo hardening
 
 Before serious broker demos:
 
@@ -329,7 +360,7 @@ Before serious broker demos:
 - seed realistic demo broker/agent/listing data;
 - ensure notification sends remain gated unless intentionally enabled.
 
-### 5. MLS/FlexMLS/GAR discovery
+### 6. MLS/FlexMLS/GAR discovery
 
 Questions still needing real answers:
 
@@ -339,7 +370,7 @@ Questions still needing real answers:
 - Can a broker-branded app show all Guam MLS listings?
 - Are there lead routing restrictions for other brokerages' listings?
 
-### 6. Property-management preview
+### 7. Property-management preview
 
 Later premium-tier demo, not next:
 
@@ -350,7 +381,7 @@ Later premium-tier demo, not next:
 - document placeholder;
 - future online payments note.
 
-### 7. Property/data intelligence research
+### 8. Property/data intelligence research
 
 Longer-term possible product line inspired by Ryan/title-data discussion:
 
@@ -367,10 +398,11 @@ This depends heavily on data access and should not block the brokerage website/a
 ```text
 1. Qualified lead capture
 2. Progressive prompts + first-party intent tracking
-3. Production/demo hardening for current merged platform
-4. Broker pitch/package docs
-5. Domain-first broker-branded foundation
-6. MLS/FlexMLS integration path once authorized
-7. Property-management preview
-8. Property/data intelligence research
+3. Buyer/search profile settings + prompt personalization
+4. Production/demo hardening for current merged platform
+5. Broker pitch/package docs
+6. Domain-first broker-branded foundation
+7. MLS/FlexMLS integration path once authorized
+8. Property-management preview
+9. Property/data intelligence research
 ```

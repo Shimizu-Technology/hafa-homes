@@ -50,6 +50,7 @@ const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
 const FALLBACK_LISTING_IMAGE = 'https://images.unsplash.com/photo-1600047509807-ba8f99d2cdde?auto=format&fit=crop&w=1400&q=80'
 const LEAD_INTENT_SESSION_TOKEN_KEY = 'hafaHomes:leadIntentSessionToken'
+const LEAD_INTENT_CONTEXT_REQUIRED_KEY = 'hafaHomes:leadIntentContextRequired'
 
 class ApiFetchError extends Error {
   status: number
@@ -105,6 +106,24 @@ function resetLeadIntentSessionToken() {
   return leadIntentSessionToken()
 }
 
+function markLeadIntentCurrentContextRequired() {
+  if (typeof window === 'undefined') return
+
+  window.localStorage.setItem(LEAD_INTENT_CONTEXT_REQUIRED_KEY, 'true')
+}
+
+function clearLeadIntentCurrentContextRequired() {
+  if (typeof window === 'undefined') return
+
+  window.localStorage.removeItem(LEAD_INTENT_CONTEXT_REQUIRED_KEY)
+}
+
+function leadIntentCurrentContextRequired() {
+  if (typeof window === 'undefined') return false
+
+  return window.localStorage.getItem(LEAD_INTENT_CONTEXT_REQUIRED_KEY) === 'true'
+}
+
 function leadIntentClientEventId(eventName: string) {
   return `${eventName}:${Date.now()}:${Math.random().toString(36).slice(2)}`
 }
@@ -142,6 +161,7 @@ async function recordLeadIntentEvent(eventName: string, payload: { listing_id?: 
     }
     if (!response.ok) return null
 
+    clearLeadIntentCurrentContextRequired()
     const result = await response.json() as LeadIntentEventResponse
     if (result.prompt?.eligible && typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('hafaHomes:leadIntentPrompt', { detail: { prompt: result.prompt, sessionToken } }))
@@ -937,6 +957,10 @@ async function submitLead(payload: LeadPayload, retryAfterIntentReset: boolean):
     throw new ApiFetchError('Your search session refreshed. Please keep browsing or reopen the prompt so we can attach the right search context.', 409)
   }
 
+  if (!payload.intent_session_token && leadIntentCurrentContextRequired()) {
+    throw new ApiFetchError('Your search session refreshed after sign-in. Please reopen this form or view this home again before submitting.', 409)
+  }
+
   const response = await fetch(`${API_URL}/api/v1/leads`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
@@ -947,11 +971,13 @@ async function submitLead(payload: LeadPayload, retryAfterIntentReset: boolean):
     const conflictPayload = await response.clone().json().catch(() => null) as { reset_session?: boolean } | null
     if (conflictPayload?.reset_session) {
       clearLeadIntentSessionToken()
-      throw new ApiFetchError('Your search session refreshed after sign-in. Please submit this request one more time.', response.status)
+      markLeadIntentCurrentContextRequired()
+      throw new ApiFetchError('Your search session refreshed after sign-in. Please reopen this form or view this home again before submitting.', response.status)
     }
   }
 
   if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to submit lead'), response.status)
+  clearLeadIntentCurrentContextRequired()
   return response.json()
 }
 

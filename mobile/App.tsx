@@ -213,6 +213,7 @@ const LEGACY_SAVED_LISTING_IDS_KEY = 'hafaHomes:savedListingIds'
 const LEGACY_SAVED_LISTINGS_KEY = 'hafaHomes:savedListings'
 const SELECTED_AGENT_ID_KEY = 'hafaHomes:selectedAgentId'
 const LEAD_INTENT_SESSION_TOKEN_KEY = 'hafaHomes:leadIntentSessionToken'
+const LEAD_INTENT_CONTEXT_REQUIRED_KEY = 'hafaHomes:leadIntentContextRequired'
 const OAUTH_CALLBACK_PATH = 'oauth-native-callback'
 const AUTH_FLOW_TIMEOUT_MS = 25_000
 
@@ -406,6 +407,18 @@ async function resetLeadIntentSessionToken() {
   return leadIntentSessionToken()
 }
 
+async function markLeadIntentCurrentContextRequired() {
+  await AsyncStorage.setItem(LEAD_INTENT_CONTEXT_REQUIRED_KEY, 'true')
+}
+
+async function clearLeadIntentCurrentContextRequired() {
+  await AsyncStorage.removeItem(LEAD_INTENT_CONTEXT_REQUIRED_KEY)
+}
+
+async function leadIntentCurrentContextRequired() {
+  return (await AsyncStorage.getItem(LEAD_INTENT_CONTEXT_REQUIRED_KEY)) === 'true'
+}
+
 function leadIntentClientEventId(eventName: string) {
   return `${eventName}:${Date.now()}:${Math.random().toString(36).slice(2)}`
 }
@@ -441,6 +454,7 @@ async function recordLeadIntentEvent(eventName: string, payload: { listing_id?: 
     }
     if (!response.ok) return null
 
+    await clearLeadIntentCurrentContextRequired()
     return response.json() as Promise<{ prompt: LeadIntentPrompt; lead_intent_session: LeadIntentSummary }>
   } catch (intentError) {
     console.warn('Unable to record Hafa Homes lead intent', intentError)
@@ -523,6 +537,10 @@ async function createLead(payload: CreateLeadPayload, getToken?: GetAuthToken, r
     throw new ApiRequestError('Your search session refreshed. Please keep browsing or reopen the prompt so we can attach the right search context.', 409)
   }
 
+  if (!payload.intent_session_token && await leadIntentCurrentContextRequired()) {
+    throw new ApiRequestError('Your search session refreshed after sign-in. Please reopen this form or view this home again before submitting.', 409)
+  }
+
   const response = await fetch(`${API_URL}/api/v1/leads`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(await authHeaders(getToken)) },
@@ -533,11 +551,13 @@ async function createLead(payload: CreateLeadPayload, getToken?: GetAuthToken, r
     const conflictPayload = await response.clone().json().catch(() => null) as { reset_session?: boolean } | null
     if (conflictPayload?.reset_session) {
       await clearLeadIntentSessionToken()
-      throw new ApiRequestError('Your search session refreshed after sign-in. Please submit this request one more time.', response.status)
+      await markLeadIntentCurrentContextRequired()
+      throw new ApiRequestError('Your search session refreshed after sign-in. Please reopen this form or view this home again before submitting.', response.status)
     }
   }
 
   if (!response.ok) throw new ApiRequestError(await apiErrorMessage(response, 'Unable to send request'), response.status)
+  await clearLeadIntentCurrentContextRequired()
   return response.json()
 }
 

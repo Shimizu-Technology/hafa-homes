@@ -1,6 +1,6 @@
 # Roadmap
 
-_Last updated: 2026-06-25 after PR #17 qualified lead capture merged and progressive lead prompts started._
+_Last updated: 2026-06-27 after PR #18 progressive prompt follow-up planning._
 
 ## Current product direction
 
@@ -204,7 +204,35 @@ Recommended scope:
 - admin CRM intent snapshot showing viewed listings, saved homes, top villages, price range, and trigger context;
 - staff-only search intent dashboard for active/unconverted sessions with signed-in identity when available and anonymous sessions kept anonymous.
 
-### Phase 10 — Domain-first broker-branded website/app foundation
+### Phase 10 — Buyer/search profile settings and prompt personalization
+
+Recommended branch:
+
+```bash
+feature/buyer-search-profile-prompts
+```
+
+Goal:
+
+> Let signed-in shoppers manage the same search/readiness details that prompts collect, then use that profile to prefill forms and avoid repeating the long qualification prompt.
+
+Recommended scope:
+
+- signed-in `BuyerSearchProfile` API;
+- web `/account` search profile card;
+- mobile account/search profile screen;
+- prefill showing, price, and search-assist forms from saved profile;
+- prompt behavior split:
+  - anonymous/no profile -> current qualification prompt;
+  - signed-in incomplete profile -> finish profile prompt;
+  - signed-in complete profile -> suppress long prompt;
+  - behavior divergence -> lightweight update-profile prompt;
+- lead snapshots so CRM history reflects answers at submission time;
+- privacy guardrail: anonymous intent sessions never transfer into signed-in profiles.
+
+See `docs/product/buyer-search-profile-prompt-plan.md`.
+
+### Phase 11 — Domain-first broker-branded website/app foundation
 
 Recommended branch:
 
@@ -232,7 +260,7 @@ Recommended scope:
 
 See `docs/product/broker-branded-layer-plan.md`.
 
-### Phase 11 — Lead quality / CRM automation
+### Phase 12 — Lead quality / CRM automation
 
 Goal: improve broker confidence in lead quality and follow-up accountability.
 
@@ -246,7 +274,7 @@ Potential scope:
 - CSV export
 - agent follow-up reporting
 
-### Phase 12 — Property management preview
+### Phase 13 — Property management preview
 
 Goal: demo premium-tier rental/property-management value for Guam brokerages/property managers.
 
@@ -259,7 +287,7 @@ Potential scope:
 - maintenance request preview
 - owner/tenant portal concept
 
-### Phase 13 — Production deployment and demo hardening
+### Phase 14 — Production deployment and demo hardening
 
 Goal: make the latest platform safe and smooth to demo from production URLs/devices.
 
@@ -274,7 +302,7 @@ Potential scope:
 - notification gates/config verification
 - App Store/TestFlight notes update
 
-### Phase 14 — MLS/Flexmls integration path
+### Phase 15 — MLS/Flexmls integration path
 
 Start only after authorization/compliance is clear.
 
