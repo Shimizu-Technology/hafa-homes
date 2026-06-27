@@ -77,10 +77,16 @@ function displayErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback
 }
 
+function currentLeadIntentSessionToken() {
+  if (typeof window === 'undefined') return ''
+
+  return window.localStorage.getItem(LEAD_INTENT_SESSION_TOKEN_KEY) || ''
+}
+
 function leadIntentSessionToken() {
   if (typeof window === 'undefined') return ''
 
-  const existing = window.localStorage.getItem(LEAD_INTENT_SESSION_TOKEN_KEY)
+  const existing = currentLeadIntentSessionToken()
   if (existing) return existing
 
   const token = window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`
@@ -88,10 +94,14 @@ function leadIntentSessionToken() {
   return token
 }
 
-function resetLeadIntentSessionToken() {
-  if (typeof window === 'undefined') return ''
+function clearLeadIntentSessionToken() {
+  if (typeof window === 'undefined') return
 
   window.localStorage.removeItem(LEAD_INTENT_SESSION_TOKEN_KEY)
+}
+
+function resetLeadIntentSessionToken() {
+  clearLeadIntentSessionToken()
   return leadIntentSessionToken()
 }
 
@@ -144,7 +154,7 @@ async function recordLeadIntentEvent(eventName: string, payload: { listing_id?: 
 }
 
 async function dismissLeadIntentPrompt(promptKey?: string, reason = 'dismissed') {
-  const sessionToken = leadIntentSessionToken()
+  const sessionToken = currentLeadIntentSessionToken()
   if (!sessionToken) return
 
   try {
@@ -153,7 +163,7 @@ async function dismissLeadIntentPrompt(promptKey?: string, reason = 'dismissed')
       headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
       body: JSON.stringify({ lead_intent: { session_token: sessionToken, prompt_key: promptKey, reason } }),
     })
-    if (response.status === 409) resetLeadIntentSessionToken()
+    if (response.status === 409) clearLeadIntentSessionToken()
   } catch (intentError) {
     console.warn('Unable to dismiss Hafa Homes lead intent prompt', intentError)
   }
@@ -923,6 +933,10 @@ async function createLead(payload: LeadPayload): Promise<{ lead: Lead }> {
 }
 
 async function submitLead(payload: LeadPayload, retryAfterIntentReset: boolean): Promise<{ lead: Lead }> {
+  if (payload.lead_type === 'search_assist' && !payload.intent_session_token) {
+    throw new ApiFetchError('Your search session refreshed. Please keep browsing or reopen the prompt so we can attach the right search context.', 409)
+  }
+
   const response = await fetch(`${API_URL}/api/v1/leads`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
@@ -932,8 +946,8 @@ async function submitLead(payload: LeadPayload, retryAfterIntentReset: boolean):
   if (response.status === 409 && retryAfterIntentReset && payload.intent_session_token) {
     const conflictPayload = await response.clone().json().catch(() => null) as { reset_session?: boolean } | null
     if (conflictPayload?.reset_session) {
-      resetLeadIntentSessionToken()
-      throw new ApiFetchError('Your search session refreshed after sign-in. Please submit this request one more time so it attaches to your current session.', response.status)
+      clearLeadIntentSessionToken()
+      throw new ApiFetchError('Your search session refreshed after sign-in. Please submit this request one more time.', response.status)
     }
   }
 
@@ -1258,7 +1272,7 @@ function ProgressiveLeadPrompt() {
       desired_baths: String(form.get('desired_baths') || ''),
       buyer_status: String(form.get('buyer_status') || ''),
       already_working_with_agent: String(form.get('already_working_with_agent') || ''),
-      intent_session_token: leadIntentSessionToken(),
+      intent_session_token: currentLeadIntentSessionToken(),
       message: `Progressive search assist prompt: ${activePrompt.trigger || 'search_intent'}`,
     }, {
       onSuccess: () => {
@@ -5441,7 +5455,7 @@ function PriceTrackerModal({ listing, open, onClose }: { listing: Listing; open:
         budget_max: String(form.get('budget_max') || ''),
         buyer_status: String(form.get('buyer_status') || ''),
         already_working_with_agent: String(form.get('already_working_with_agent') || ''),
-        intent_session_token: leadIntentSessionToken(),
+        intent_session_token: currentLeadIntentSessionToken() || undefined,
         message: `Target price: ${String(form.get('target_price') || '')}`,
       })
     } catch {
@@ -5564,7 +5578,7 @@ function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean
       buyer_status: String(form.get('buyer_status') || ''),
       already_working_with_agent: String(form.get('already_working_with_agent') || ''),
       qualification_notes: String(form.get('qualification_notes') || ''),
-      intent_session_token: leadIntentSessionToken(),
+      intent_session_token: currentLeadIntentSessionToken() || undefined,
     })
   }
 

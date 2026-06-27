@@ -384,8 +384,12 @@ async function authHeaders(getToken?: GetAuthToken): Promise<Record<string, stri
   }
 }
 
+async function currentLeadIntentSessionToken() {
+  return (await AsyncStorage.getItem(LEAD_INTENT_SESSION_TOKEN_KEY)) || ''
+}
+
 async function leadIntentSessionToken() {
-  const existing = await AsyncStorage.getItem(LEAD_INTENT_SESSION_TOKEN_KEY)
+  const existing = await currentLeadIntentSessionToken()
   if (existing) return existing
 
   const randomSource = typeof globalThis.crypto?.randomUUID === 'function' ? globalThis.crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`
@@ -393,8 +397,12 @@ async function leadIntentSessionToken() {
   return randomSource
 }
 
-async function resetLeadIntentSessionToken() {
+async function clearLeadIntentSessionToken() {
   await AsyncStorage.removeItem(LEAD_INTENT_SESSION_TOKEN_KEY)
+}
+
+async function resetLeadIntentSessionToken() {
+  await clearLeadIntentSessionToken()
   return leadIntentSessionToken()
 }
 
@@ -442,13 +450,14 @@ async function recordLeadIntentEvent(eventName: string, payload: { listing_id?: 
 
 async function dismissLeadIntentPrompt(promptKey?: string, reason = 'dismissed', getToken?: GetAuthToken) {
   try {
-    const sessionToken = await leadIntentSessionToken()
+    const sessionToken = await currentLeadIntentSessionToken()
+    if (!sessionToken) return
     const response = await fetch(`${API_URL}/api/v1/lead_intent/dismiss`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(await authHeaders(getToken)) },
       body: JSON.stringify({ lead_intent: { session_token: sessionToken, prompt_key: promptKey, reason } }),
     })
-    if (response.status === 409) await resetLeadIntentSessionToken()
+    if (response.status === 409) await clearLeadIntentSessionToken()
   } catch (intentError) {
     console.warn('Unable to dismiss Hafa Homes lead intent prompt', intentError)
   }
@@ -510,6 +519,10 @@ type CreateLeadPayload = {
 }
 
 async function createLead(payload: CreateLeadPayload, getToken?: GetAuthToken, retryAfterIntentReset = true) {
+  if (payload.lead_type === 'search_assist' && !payload.intent_session_token) {
+    throw new ApiRequestError('Your search session refreshed. Please keep browsing or reopen the prompt so we can attach the right search context.', 409)
+  }
+
   const response = await fetch(`${API_URL}/api/v1/leads`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(await authHeaders(getToken)) },
@@ -519,8 +532,8 @@ async function createLead(payload: CreateLeadPayload, getToken?: GetAuthToken, r
   if (response.status === 409 && retryAfterIntentReset && payload.intent_session_token) {
     const conflictPayload = await response.clone().json().catch(() => null) as { reset_session?: boolean } | null
     if (conflictPayload?.reset_session) {
-      await resetLeadIntentSessionToken()
-      throw new ApiRequestError('Your search session refreshed after sign-in. Please submit this request one more time so it attaches to your current session.', response.status)
+      await clearLeadIntentSessionToken()
+      throw new ApiRequestError('Your search session refreshed after sign-in. Please submit this request one more time.', response.status)
     }
   }
 
@@ -1150,7 +1163,7 @@ function ProgressiveLeadPromptSheet({ prompt, auth, selectedAgent, onDismiss, on
     setSubmitting(true)
     setError(null)
     try {
-      const token = await leadIntentSessionToken()
+      const token = await currentLeadIntentSessionToken()
       await createLead({
         listing_id: prompt?.suggested?.listing_id,
         lead_type: 'search_assist',
@@ -2613,7 +2626,7 @@ function ShowingRequestSheet({ listing, auth, requestedAgent, open, onOpenAuth, 
     setSubmitting(true)
     setError(null)
     try {
-      const token = await leadIntentSessionToken()
+      const token = await currentLeadIntentSessionToken()
       await createLead({
         listing_id: listing.id,
         lead_type: 'showing_request',
@@ -2636,7 +2649,7 @@ function ShowingRequestSheet({ listing, auth, requestedAgent, open, onOpenAuth, 
         buyer_status: buyerStatus,
         already_working_with_agent: alreadyWorkingWithAgent,
         qualification_notes: qualificationNotes.trim(),
-        intent_session_token: token,
+        intent_session_token: token || undefined,
         message: `${message.trim()}\n\nListing: ${listing.title} — ${listing.address}, ${listing.village.name}`,
       }, auth.isSignedIn ? auth.getToken : undefined)
       setSubmitted(true)
@@ -2798,7 +2811,7 @@ function PriceAlertSheet({ listing, auth, requestedAgent, open, onClose }: { lis
     setSubmitting(true)
     setError(null)
     try {
-      const token = await leadIntentSessionToken()
+      const token = await currentLeadIntentSessionToken()
       await createLead({
         listing_id: listing.id,
         lead_type: 'price_tracker',
@@ -2816,7 +2829,7 @@ function PriceAlertSheet({ listing, auth, requestedAgent, open, onClose }: { lis
         budget_max: budgetMax.trim(),
         buyer_status: buyerStatus,
         already_working_with_agent: alreadyWorkingWithAgent,
-        intent_session_token: token,
+        intent_session_token: token || undefined,
         message: `Target price: ${targetPrice.trim()}\n\nListing: ${listing.title} — ${listing.address}, ${listing.village.name}`,
       }, auth.isSignedIn ? auth.getToken : undefined)
       setSubmitted(true)
