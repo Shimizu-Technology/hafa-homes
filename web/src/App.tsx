@@ -437,6 +437,8 @@ type AdminLeadIntentSessionsResponse = {
   lead_intent_sessions: AdminLeadIntentSession[]
   metrics: { active_sessions: number; signed_in_sessions: number; high_intent_sessions: number; converted_sessions: number }
   top_villages: Array<{ name: string; count: number }>
+  top_listings: Array<{ id: number; title: string; village?: string; price?: number; listing_kind?: 'sale' | 'rent'; primary_photo_url?: string; view_count: number }>
+  pagination: PaginationMeta
 }
 
 type Lead = {
@@ -726,8 +728,8 @@ async function fetchAdminDashboard(): Promise<AdminDashboardResponse> {
   return response.json()
 }
 
-async function fetchAdminLeadIntentSessions(params: { status?: string; identity?: string } = {}): Promise<AdminLeadIntentSessionsResponse> {
-  const query = buildQuery({ status: params.status, identity: params.identity })
+async function fetchAdminLeadIntentSessions(params: { status?: string; identity?: string; q?: string; sort?: string; page?: string; per_page?: string } = {}): Promise<AdminLeadIntentSessionsResponse> {
+  const query = buildQuery({ status: params.status, identity: params.identity, q: params.q, sort: params.sort, page: params.page, per_page: params.per_page })
   const response = await fetch(`${API_URL}/api/v1/admin/lead_intent_sessions${query ? `?${query}` : ''}`, { headers: await authHeaders() })
   if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to load search intent'), response.status)
   return response.json()
@@ -897,12 +899,24 @@ async function saveSearch(payload: { name: string; email: string; alert_frequenc
   return response.json()
 }
 
-async function createLead(payload: LeadPayload) {
+async function createLead(payload: LeadPayload): Promise<{ lead: Lead }> {
+  return submitLead(payload, true)
+}
+
+async function submitLead(payload: LeadPayload, retryAfterIntentReset: boolean): Promise<{ lead: Lead }> {
   const response = await fetch(`${API_URL}/api/v1/leads`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
     body: JSON.stringify({ lead: payload }),
   })
+
+  if (response.status === 409 && retryAfterIntentReset && payload.intent_session_token) {
+    const conflictPayload = await response.clone().json().catch(() => null) as { reset_session?: boolean } | null
+    if (conflictPayload?.reset_session) {
+      return submitLead({ ...payload, intent_session_token: resetLeadIntentSessionToken() }, false)
+    }
+  }
+
   if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to submit lead'), response.status)
   return response.json()
 }
@@ -3170,12 +3184,22 @@ function AdminPanel({ title, children }: { title: string; children: React.ReactN
 function AdminIntentPage() {
   const [statusFilter, setStatusFilter] = useState('')
   const [identityFilter, setIdentityFilter] = useState('')
+  const [sortBy, setSortBy] = useState('last_seen')
+  const [searchInput, setSearchInput] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [page, setPage] = useState(1)
+
+  useEffect(() => {
+    setPage(1)
+  }, [statusFilter, identityFilter, sortBy, searchQuery])
+
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['admin-lead-intent-sessions', statusFilter, identityFilter],
-    queryFn: () => fetchAdminLeadIntentSessions({ status: statusFilter || undefined, identity: identityFilter || undefined }),
+    queryKey: ['admin-lead-intent-sessions', statusFilter, identityFilter, sortBy, searchQuery, page],
+    queryFn: () => fetchAdminLeadIntentSessions({ status: statusFilter || undefined, identity: identityFilter || undefined, sort: sortBy || undefined, q: searchQuery || undefined, page: String(page), per_page: '10' }),
   })
   const sessions = data?.lead_intent_sessions ?? []
   const metrics = data?.metrics
+  const pagination = data?.pagination
 
   return (
     <AdminShell kicker="Search intent" title="Live buyer intent" description="First-party browsing signals from Hafa Homes search, saves, form opens, and progressive prompts. Signed-in shoppers are identified; anonymous visitors stay anonymous until they submit a lead.">
@@ -3196,19 +3220,32 @@ function AdminIntentPage() {
                 <h2 className="text-2xl font-semibold tracking-[-0.05em]">Recent search sessions</h2>
                 <p className="mt-2 text-sm font-semibold leading-6 text-[#66746f]">Use this as a coaching surface: saves, repeated village interest, and abandoned forms are the strongest outreach signals.</p>
               </div>
-              <div className="flex flex-wrap gap-2">
-                <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="min-h-11 rounded-2xl border border-[#dce5df] bg-white px-3 text-sm font-bold text-[#304942]">
-                  <option value="">All statuses</option>
-                  <option value="active">Active</option>
-                  <option value="snoozed">Snoozed</option>
-                  <option value="converted">Converted</option>
-                </select>
-                <select value={identityFilter} onChange={(event) => setIdentityFilter(event.target.value)} className="min-h-11 rounded-2xl border border-[#dce5df] bg-white px-3 text-sm font-bold text-[#304942]">
-                  <option value="">All visitors</option>
-                  <option value="signed_in">Signed in</option>
-                  <option value="anonymous">Anonymous</option>
-                </select>
-              </div>
+              <form onSubmit={(event) => { event.preventDefault(); setSearchQuery(searchInput.trim()) }} className="grid w-full gap-2 lg:max-w-3xl">
+                <div className="flex flex-wrap gap-2">
+                  <input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Search user, email, village, listing, or behavior" className="min-h-11 min-w-[240px] flex-1 rounded-2xl border border-[#dce5df] bg-white px-3 text-sm font-bold text-[#304942]" />
+                  <button className="min-h-11 rounded-2xl bg-[#0f3d35] px-4 text-sm font-bold text-white">Search</button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="min-h-11 rounded-2xl border border-[#dce5df] bg-white px-3 text-sm font-bold text-[#304942]">
+                    <option value="">All statuses</option>
+                    <option value="active">Active</option>
+                    <option value="snoozed">Snoozed</option>
+                    <option value="converted">Converted</option>
+                  </select>
+                  <select value={identityFilter} onChange={(event) => setIdentityFilter(event.target.value)} className="min-h-11 rounded-2xl border border-[#dce5df] bg-white px-3 text-sm font-bold text-[#304942]">
+                    <option value="">All visitors</option>
+                    <option value="signed_in">Signed in</option>
+                    <option value="anonymous">Anonymous</option>
+                  </select>
+                  <select value={sortBy} onChange={(event) => setSortBy(event.target.value)} className="min-h-11 rounded-2xl border border-[#dce5df] bg-white px-3 text-sm font-bold text-[#304942]">
+                    <option value="last_seen">Last seen newest</option>
+                    <option value="oldest">Last seen oldest</option>
+                    <option value="views_desc">Most listings viewed</option>
+                    <option value="saved_desc">Most saved homes</option>
+                    <option value="forms_desc">Most abandoned forms</option>
+                  </select>
+                </div>
+              </form>
             </div>
 
             <div className="mt-5 grid gap-4">
@@ -3216,6 +3253,9 @@ function AdminIntentPage() {
               {isError && <StateCard tone="error">Unable to load search intent.</StateCard>}
               {sessions.map((session) => <AdminIntentSessionCard key={session.id} session={session} />)}
               {!isLoading && sessions.length === 0 && <StateCard>No search intent sessions match these filters yet.</StateCard>}
+              {pagination && pagination.total_pages > 1 && (
+                <PaginationControls pagination={pagination} onPageChange={setPage} />
+              )}
             </div>
           </div>
 
@@ -3231,6 +3271,20 @@ function AdminIntentPage() {
                   </div>
                 ))}
                 {data?.top_villages?.length === 0 && <p className="text-sm font-semibold leading-6 text-white/68">Village patterns will appear after shoppers view listing detail pages.</p>}
+              </div>
+            </div>
+            <div className="rounded-[1.75rem] bg-white p-5 shadow-sm sm:rounded-[2rem]">
+              <Home className="text-[#0f705e]" />
+              <p className="mt-5 text-xs font-bold uppercase tracking-[0.2em] text-[#7b8a84]">Top viewed homes</p>
+              <div className="mt-4 grid gap-3">
+                {(data?.top_listings ?? []).map((listing) => (
+                  <Link key={listing.id} to={`/listings/${listing.id}?from=admin`} className="grid gap-1 rounded-2xl bg-[#fbfaf6] p-3 transition hover:bg-[#f6f1e8]">
+                    <span className="text-sm font-black text-[#17211f]">{listing.title}</span>
+                    <span className="text-xs font-bold text-[#66746f]">{listing.village || 'Guam'} · {listing.price ? currency(listing.price, listing.listing_kind || 'sale') : 'Price not shown'}</span>
+                    <span className="text-[10px] font-black uppercase tracking-[0.14em] text-[#0f705e]">{listing.view_count} views</span>
+                  </Link>
+                ))}
+                {data?.top_listings?.length === 0 && <p className="text-sm font-semibold leading-6 text-[#66746f]">Listing-level view counts will appear after shoppers open property detail pages.</p>}
               </div>
             </div>
             <div className="rounded-[1.75rem] border border-[#dfe8e2] bg-white p-5 shadow-sm sm:rounded-[2rem]">
@@ -3310,6 +3364,18 @@ function AdminIntentSessionCard({ session }: { session: AdminLeadIntentSession }
 
 function IntentStat({ label, value }: { label: string; value: string }) {
   return <div className="rounded-2xl bg-white px-3 py-2"><p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#7b8a84]">{label}</p><p className="mt-1 text-sm font-bold text-[#17211f]">{value}</p></div>
+}
+
+function PaginationControls({ pagination, onPageChange }: { pagination: PaginationMeta; onPageChange: (page: number) => void }) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-[#fbfaf6] p-3">
+      <p className="text-xs font-bold uppercase tracking-[0.14em] text-[#7b8a84]">Page {pagination.page} of {pagination.total_pages} · {pagination.total_count} total</p>
+      <div className="flex gap-2">
+        <button disabled={pagination.page <= 1} onClick={() => onPageChange(pagination.page - 1)} className="min-h-10 rounded-full border border-[#dce5df] bg-white px-4 text-sm font-bold text-[#304942] disabled:cursor-not-allowed disabled:opacity-45">Previous</button>
+        <button disabled={pagination.page >= pagination.total_pages} onClick={() => onPageChange(pagination.page + 1)} className="min-h-10 rounded-full bg-[#0f3d35] px-4 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-45">Next</button>
+      </div>
+    </div>
+  )
 }
 
 function IntentEventRow({ event }: { event: AdminLeadIntentEvent }) {

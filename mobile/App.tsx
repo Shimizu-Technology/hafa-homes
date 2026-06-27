@@ -480,7 +480,7 @@ async function removeSavedListingForUser(listingId: number, getToken: GetAuthTok
   return response.json()
 }
 
-async function createLead(payload: {
+type CreateLeadPayload = {
   listing_id?: number
   lead_type: 'showing_request' | 'price_tracker' | 'search_assist'
   name: string
@@ -507,12 +507,21 @@ async function createLead(payload: {
   qualification_notes?: string
   intent_session_token?: string
   message: string
-}, getToken?: GetAuthToken) {
+}
+
+async function createLead(payload: CreateLeadPayload, getToken?: GetAuthToken, retryAfterIntentReset = true) {
   const response = await fetch(`${API_URL}/api/v1/leads`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(await authHeaders(getToken)) },
     body: JSON.stringify({ lead: payload }),
   })
+
+  if (response.status === 409 && retryAfterIntentReset && payload.intent_session_token) {
+    const conflictPayload = await response.clone().json().catch(() => null) as { reset_session?: boolean } | null
+    if (conflictPayload?.reset_session) {
+      return createLead({ ...payload, intent_session_token: await resetLeadIntentSessionToken() }, getToken, false)
+    }
+  }
 
   if (!response.ok) throw new ApiRequestError(await apiErrorMessage(response, 'Unable to send request'), response.status)
   return response.json()

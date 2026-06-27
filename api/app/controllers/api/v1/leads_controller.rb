@@ -53,6 +53,8 @@ module Api
         else
           render json: { errors: lead.errors.full_messages }, status: :unprocessable_entity
         end
+      rescue LeadIntentSession::ScopeMismatchError => e
+        render_intent_session_scope_mismatch(e)
       end
 
       def update
@@ -293,8 +295,16 @@ module Api
         return session if session
 
         LeadIntentSession.find_or_create_for_token!(token, user: current_user, brokerage: brokerage)
-      rescue ArgumentError, LeadIntentSession::ScopeMismatchError
+      rescue ArgumentError
         nil
+      end
+
+      def render_intent_session_scope_mismatch(error)
+        render json: {
+          errors: [error.message],
+          reset_session: true,
+          prompt: { eligible: false, reason: "session_scope_mismatch" }
+        }, status: :conflict
       end
 
       def mark_intent_session_converted(lead, intent_session)
