@@ -361,7 +361,9 @@ class LeadIntentSession < ApplicationRecord
 
     profile = user.buyer_search_profile
     return finish_search_profile_context(profile) unless profile&.complete?
-    return update_search_profile_context(profile) if search_profile_diverged?(profile)
+
+    divergence = search_profile_divergence(profile)
+    return update_search_profile_context(profile, divergence) if divergence
 
     { ineligible_reason: "complete_search_profile" }
   end
@@ -376,28 +378,33 @@ class LeadIntentSession < ApplicationRecord
     }
   end
 
-  def update_search_profile_context(profile)
+  def update_search_profile_context(profile, divergence)
     {
       kind: "update_search_profile",
       profile: profile,
       title: "Update your search profile?",
-      body: search_profile_divergence_message(profile),
+      body: search_profile_divergence_message(divergence),
       cta: "Update profile"
     }
   end
 
-  def search_profile_diverged?(profile)
-    viewed_villages_outside_profile?(profile) || viewed_prices_outside_profile?(profile)
+  def search_profile_divergence(profile)
+    village_name = divergent_viewed_village_name(profile)
+    return { kind: :village, village_name: village_name } if village_name.present?
+    return { kind: :price } if viewed_prices_outside_profile?(profile)
+
+    nil
   end
 
-  def viewed_villages_outside_profile?(profile)
+  def divergent_viewed_village_name(profile)
     saved_villages = profile.desired_villages.to_s.downcase.split(/[,;]+/).map(&:squish).reject(&:blank?)
-    return false if saved_villages.empty?
+    return nil if saved_villages.empty?
 
-    summary.fetch("top_villages", []).any? do |village|
+    divergent_village = summary.fetch("top_villages", []).find do |village|
       name = village["name"].to_s.downcase.squish
       village["count"].to_i >= 2 && name.present? && saved_villages.none? { |saved| saved.include?(name) || name.include?(saved) }
     end
+    divergent_village&.fetch("name", nil)
   end
 
   def viewed_prices_outside_profile?(profile)
@@ -410,15 +417,12 @@ class LeadIntentSession < ApplicationRecord
     (budget_min && viewed_max && viewed_max < budget_min * 0.9) || (budget_max && viewed_min && viewed_min > budget_max * 1.1)
   end
 
-  def search_profile_divergence_message(profile)
-    top_village = summary.fetch("top_villages", []).first&.fetch("name", nil)
-    price_min = summary["viewed_price_min"]
-    price_max = summary["viewed_price_max"]
-    if top_village.present? && viewed_villages_outside_profile?(profile)
-      return "You have been looking around #{top_village}. Add it to your saved preferences so future requests and agent follow-up match your real search."
+  def search_profile_divergence_message(divergence)
+    if divergence[:kind] == :village && divergence[:village_name].present?
+      return "You have been looking around #{divergence[:village_name]}. Add it to your saved preferences so future requests and agent follow-up match your real search."
     end
 
-    if price_min.present? || price_max.present?
+    if divergence[:kind] == :price
       return "Your recent browsing is outside your saved budget range. Update your profile so Hafa Homes can prefill requests with the right price context."
     end
 

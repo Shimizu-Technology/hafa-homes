@@ -350,6 +350,14 @@ function profileValue(profile: SearchProfile | null | undefined, field: keyof Se
   return value === undefined || value === null ? fallback : String(value)
 }
 
+function profileBudgetValue(profile: SearchProfile | null | undefined, field: 'budget_min' | 'budget_max', fallback = '') {
+  const value = profile?.[field]
+  if (value === undefined || value === null) return fallback
+
+  const numeric = Number(value)
+  return Number.isFinite(numeric) ? String(Math.round(numeric)) : String(value)
+}
+
 function mergedPromptProfile(prompt: LeadIntentPrompt, searchProfile?: SearchProfile | null): SearchProfile {
   return { ...(searchProfile || {}), ...(prompt.suggested || {}) }
 }
@@ -1317,8 +1325,8 @@ function ProgressiveLeadPromptSheet({ prompt, auth, selectedAgent, onDismiss, on
           prefillPromptField('prequalifiedStatus', setPrequalifiedStatus, profileValue(merged, 'prequalified_status'))
           prefillPromptField('purchaseTimeline', setPurchaseTimeline, profileValue(merged, 'purchase_timeline'))
           prefillPromptField('desiredVillages', setDesiredVillages, profileValue(merged, 'desired_villages'))
-          prefillPromptField('budgetMin', setBudgetMin, profileValue(merged, 'budget_min'))
-          prefillPromptField('budgetMax', setBudgetMax, profileValue(merged, 'budget_max'))
+          prefillPromptField('budgetMin', setBudgetMin, profileBudgetValue(merged, 'budget_min'))
+          prefillPromptField('budgetMax', setBudgetMax, profileBudgetValue(merged, 'budget_max'))
           prefillPromptField('desiredBeds', setDesiredBeds, profileValue(merged, 'desired_beds'))
           prefillPromptField('desiredBaths', setDesiredBaths, profileValue(merged, 'desired_baths'))
           prefillPromptField('buyerStatus', setBuyerStatus, profileValue(merged, 'buyer_status'))
@@ -2161,8 +2169,8 @@ function AccountCard({ auth, onOpenAuth }: { auth: AppAuth; onOpenAuth: (prompt?
           setSearchPrequalifiedStatus(searchResult.search_profile.prequalified_status || '')
           setSearchLenderName(searchResult.search_profile.lender_name || '')
           setSearchPurchaseTimeline(searchResult.search_profile.purchase_timeline || '')
-          setSearchBudgetMin(profileValue(searchResult.search_profile, 'budget_min'))
-          setSearchBudgetMax(profileValue(searchResult.search_profile, 'budget_max'))
+          setSearchBudgetMin(profileBudgetValue(searchResult.search_profile, 'budget_min'))
+          setSearchBudgetMax(profileBudgetValue(searchResult.search_profile, 'budget_max'))
           setSearchDesiredVillages(searchResult.search_profile.desired_villages || '')
           setSearchDesiredBeds(profileValue(searchResult.search_profile, 'desired_beds'))
           setSearchDesiredBaths(profileValue(searchResult.search_profile, 'desired_baths'))
@@ -2980,8 +2988,8 @@ function ShowingRequestSheet({ listing, auth, requestedAgent, open, onOpenAuth, 
           prefillShowingField('prequalifiedStatus', setPrequalifiedStatus, saved.prequalified_status || '')
           prefillShowingField('purchaseTimeline', setPurchaseTimeline, saved.purchase_timeline || '')
           prefillShowingField('lenderName', setLenderName, saved.lender_name || '')
-          prefillShowingField('budgetMin', setBudgetMin, profileValue(saved, 'budget_min'))
-          prefillShowingField('budgetMax', setBudgetMax, profileValue(saved, 'budget_max', String(Math.round(listing.price))))
+          prefillShowingField('budgetMin', setBudgetMin, profileBudgetValue(saved, 'budget_min'))
+          prefillShowingField('budgetMax', setBudgetMax, profileBudgetValue(saved, 'budget_max', String(Math.round(listing.price))))
           prefillShowingField('desiredVillages', setDesiredVillages, saved.desired_villages || listing.village.name || '')
           prefillShowingField('desiredBeds', setDesiredBeds, profileValue(saved, 'desired_beds', listing.beds ? String(listing.beds) : ''))
           prefillShowingField('desiredBaths', setDesiredBaths, profileValue(saved, 'desired_baths', listing.baths ? String(listing.baths) : ''))
@@ -3210,8 +3218,8 @@ function PriceAlertSheet({ listing, auth, requestedAgent, open, onClose }: { lis
           prefillPriceField('prequalifiedStatus', setPrequalifiedStatus, saved.prequalified_status || '')
           prefillPriceField('purchaseTimeline', setPurchaseTimeline, saved.purchase_timeline || '')
           prefillPriceField('lenderName', setLenderName, saved.lender_name || '')
-          prefillPriceField('budgetMin', setBudgetMin, profileValue(saved, 'budget_min'))
-          prefillPriceField('budgetMax', setBudgetMax, profileValue(saved, 'budget_max'))
+          prefillPriceField('budgetMin', setBudgetMin, profileBudgetValue(saved, 'budget_min'))
+          prefillPriceField('budgetMax', setBudgetMax, profileBudgetValue(saved, 'budget_max'))
           prefillPriceField('buyerStatus', setBuyerStatus, saved.buyer_status || '')
           prefillPriceField('alreadyWorkingWithAgent', setAlreadyWorkingWithAgent, saved.already_working_with_agent || '')
         }
