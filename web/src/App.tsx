@@ -408,6 +408,37 @@ type LeadIntentEventResponse = {
   prompt: LeadIntentPrompt
 }
 
+type AdminLeadIntentEvent = {
+  id: number
+  event_name: string
+  label?: string
+  source?: string
+  occurred_at: string
+  metadata?: Record<string, unknown>
+  listing?: { id: number; title: string; price?: number; listing_kind?: 'sale' | 'rent'; village?: string; primary_photo_url?: string } | null
+  village?: { id: number; name: string } | null
+  agent?: Agent | null
+}
+
+type AdminLeadIntentSession = LeadIntentSummary & {
+  user?: { id: number; full_name: string; email: string; role: string } | null
+  identity_label?: string
+  brokerage?: Brokerage | null
+  converted_lead?: { id: number; name: string; email: string; status: string } | null
+  prompt_snoozed_until?: string
+  last_prompt_key?: string
+  last_prompt_dismissed_at?: string
+  prompt_dismissal_count?: number
+  high_intent?: boolean
+  recent_events?: AdminLeadIntentEvent[]
+}
+
+type AdminLeadIntentSessionsResponse = {
+  lead_intent_sessions: AdminLeadIntentSession[]
+  metrics: { active_sessions: number; signed_in_sessions: number; high_intent_sessions: number; converted_sessions: number }
+  top_villages: Array<{ name: string; count: number }>
+}
+
 type Lead = {
   id: number
   lead_type: string
@@ -692,6 +723,13 @@ async function fetchMyLeads(): Promise<MyLeadsResponse> {
 async function fetchAdminDashboard(): Promise<AdminDashboardResponse> {
   const response = await fetch(`${API_URL}/api/v1/admin/dashboard`, { headers: await authHeaders() })
   if (!response.ok) throw new Error('Unable to load admin dashboard')
+  return response.json()
+}
+
+async function fetchAdminLeadIntentSessions(params: { status?: string; identity?: string } = {}): Promise<AdminLeadIntentSessionsResponse> {
+  const query = buildQuery({ status: params.status, identity: params.identity })
+  const response = await fetch(`${API_URL}/api/v1/admin/lead_intent_sessions${query ? `?${query}` : ''}`, { headers: await authHeaders() })
+  if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to load search intent'), response.status)
   return response.json()
 }
 
@@ -1103,6 +1141,7 @@ function App() {
         <Route path="/admin" element={<RequireStaff><AdminDashboardPage /></RequireStaff>} />
         <Route path="/admin/sync" element={<RequireStaff><SyncPage /></RequireStaff>} />
         <Route path="/admin/leads" element={<RequireStaff><LeadsPage /></RequireStaff>} />
+        <Route path="/admin/intent" element={<RequireStaff><AdminIntentPage /></RequireStaff>} />
         <Route path="/admin/leads/:id" element={<RequireStaff><LeadDetailPage /></RequireStaff>} />
         <Route path="/admin/showings" element={<RequireStaff><AdminShowingsPage /></RequireStaff>} />
         <Route path="/admin/users" element={<RequireStaff><AdminUsersPage /></RequireStaff>} />
@@ -2963,6 +3002,7 @@ function AdminShell({ children, title, kicker, description }: { children: React.
       items: [
         { label: 'Dashboard', href: '/admin', icon: <Home size={18} /> },
         { label: 'Leads', href: '/admin/leads', icon: <ClipboardList size={18} /> },
+        { label: 'Search intent', href: '/admin/intent', icon: <Compass size={18} /> },
         { label: 'Showings', href: '/admin/showings', icon: <Clock3 size={18} /> },
       ],
     },
@@ -3125,6 +3165,182 @@ function AdminMetric({ label, value, tone = 'light' }: { label: string; value: n
 
 function AdminPanel({ title, children }: { title: string; children: React.ReactNode }) {
   return <div className="rounded-[1.75rem] bg-white p-4 shadow-sm sm:rounded-[2rem] sm:p-5"><h2 className="text-xl font-semibold tracking-[-0.04em] sm:text-2xl">{title}</h2><div className="mt-4">{children}</div></div>
+}
+
+function AdminIntentPage() {
+  const [statusFilter, setStatusFilter] = useState('')
+  const [identityFilter, setIdentityFilter] = useState('')
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['admin-lead-intent-sessions', statusFilter, identityFilter],
+    queryFn: () => fetchAdminLeadIntentSessions({ status: statusFilter || undefined, identity: identityFilter || undefined }),
+  })
+  const sessions = data?.lead_intent_sessions ?? []
+  const metrics = data?.metrics
+
+  return (
+    <AdminShell kicker="Search intent" title="Live buyer intent" description="First-party browsing signals from Hafa Homes search, saves, form opens, and progressive prompts. Signed-in shoppers are identified; anonymous visitors stay anonymous until they submit a lead.">
+      <section className="mx-auto max-w-7xl px-4 pb-12 sm:px-5">
+        {metrics && (
+          <div className="grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-4">
+            <AdminMetric label="Active sessions" value={metrics.active_sessions} tone="dark" />
+            <AdminMetric label="Signed in" value={metrics.signed_in_sessions} />
+            <AdminMetric label="High intent" value={metrics.high_intent_sessions} tone="warn" />
+            <AdminMetric label="Converted" value={metrics.converted_sessions} />
+          </div>
+        )}
+
+        <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="rounded-[1.75rem] bg-white p-4 shadow-sm sm:rounded-[2rem] sm:p-5">
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <h2 className="text-2xl font-semibold tracking-[-0.05em]">Recent search sessions</h2>
+                <p className="mt-2 text-sm font-semibold leading-6 text-[#66746f]">Use this as a coaching surface: saves, repeated village interest, and abandoned forms are the strongest outreach signals.</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="min-h-11 rounded-2xl border border-[#dce5df] bg-white px-3 text-sm font-bold text-[#304942]">
+                  <option value="">All statuses</option>
+                  <option value="active">Active</option>
+                  <option value="snoozed">Snoozed</option>
+                  <option value="converted">Converted</option>
+                </select>
+                <select value={identityFilter} onChange={(event) => setIdentityFilter(event.target.value)} className="min-h-11 rounded-2xl border border-[#dce5df] bg-white px-3 text-sm font-bold text-[#304942]">
+                  <option value="">All visitors</option>
+                  <option value="signed_in">Signed in</option>
+                  <option value="anonymous">Anonymous</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="mt-5 grid gap-4">
+              {isLoading && <StateCard>Loading search intent...</StateCard>}
+              {isError && <StateCard tone="error">Unable to load search intent.</StateCard>}
+              {sessions.map((session) => <AdminIntentSessionCard key={session.id} session={session} />)}
+              {!isLoading && sessions.length === 0 && <StateCard>No search intent sessions match these filters yet.</StateCard>}
+            </div>
+          </div>
+
+          <aside className="space-y-4">
+            <div className="rounded-[1.75rem] bg-[#0f3d35] p-5 text-white shadow-xl shadow-[#0f3d35]/15 sm:rounded-[2rem]">
+              <TrendingUp className="text-[#bdebdc]" />
+              <p className="mt-5 text-xs font-bold uppercase tracking-[0.2em] text-white/55">Top villages</p>
+              <div className="mt-4 grid gap-2">
+                {(data?.top_villages ?? []).map((village) => (
+                  <div key={village.name} className="flex items-center justify-between rounded-2xl bg-white/10 px-3 py-2">
+                    <span className="text-sm font-bold">{village.name}</span>
+                    <span className="text-xs font-black uppercase tracking-[0.14em] text-[#bdebdc]">{village.count}</span>
+                  </div>
+                ))}
+                {data?.top_villages?.length === 0 && <p className="text-sm font-semibold leading-6 text-white/68">Village patterns will appear after shoppers view listing detail pages.</p>}
+              </div>
+            </div>
+            <div className="rounded-[1.75rem] border border-[#dfe8e2] bg-white p-5 shadow-sm sm:rounded-[2rem]">
+              <ShieldCheck className="text-[#0f705e]" />
+              <h2 className="mt-4 text-xl font-semibold tracking-[-0.04em]">Privacy guardrails</h2>
+              <p className="mt-2 text-sm font-semibold leading-6 text-[#66746f]">Anonymous visitors remain anonymous. Signed-in users are visible because they have an account. Prioritize outreach around saved homes, abandoned forms, and converted leads.</p>
+            </div>
+          </aside>
+        </div>
+      </section>
+    </AdminShell>
+  )
+}
+
+function AdminIntentSessionCard({ session }: { session: AdminLeadIntentSession }) {
+  const topVillages = session.top_villages ?? []
+  const events = session.recent_events ?? []
+  const statusClasses = intentStatusClasses(session.status)
+
+  return (
+    <article className="rounded-[1.5rem] border border-[#dfe8e2] bg-[#fbfaf6] p-4 transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[#0f3d35]/10 sm:p-5">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-xs font-black uppercase tracking-[0.2em] text-[#0f705e]">{session.user ? 'Signed-in shopper' : 'Anonymous visitor'}</p>
+            {session.high_intent && <span className="rounded-full bg-[#fee6ca] px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-[#7a3a00]">High intent</span>}
+          </div>
+          <h3 className="mt-2 text-2xl font-semibold tracking-[-0.05em]">{session.identity_label || 'Anonymous visitor'}</h3>
+          <p className="mt-2 text-sm font-semibold leading-6 text-[#53645f]">{session.narrative || 'Browsing context is still warming up.'}</p>
+          {session.user?.email && <p className="mt-1 text-sm font-bold text-[#0f705e]">{session.user.email}</p>}
+        </div>
+        <div className="text-right">
+          <span className={`rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.12em] ${statusClasses}`}>{session.status || 'active'}</span>
+          <p className="mt-2 text-xs font-bold uppercase tracking-[0.14em] text-[#7b8a84]">Last seen {formatDateTime(session.last_seen_at)}</p>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+        <IntentStat label="Viewed" value={`${session.unique_listing_view_count ?? 0} listings`} />
+        <IntentStat label="Saved" value={`${session.saved_listing_count ?? 0} homes`} />
+        <IntentStat label="Forms" value={`${session.form_open_count ?? 0} opened`} />
+        <IntentStat label="Abandoned" value={`${session.form_abandon_count ?? 0}`} />
+        <IntentStat label="Price range" value={intentPriceRange(session)} />
+      </div>
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        {topVillages.slice(0, 4).map((village) => <span key={village.name} className="rounded-full bg-white px-3 py-1 text-xs font-bold text-[#53645f]">{village.name} · {village.count}</span>)}
+        {session.requested_agent?.name && <span className="rounded-full bg-[#e9f5ef] px-3 py-1 text-xs font-bold text-[#0f705e]">Preferred agent: {session.requested_agent.name}</span>}
+      </div>
+
+      <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(260px,0.7fr)]">
+        <div className="rounded-2xl bg-white p-3">
+          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#7b8a84]">Recent activity</p>
+          <div className="mt-3 grid gap-2">
+            {events.slice(0, 5).map((event) => <IntentEventRow key={event.id} event={event} />)}
+            {events.length === 0 && <p className="text-sm font-semibold text-[#66746f]">No event trail yet.</p>}
+          </div>
+        </div>
+        <div className="rounded-2xl bg-white p-3">
+          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#7b8a84]">Next action</p>
+          {session.converted_lead ? (
+            <Link to={`/admin/leads/${session.converted_lead.id}`} className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-full bg-[#0f3d35] px-4 text-sm font-bold text-white">Open converted lead <ChevronRight size={16} /></Link>
+          ) : session.user ? (
+            <p className="mt-3 text-sm font-semibold leading-6 text-[#304942]">Signed-in shopper. Prioritize follow-up only when they save homes, request help, or repeatedly revisit a focused search.</p>
+          ) : (
+            <p className="mt-3 text-sm font-semibold leading-6 text-[#304942]">Anonymous visitor. Let the progressive prompt convert them before outreach.</p>
+          )}
+          {session.latest_listing_id && (
+            <Link to={`/listings/${session.latest_listing_id}?from=admin`} className="mt-3 inline-flex items-center gap-2 text-sm font-bold text-[#0f705e]">View latest listing <ChevronRight size={15} /></Link>
+          )}
+          {session.last_prompt_dismissed_at && <p className="mt-3 text-xs font-bold uppercase tracking-[0.14em] text-[#7b8a84]">Prompt dismissed {formatDateTime(session.last_prompt_dismissed_at)}</p>}
+        </div>
+      </div>
+    </article>
+  )
+}
+
+function IntentStat({ label, value }: { label: string; value: string }) {
+  return <div className="rounded-2xl bg-white px-3 py-2"><p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#7b8a84]">{label}</p><p className="mt-1 text-sm font-bold text-[#17211f]">{value}</p></div>
+}
+
+function IntentEventRow({ event }: { event: AdminLeadIntentEvent }) {
+  const context = event.listing?.title || event.village?.name || event.agent?.name || metadataSummary(event.metadata)
+  return (
+    <div className="rounded-2xl bg-[#fbfaf6] px-3 py-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm font-bold text-[#17211f]">{event.label || event.event_name.replaceAll('_', ' ')}</p>
+        <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#7b8a84]">{formatDateTime(event.occurred_at)}</span>
+      </div>
+      {context && <p className="mt-1 text-xs font-semibold leading-5 text-[#66746f]">{context}</p>}
+    </div>
+  )
+}
+
+function intentStatusClasses(status?: string) {
+  if (status === 'converted') return 'bg-[#e9f5ef] text-[#0f705e]'
+  if (status === 'snoozed') return 'bg-[#fff5d9] text-[#6b4508]'
+  return 'bg-[#dceee8] text-[#0f3d35]'
+}
+
+function intentPriceRange(intent: LeadIntentSummary) {
+  if (intent.viewed_price_min && intent.viewed_price_max) return `${currency(intent.viewed_price_min, 'sale')}–${currency(intent.viewed_price_max, 'sale')}`
+  if (intent.viewed_price_max) return `Up to ${currency(intent.viewed_price_max, 'sale')}`
+  return 'Not clear yet'
+}
+
+function metadataSummary(metadata?: Record<string, unknown>) {
+  if (!metadata) return ''
+  const parts = ['surface', 'filter', 'value', 'view_mode'].map((key) => metadata[key]).filter(Boolean).map(String)
+  return parts.join(' · ')
 }
 
 function LeadCompactRow({ lead }: { lead: Lead }) {

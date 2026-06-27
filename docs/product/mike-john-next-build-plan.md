@@ -281,7 +281,7 @@ Track first-party activity in Rails and attach it to converted leads:
 - request abandoned;
 - preferred-agent selection.
 
-V1 should create a normal `search_assist` lead when the prompt converts and show admin CRM context such as viewed listings, top villages, viewed price range, saved homes, and trigger reason.
+V1 should create a normal `search_assist` lead when the prompt converts, show admin CRM context such as viewed listings, top villages, viewed price range, saved homes, and trigger reason, and include a staff-only search-intent dashboard for active/unconverted sessions. Signed-in shoppers can be identified for appropriate follow-up; anonymous sessions remain anonymous until they submit a lead.
 
 ### 2. Domain-first broker-branded foundation
 

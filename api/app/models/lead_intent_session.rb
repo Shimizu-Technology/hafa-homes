@@ -6,6 +6,9 @@ class LeadIntentSession < ApplicationRecord
   DEFAULT_LISTING_VIEW_THRESHOLD = 3
   DEFAULT_SNOOZE_HOURS = 24
   MAX_SUMMARY_IDS = 20
+  REPROMPT_UNIQUE_LISTING_DELTA = 3
+  REPROMPT_SEARCH_FILTER_DELTA = 3
+  MAX_DISMISSALS_BEFORE_HARD_SNOOZE = 2
 
   class ScopeMismatchError < StandardError; end
 
@@ -132,12 +135,20 @@ class LeadIntentSession < ApplicationRecord
     return ineligible_prompt("staff_user") if user&.staff?
     return ineligible_prompt("recent_lead") if recent_lead_submitted?
     return ineligible_prompt("disabled") unless progressive_prompts_enabled?
-    return ineligible_prompt("snoozed") if prompt_snoozed_until.present? && prompt_snoozed_until.future?
+    return ineligible_prompt("snoozed") if actively_snoozed? && !allow_reprompt_after_dismissal?(latest_event)
+
+    revive_snoozed_prompt! if status == "snoozed"
 
     trigger = prompt_trigger(latest_event)
     return ineligible_prompt("not_enough_intent") unless trigger
 
-    prompt_key = "#{trigger[:key]}:#{summary.fetch('unique_listing_view_count', 0)}:#{summary.fetch('saved_listing_count', 0)}"
+    prompt_key = [
+      trigger[:key],
+      summary.fetch("unique_listing_view_count", 0),
+      summary.fetch("saved_listing_count", 0),
+      summary.fetch("form_abandon_count", 0),
+      summary.fetch("search_filter_count", 0)
+    ].join(":")
     return ineligible_prompt("already_prompted") if last_prompt_key == prompt_key
 
     update_columns(last_prompt_key: prompt_key, updated_at: Time.current)
@@ -156,11 +167,20 @@ class LeadIntentSession < ApplicationRecord
   end
 
   def dismiss!(prompt_key:, reason: nil)
+    dismissal_count = current_prompt_dismissal_count + 1
     update!(
       status: "snoozed",
       last_prompt_key: prompt_key.presence || last_prompt_key,
       prompt_snoozed_until: prompt_snooze_hours.hours.from_now,
-      summary: summary.merge("last_dismiss_reason" => reason.to_s.truncate(80).presence).compact
+      summary: summary.merge(
+        "last_dismiss_reason" => reason.to_s.truncate(80).presence,
+        "last_prompt_dismissed_at" => Time.current.iso8601,
+        "prompt_dismissal_count" => dismissal_count,
+        "dismissed_unique_listing_view_count" => summary.fetch("unique_listing_view_count", 0).to_i,
+        "dismissed_saved_listing_count" => summary.fetch("saved_listing_count", 0).to_i,
+        "dismissed_form_abandon_count" => summary.fetch("form_abandon_count", 0).to_i,
+        "dismissed_search_filter_count" => summary.fetch("search_filter_count", 0).to_i
+      ).compact
     )
   end
 
@@ -233,6 +253,15 @@ class LeadIntentSession < ApplicationRecord
 
     prices = listing_view_events.filter_map { |event| event.listing&.price&.to_f }
     latest_listing_event = listing_view_events.last
+    prompt_state_summary = summary.slice(
+      "last_dismiss_reason",
+      "last_prompt_dismissed_at",
+      "prompt_dismissal_count",
+      "dismissed_unique_listing_view_count",
+      "dismissed_saved_listing_count",
+      "dismissed_form_abandon_count",
+      "dismissed_search_filter_count"
+    )
     next_summary = {
       events_count: events.size,
       listing_view_count: listing_view_events.size,
@@ -251,7 +280,7 @@ class LeadIntentSession < ApplicationRecord
       agent_selected_count: events.count { |event| event.event_name == "agent_selected" }
     }.compact
 
-    update_columns(summary: next_summary.deep_stringify_keys, events_count: events.size, last_seen_at: Time.current, updated_at: Time.current)
+    update_columns(summary: next_summary.deep_stringify_keys.merge(prompt_state_summary), events_count: events.size, last_seen_at: Time.current, updated_at: Time.current)
   end
 
   def prompt_trigger(latest_event)
@@ -317,6 +346,61 @@ class LeadIntentSession < ApplicationRecord
 
   def ineligible_prompt(reason)
     { eligible: false, reason: reason, summary: public_summary }
+  end
+
+  def actively_snoozed?
+    prompt_snoozed_until.present? && prompt_snoozed_until.future?
+  end
+
+  def allow_reprompt_after_dismissal?(latest_event)
+    return true unless actively_snoozed?
+    return false if current_prompt_dismissal_count >= MAX_DISMISSALS_BEFORE_HARD_SNOOZE
+
+    latest_name = latest_event&.event_name
+    return true if latest_name == "listing_saved" && saved_listing_delta_since_dismissal.positive?
+    return true if latest_name == "lead_form_abandoned" && form_abandon_delta_since_dismissal.positive?
+    return true if unique_listing_delta_since_dismissal >= REPROMPT_UNIQUE_LISTING_DELTA
+    return true if search_filter_delta_since_dismissal >= REPROMPT_SEARCH_FILTER_DELTA
+
+    false
+  end
+
+  def revive_snoozed_prompt!
+    update_columns(status: "active", prompt_snoozed_until: nil, updated_at: Time.current)
+    self.status = "active"
+    self.prompt_snoozed_until = nil
+  end
+
+  def current_prompt_dismissal_count
+    dismissed_at = parse_summary_time(summary["last_prompt_dismissed_at"])
+    return 0 unless dismissed_at
+    return 0 if dismissed_at < prompt_snooze_hours.hours.ago
+
+    summary.fetch("prompt_dismissal_count", 0).to_i
+  end
+
+  def unique_listing_delta_since_dismissal
+    summary.fetch("unique_listing_view_count", 0).to_i - summary.fetch("dismissed_unique_listing_view_count", 0).to_i
+  end
+
+  def saved_listing_delta_since_dismissal
+    summary.fetch("saved_listing_count", 0).to_i - summary.fetch("dismissed_saved_listing_count", 0).to_i
+  end
+
+  def form_abandon_delta_since_dismissal
+    summary.fetch("form_abandon_count", 0).to_i - summary.fetch("dismissed_form_abandon_count", 0).to_i
+  end
+
+  def search_filter_delta_since_dismissal
+    summary.fetch("search_filter_count", 0).to_i - summary.fetch("dismissed_search_filter_count", 0).to_i
+  end
+
+  def parse_summary_time(value)
+    return nil if value.blank?
+
+    Time.zone.parse(value.to_s)
+  rescue ArgumentError
+    nil
   end
 
   def recent_lead_submitted?

@@ -201,7 +201,8 @@ Recommended scope:
 - server-side prompt eligibility policy with brokerage-level settings;
 - web/mobile progressive search-assist prompts;
 - link converted prompt leads to the intent session;
-- admin CRM intent snapshot showing viewed listings, saved homes, top villages, price range, and trigger context.
+- admin CRM intent snapshot showing viewed listings, saved homes, top villages, price range, and trigger context;
+- staff-only search intent dashboard for active/unconverted sessions with signed-in identity when available and anonymous sessions kept anonymous.
 
 ### Phase 10 — Domain-first broker-branded website/app foundation
 

@@ -34,6 +34,7 @@ Rails.application.routes.draw do
         resources :brokerages, only: [:index]
         resources :agents, only: [:index]
         resources :users, only: [:index, :create, :update]
+        resources :lead_intent_sessions, only: [:index]
         resources :audit_events, only: [:index]
       end
     end
