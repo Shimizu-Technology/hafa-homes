@@ -153,6 +153,47 @@ type LeadIntentSummary = {
   latest_listing_id?: number
 }
 
+type SearchProfile = {
+  id?: number
+  preferred_contact_method?: 'phone' | 'text' | 'email'
+  phone?: string
+  prequalified_status?: string
+  prequalified_status_label?: string
+  lender_name?: string
+  purchase_timeline?: string
+  purchase_timeline_label?: string
+  budget_min?: number
+  budget_max?: number
+  budget_range_label?: string
+  desired_villages?: string
+  desired_beds?: number
+  desired_baths?: number
+  buyer_status?: string
+  buyer_status_label?: string
+  already_working_with_agent?: string
+  already_working_with_agent_label?: string
+  notes?: string
+  completion_status?: 'complete' | 'incomplete'
+  completion_percentage?: number
+  qualification_summary?: string
+}
+
+type SearchProfilePayload = Partial<{
+  preferred_contact_method: string
+  phone: string
+  prequalified_status: string
+  lender_name: string
+  purchase_timeline: string
+  budget_min: string
+  budget_max: string
+  desired_villages: string
+  desired_beds: string
+  desired_baths: string
+  buyer_status: string
+  already_working_with_agent: string
+  notes: string
+}>
+
 type LeadIntentPrompt = {
   eligible: boolean
   key?: string
@@ -160,10 +201,10 @@ type LeadIntentPrompt = {
   title?: string
   body?: string
   cta?: string
-  suggested?: {
-    desired_villages?: string
-    budget_min?: number
-    budget_max?: number
+  profile_prompt?: boolean
+  profile_prompt_kind?: 'finish_search_profile' | 'update_search_profile'
+  create_lead_default?: boolean
+  suggested?: Partial<SearchProfile> & {
     listing_id?: number
   }
   summary?: LeadIntentSummary
@@ -302,6 +343,15 @@ function formatCurrency(value: number) {
 function parseNumber(value: string, fallback = 0) {
   const parsed = Number(value.replace(/[^0-9.]/g, ''))
   return Number.isFinite(parsed) ? parsed : fallback
+}
+
+function profileValue(profile: SearchProfile | null | undefined, field: keyof SearchProfile, fallback = '') {
+  const value = profile?.[field]
+  return value === undefined || value === null ? fallback : String(value)
+}
+
+function mergedPromptProfile(prompt: LeadIntentPrompt, searchProfile?: SearchProfile | null): SearchProfile {
+  return { ...(searchProfile || {}), ...(prompt.suggested || {}) }
 }
 
 async function fetchListings(kind: ListingKind): Promise<Listing[]> {
@@ -627,6 +677,24 @@ async function updateProfile(payload: Partial<Pick<CurrentUser, 'first_name' | '
     body: JSON.stringify({ user: payload }),
   })
   if (!response.ok) throw new ApiRequestError(await apiErrorMessage(response, 'Unable to update profile'), response.status)
+  return response.json()
+}
+
+async function fetchSearchProfile(getToken: GetAuthToken): Promise<{ search_profile: SearchProfile }> {
+  const response = await fetch(`${API_URL}/api/v1/me/search_profile`, {
+    headers: await authHeaders(getToken),
+  })
+  if (!response.ok) throw new ApiRequestError(await apiErrorMessage(response, 'Unable to load search profile'), response.status)
+  return response.json()
+}
+
+async function updateSearchProfile(payload: SearchProfilePayload, getToken: GetAuthToken): Promise<{ search_profile: SearchProfile }> {
+  const response = await fetch(`${API_URL}/api/v1/me/search_profile`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...(await authHeaders(getToken)) },
+    body: JSON.stringify({ search_profile: payload }),
+  })
+  if (!response.ok) throw new ApiRequestError(await apiErrorMessage(response, 'Unable to update search profile'), response.status)
   return response.json()
 }
 
@@ -1188,6 +1256,7 @@ function ProgressiveLeadPromptSheet({ prompt, auth, selectedAgent, onDismiss, on
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('+1671')
+  const [preferredContact, setPreferredContact] = useState<'phone' | 'text' | 'email'>('email')
   const [prequalifiedStatus, setPrequalifiedStatus] = useState('')
   const [purchaseTimeline, setPurchaseTimeline] = useState('')
   const [budgetMin, setBudgetMin] = useState('')
@@ -1197,6 +1266,9 @@ function ProgressiveLeadPromptSheet({ prompt, auth, selectedAgent, onDismiss, on
   const [desiredBaths, setDesiredBaths] = useState('')
   const [buyerStatus, setBuyerStatus] = useState('')
   const [alreadyWorkingWithAgent, setAlreadyWorkingWithAgent] = useState('')
+  const [lenderName, setLenderName] = useState('')
+  const [notes, setNotes] = useState('')
+  const [agentHelpRequested, setAgentHelpRequested] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -1209,12 +1281,38 @@ function ProgressiveLeadPromptSheet({ prompt, auth, selectedAgent, onDismiss, on
     setName(auth.userName || '')
     setEmail(auth.userEmail || '')
     setPhone('+1671')
+    setPreferredContact('email')
+    setAgentHelpRequested(false)
     setDesiredVillages(prompt.suggested?.desired_villages || '')
     setBudgetMin(prompt.suggested?.budget_min ? String(Math.round(prompt.suggested.budget_min)) : '')
     setBudgetMax(prompt.suggested?.budget_max ? String(Math.round(prompt.suggested.budget_max)) : '')
-  }, [auth.userEmail, auth.userName, prompt])
+    setLenderName('')
+    setNotes('')
+
+    if (auth.isSignedIn && auth.getToken) {
+      fetchSearchProfile(auth.getToken)
+        .then((result) => {
+          const merged = mergedPromptProfile(prompt, result.search_profile)
+          setPhone(profileValue(merged, 'phone', '+1671'))
+          setPreferredContact((profileValue(merged, 'preferred_contact_method', 'email') || 'email') as 'phone' | 'text' | 'email')
+          setPrequalifiedStatus(profileValue(merged, 'prequalified_status'))
+          setPurchaseTimeline(profileValue(merged, 'purchase_timeline'))
+          setDesiredVillages(profileValue(merged, 'desired_villages'))
+          setBudgetMin(profileValue(merged, 'budget_min'))
+          setBudgetMax(profileValue(merged, 'budget_max'))
+          setDesiredBeds(profileValue(merged, 'desired_beds'))
+          setDesiredBaths(profileValue(merged, 'desired_baths'))
+          setBuyerStatus(profileValue(merged, 'buyer_status'))
+          setAlreadyWorkingWithAgent(profileValue(merged, 'already_working_with_agent'))
+          setLenderName(profileValue(merged, 'lender_name'))
+          setNotes(profileValue(merged, 'notes'))
+        })
+        .catch((profileError) => console.warn('Unable to prefill search profile prompt', profileError))
+    }
+  }, [auth.getToken, auth.isSignedIn, auth.userEmail, auth.userName, prompt])
 
   if (!prompt) return null
+  const activePrompt = prompt
 
   async function handleSubmit() {
     const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
@@ -1223,21 +1321,20 @@ function ProgressiveLeadPromptSheet({ prompt, auth, selectedAgent, onDismiss, on
       return
     }
 
+    if (activePrompt.profile_prompt && !auth.getToken) {
+      setError('Please sign in again before saving your search profile.')
+      return
+    }
+
     setSubmitting(true)
     setError(null)
     try {
       const token = await currentLeadIntentSessionToken()
-      await createLead({
-        listing_id: prompt?.suggested?.listing_id,
-        lead_type: 'search_assist',
-        name: name.trim() || 'Hafa Homes searcher',
-        email: email.trim(),
+      const profilePayload: SearchProfilePayload = {
+        preferred_contact_method: preferredContact,
         phone: phone.trim(),
-        preferred_contact_method: 'email',
-        source_campaign: `progressive_prompt:${prompt?.trigger || 'search_intent'}`,
-        source_url: 'hafahomes:///search',
-        requested_agent_id: auth.isSignedIn ? selectedAgent?.id : undefined,
         prequalified_status: prequalifiedStatus,
+        lender_name: lenderName.trim(),
         purchase_timeline: purchaseTimeline,
         budget_min: budgetMin.trim(),
         budget_max: budgetMax.trim(),
@@ -1246,9 +1343,36 @@ function ProgressiveLeadPromptSheet({ prompt, auth, selectedAgent, onDismiss, on
         desired_baths: desiredBaths.trim(),
         buyer_status: buyerStatus,
         already_working_with_agent: alreadyWorkingWithAgent,
-        intent_session_token: token,
-        message: `Progressive search assist prompt: ${prompt?.trigger || 'search_intent'}`,
-      }, auth.isSignedIn ? auth.getToken : undefined)
+        notes: notes.trim(),
+      }
+      const createLeadRequested = !activePrompt.profile_prompt || agentHelpRequested
+      if (activePrompt.profile_prompt && auth.getToken) await updateSearchProfile(profilePayload, auth.getToken)
+      if (createLeadRequested) {
+        await createLead({
+          listing_id: activePrompt.suggested?.listing_id,
+          lead_type: 'search_assist',
+          name: name.trim() || 'Hafa Homes searcher',
+          email: email.trim(),
+          phone: phone.trim(),
+          preferred_contact_method: preferredContact,
+          source_campaign: `progressive_prompt:${activePrompt.trigger || 'search_intent'}`,
+          source_url: 'hafahomes:///search',
+          requested_agent_id: auth.isSignedIn ? selectedAgent?.id : undefined,
+          prequalified_status: prequalifiedStatus,
+          lender_name: lenderName.trim(),
+          purchase_timeline: purchaseTimeline,
+          budget_min: budgetMin.trim(),
+          budget_max: budgetMax.trim(),
+          desired_villages: desiredVillages.trim(),
+          desired_beds: desiredBeds.trim(),
+          desired_baths: desiredBaths.trim(),
+          buyer_status: buyerStatus,
+          already_working_with_agent: alreadyWorkingWithAgent,
+          qualification_notes: notes.trim(),
+          intent_session_token: token,
+          message: `Progressive search assist prompt: ${activePrompt.trigger || 'search_intent'}`,
+        }, auth.isSignedIn ? auth.getToken : undefined)
+      }
       setSubmitted(true)
       onSubmitted()
     } catch (submitError) {
@@ -1266,9 +1390,9 @@ function ProgressiveLeadPromptSheet({ prompt, auth, selectedAgent, onDismiss, on
         <View style={styles.requestSheet}>
           {submitted ? (
             <View style={styles.requestSuccess}>
-              <Text style={styles.kicker}>Search assist sent</Text>
-              <Text style={styles.requestTitle}>The brokerage team has your search context.</Text>
-              <Text style={styles.requestCopy}>An agent can use these details to follow up with better Guam listing matches.</Text>
+              <Text style={styles.kicker}>{prompt.profile_prompt && !agentHelpRequested ? 'Search profile saved' : 'Search assist sent'}</Text>
+              <Text style={styles.requestTitle}>{prompt.profile_prompt && !agentHelpRequested ? 'Your saved preferences are ready.' : 'The brokerage team has your search context.'}</Text>
+              <Text style={styles.requestCopy}>{prompt.profile_prompt && !agentHelpRequested ? 'Hafa Homes can prefill future requests from this profile and avoid asking the long prompt again.' : 'An agent can use these details to follow up with better Guam listing matches.'}</Text>
               <Pressable style={styles.primaryCta} onPress={onClose}><Text style={styles.primaryCtaText}>Done</Text></Pressable>
             </View>
           ) : (
@@ -1287,19 +1411,35 @@ function ProgressiveLeadPromptSheet({ prompt, auth, selectedAgent, onDismiss, on
                 <RequestInput label="Email" value={email} onChangeText={setEmail} placeholder="you@example.com" keyboardType="email-address" autoCapitalize="none" />
                 <RequestInput label="Name" value={name} onChangeText={setName} placeholder="Your name" />
                 <RequestInput label="Phone optional" value={phone} onChangeText={setPhone} placeholder="+1671" keyboardType="phone-pad" />
+                <Text style={styles.requestLabel}>Preferred contact</Text>
+                <View style={styles.contactSegmentRow}>
+                  {preferredContactOptions.map((option) => (
+                    <Pressable key={option.value} onPress={() => setPreferredContact(option.value as 'phone' | 'text' | 'email')} style={[styles.contactSegment, preferredContact === option.value && styles.contactSegmentActive]}>
+                      <Text style={[styles.contactSegmentText, preferredContact === option.value && styles.contactSegmentTextActive]}>{option.label}</Text>
+                    </Pressable>
+                  ))}
+                </View>
                 <QualificationChoiceGroup label="Timeline" options={purchaseTimelineOptions} value={purchaseTimeline} onChange={setPurchaseTimeline} />
                 <RequestInput label="Desired villages" value={desiredVillages} onChangeText={setDesiredVillages} placeholder="Dededo, Yigo, Tamuning" />
                 <QualificationChoiceGroup label="Prequalified?" options={prequalifiedOptions} value={prequalifiedStatus} onChange={setPrequalifiedStatus} />
+                <RequestInput label="Lender / bank optional" value={lenderName} onChangeText={setLenderName} placeholder="Bank of Guam, Coast360..." />
                 <RequestInput label="Budget min optional" value={budgetMin} onChangeText={setBudgetMin} placeholder="450000" keyboardType="number-pad" />
                 <RequestInput label="Budget max optional" value={budgetMax} onChangeText={setBudgetMax} placeholder="650000" keyboardType="number-pad" />
                 <RequestInput label="Beds optional" value={desiredBeds} onChangeText={setDesiredBeds} placeholder="3" keyboardType="number-pad" />
                 <RequestInput label="Baths optional" value={desiredBaths} onChangeText={setDesiredBaths} placeholder="2" keyboardType="number-pad" />
                 <QualificationChoiceGroup label="Buyer type" options={buyerStatusOptions} value={buyerStatus} onChange={setBuyerStatus} />
                 <QualificationChoiceGroup label="Working with an agent?" options={agentRelationshipOptions} value={alreadyWorkingWithAgent} onChange={setAlreadyWorkingWithAgent} />
+                <Text style={styles.requestLabel}>Search notes</Text>
+                <TextInput value={notes} onChangeText={setNotes} multiline style={[styles.requestInput, styles.requestMessageInput]} placeholder="Relocating soon, commute needs, pet-friendly, must-haves..." placeholderTextColor="#7b8a84" />
+                {prompt.profile_prompt && (
+                  <Pressable onPress={() => setAgentHelpRequested((current) => !current)} style={[styles.profilePromptToggle, agentHelpRequested && styles.profilePromptToggleActive]}>
+                    <Text style={[styles.profilePromptToggleText, agentHelpRequested && styles.profilePromptToggleTextActive]}>Also ask an agent to follow up using this search context</Text>
+                  </Pressable>
+                )}
               </View>
               {error && <Text style={styles.requestError}>{error}</Text>}
               <Pressable disabled={submitting} style={[styles.primaryCta, submitting && styles.ctaDisabled]} onPress={handleSubmit}>
-                <Text style={styles.primaryCtaText}>{submitting ? 'Sending...' : prompt.cta || 'Get matched with an agent'}</Text>
+                <Text style={styles.primaryCtaText}>{submitting ? 'Saving...' : prompt.cta || 'Get matched with an agent'}</Text>
               </Pressable>
               <Pressable style={styles.secondaryCta} onPress={() => onDismiss('not_now')}><Text style={styles.secondaryCtaText}>Not now</Text></Pressable>
             </ScrollView>
@@ -1744,7 +1884,7 @@ function MoreScreen({ auth, onOpenAuth, onNavigateTab }: { auth: AppAuth; onOpen
 
 
       <View style={styles.moreMenuSection}>
-        <MoreMenuItem title="Profile & settings" copy="Edit name, phone, contact preference, sign out, or delete account." label="Account" onPress={() => auth.isSignedIn ? setPage('profile') : onOpenAuth()} />
+        <MoreMenuItem title="Profile & settings" copy="Edit contact details, search profile, sign out, or delete account." label="Account" onPress={() => auth.isSignedIn ? setPage('profile') : onOpenAuth()} />
         <MoreMenuItem title="Saved homes" copy="Return to homes you saved from web or mobile." label="Saved" onPress={() => onNavigateTab('saved')} />
         <MoreMenuItem title="Agents" copy="Choose the brokerage agent you want future requests routed to." label="Agents" onPress={() => onNavigateTab('agents')} />
         <MoreMenuItem title="Request history" copy="Track showing requests, agents, brokerage details, and appointment status." label="CRM" onPress={() => onNavigateTab('requests')} />
@@ -1940,6 +2080,22 @@ function AccountCard({ auth, onOpenAuth }: { auth: AppAuth; onOpenAuth: (prompt?
   const [lastName, setLastName] = useState('')
   const [phone, setPhone] = useState('')
   const [preferredContact, setPreferredContact] = useState<'phone' | 'text' | 'email'>('email')
+  const [searchProfile, setSearchProfile] = useState<SearchProfile | null>(null)
+  const [searchProfileSaving, setSearchProfileSaving] = useState(false)
+  const [searchProfileError, setSearchProfileError] = useState<string | null>(null)
+  const [searchPreferredContact, setSearchPreferredContact] = useState<'phone' | 'text' | 'email'>('email')
+  const [searchPhone, setSearchPhone] = useState('')
+  const [searchPrequalifiedStatus, setSearchPrequalifiedStatus] = useState('')
+  const [searchLenderName, setSearchLenderName] = useState('')
+  const [searchPurchaseTimeline, setSearchPurchaseTimeline] = useState('')
+  const [searchBudgetMin, setSearchBudgetMin] = useState('')
+  const [searchBudgetMax, setSearchBudgetMax] = useState('')
+  const [searchDesiredVillages, setSearchDesiredVillages] = useState('')
+  const [searchDesiredBeds, setSearchDesiredBeds] = useState('')
+  const [searchDesiredBaths, setSearchDesiredBaths] = useState('')
+  const [searchBuyerStatus, setSearchBuyerStatus] = useState('')
+  const [searchAlreadyWorkingWithAgent, setSearchAlreadyWorkingWithAgent] = useState('')
+  const [searchNotes, setSearchNotes] = useState('')
   const [deletingAccount, setDeletingAccount] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const deletingAccountRef = useRef(false)
@@ -1951,13 +2107,27 @@ function AccountCard({ auth, onOpenAuth }: { auth: AppAuth; onOpenAuth: (prompt?
       setProfileLoading(true)
       setProfileError(null)
       try {
-        const result = await fetchMe(auth.getToken)
+        const [result, searchResult] = await Promise.all([fetchMe(auth.getToken), fetchSearchProfile(auth.getToken)])
         if (!cancelled) {
           setProfile(result.user)
           setFirstName(result.user.first_name || '')
           setLastName(result.user.last_name || '')
           setPhone(result.user.phone || '')
           setPreferredContact(result.user.preferred_contact_method || 'email')
+          setSearchProfile(searchResult.search_profile)
+          setSearchPreferredContact(searchResult.search_profile.preferred_contact_method || result.user.preferred_contact_method || 'email')
+          setSearchPhone(searchResult.search_profile.phone || result.user.phone || '')
+          setSearchPrequalifiedStatus(searchResult.search_profile.prequalified_status || '')
+          setSearchLenderName(searchResult.search_profile.lender_name || '')
+          setSearchPurchaseTimeline(searchResult.search_profile.purchase_timeline || '')
+          setSearchBudgetMin(profileValue(searchResult.search_profile, 'budget_min'))
+          setSearchBudgetMax(profileValue(searchResult.search_profile, 'budget_max'))
+          setSearchDesiredVillages(searchResult.search_profile.desired_villages || '')
+          setSearchDesiredBeds(profileValue(searchResult.search_profile, 'desired_beds'))
+          setSearchDesiredBaths(profileValue(searchResult.search_profile, 'desired_baths'))
+          setSearchBuyerStatus(searchResult.search_profile.buyer_status || '')
+          setSearchAlreadyWorkingWithAgent(searchResult.search_profile.already_working_with_agent || '')
+          setSearchNotes(searchResult.search_profile.notes || '')
         }
       } catch (error) {
         if (!cancelled) setProfileError(error instanceof Error ? error.message : 'Unable to load profile')
@@ -1984,6 +2154,35 @@ function AccountCard({ auth, onOpenAuth }: { auth: AppAuth; onOpenAuth: (prompt?
     }
   }
 
+  async function handleSaveSearchProfile() {
+    if (!auth.getToken || searchProfileSaving) return
+    setSearchProfileSaving(true)
+    setSearchProfileError(null)
+    try {
+      const result = await updateSearchProfile({
+        preferred_contact_method: searchPreferredContact,
+        phone: searchPhone.trim(),
+        prequalified_status: searchPrequalifiedStatus,
+        lender_name: searchLenderName.trim(),
+        purchase_timeline: searchPurchaseTimeline,
+        budget_min: searchBudgetMin.trim(),
+        budget_max: searchBudgetMax.trim(),
+        desired_villages: searchDesiredVillages.trim(),
+        desired_beds: searchDesiredBeds.trim(),
+        desired_baths: searchDesiredBaths.trim(),
+        buyer_status: searchBuyerStatus,
+        already_working_with_agent: searchAlreadyWorkingWithAgent,
+        notes: searchNotes.trim(),
+      }, auth.getToken)
+      setSearchProfile(result.search_profile)
+      Alert.alert('Search profile saved', 'Your search preferences will prefill future requests.')
+    } catch (error) {
+      setSearchProfileError(error instanceof Error ? error.message : 'Unable to update search profile')
+    } finally {
+      setSearchProfileSaving(false)
+    }
+  }
+
   async function handleDeleteAccount() {
     if (!auth.getToken || deletingAccountRef.current) return
 
@@ -1997,7 +2196,7 @@ function AccountCard({ auth, onOpenAuth }: { auth: AppAuth; onOpenAuth: (prompt?
       } catch (signOutError) {
         console.warn('Account deleted but sign-out failed', signOutError)
       }
-      Alert.alert('Account deleted', 'Your Hafa Homes account, saved homes, and account link to request history were deleted.')
+      Alert.alert('Account deleted', 'Your Hafa Homes account, saved homes, search profile, and account link to request history were deleted.')
     } catch (error) {
       setDeleteError(error instanceof Error ? error.message : 'Unable to delete account right now.')
     } finally {
@@ -2009,7 +2208,7 @@ function AccountCard({ auth, onOpenAuth }: { auth: AppAuth; onOpenAuth: (prompt?
   function confirmDeleteAccount() {
     Alert.alert(
       'Delete Hafa Homes account?',
-      'This permanently deletes your Hafa Homes account and synced saved homes. Showing/contact requests are retained for broker follow-up, but they will no longer be linked to your account.',
+      'This permanently deletes your Hafa Homes account, synced saved homes, and search profile. Showing/contact requests are retained for broker follow-up, but they will no longer be linked to your account.',
       [
         { text: 'Cancel', style: 'cancel' },
         { text: deletingAccount ? 'Deleting...' : 'Delete account', style: 'destructive', onPress: handleDeleteAccount },
@@ -2041,6 +2240,40 @@ function AccountCard({ auth, onOpenAuth }: { auth: AppAuth; onOpenAuth: (prompt?
           </Pressable>
         </View>
 
+        <View style={styles.profileDetailsPanel}>
+          <Text style={styles.profileSectionTitle}>Search profile</Text>
+          <Text style={styles.profileSectionCopy}>Save your budget, villages, timeline, and readiness so prompts and request forms do not keep asking from scratch.</Text>
+          <View style={styles.searchProfileMeter}>
+            <Text style={styles.searchProfileMeterKicker}>{searchProfile?.completion_status === 'complete' ? 'Complete profile' : `${searchProfile?.completion_percentage ?? 0}% complete`}</Text>
+            <Text style={styles.profileSectionCopy}>{searchProfile?.qualification_summary || 'Add contact preference, timeline, criteria, and readiness.'}</Text>
+          </View>
+          <Text style={styles.requestLabel}>Preferred contact</Text>
+          <View style={styles.contactSegmentRow}>
+            {preferredContactOptions.map((option) => (
+              <Pressable key={option.value} style={[styles.contactSegment, searchPreferredContact === option.value && styles.contactSegmentActive]} onPress={() => setSearchPreferredContact(option.value as 'phone' | 'text' | 'email')}>
+                <Text style={[styles.contactSegmentText, searchPreferredContact === option.value && styles.contactSegmentTextActive]}>{option.label}</Text>
+              </Pressable>
+            ))}
+          </View>
+          <RequestInput label="Phone" value={searchPhone} onChangeText={setSearchPhone} keyboardType="phone-pad" placeholder="+1671" />
+          <QualificationChoiceGroup label="Timeline" options={purchaseTimelineOptions} value={searchPurchaseTimeline} onChange={setSearchPurchaseTimeline} />
+          <QualificationChoiceGroup label="Prequalified?" options={prequalifiedOptions} value={searchPrequalifiedStatus} onChange={setSearchPrequalifiedStatus} />
+          <RequestInput label="Lender / bank optional" value={searchLenderName} onChangeText={setSearchLenderName} placeholder="Bank of Guam, Coast360..." />
+          <RequestInput label="Desired villages" value={searchDesiredVillages} onChangeText={setSearchDesiredVillages} placeholder="Dededo, Yigo, Tamuning" />
+          <RequestInput label="Budget min" value={searchBudgetMin} onChangeText={setSearchBudgetMin} keyboardType="number-pad" placeholder="450000" />
+          <RequestInput label="Budget max" value={searchBudgetMax} onChangeText={setSearchBudgetMax} keyboardType="number-pad" placeholder="650000" />
+          <RequestInput label="Desired beds" value={searchDesiredBeds} onChangeText={setSearchDesiredBeds} keyboardType="number-pad" placeholder="3" />
+          <RequestInput label="Desired baths" value={searchDesiredBaths} onChangeText={setSearchDesiredBaths} keyboardType="number-pad" placeholder="2" />
+          <QualificationChoiceGroup label="Buyer type" options={buyerStatusOptions} value={searchBuyerStatus} onChange={setSearchBuyerStatus} />
+          <QualificationChoiceGroup label="Working with an agent?" options={agentRelationshipOptions} value={searchAlreadyWorkingWithAgent} onChange={setSearchAlreadyWorkingWithAgent} />
+          <Text style={styles.requestLabel}>Notes</Text>
+          <TextInput value={searchNotes} onChangeText={setSearchNotes} multiline style={[styles.requestInput, styles.requestMessageInput]} placeholder="Commute, relocation, pet needs, must-haves..." placeholderTextColor="#7b8a84" />
+          {searchProfileError && <Text style={styles.profileErrorText}>{searchProfileError}</Text>}
+          <Pressable style={[styles.primaryCta, searchProfileSaving && styles.ctaDisabled]} onPress={handleSaveSearchProfile} disabled={searchProfileSaving}>
+            <Text style={styles.primaryCtaText}>{searchProfileSaving ? 'Saving search profile...' : 'Save search profile'}</Text>
+          </Pressable>
+        </View>
+
         <View style={styles.profileActionsPanel}>
           <Text style={styles.profileSectionTitle}>Account access</Text>
           <Pressable style={styles.secondaryCta} onPress={() => auth.signOut?.()} disabled={deletingAccount}><Text style={styles.secondaryCtaText}>Sign out</Text></Pressable>
@@ -2048,7 +2281,7 @@ function AccountCard({ auth, onOpenAuth }: { auth: AppAuth; onOpenAuth: (prompt?
 
         <View style={styles.deleteAccountPanel}>
           <Text style={styles.deleteAccountTitle}>Delete account</Text>
-          <Text style={styles.deleteAccountCopy}>Permanently remove your Hafa Homes account and synced saved homes. Public showing/contact requests are preserved for follow-up, but disconnected from your account.</Text>
+          <Text style={styles.deleteAccountCopy}>Permanently remove your Hafa Homes account, synced saved homes, and search profile. Public showing/contact requests are preserved for follow-up, but disconnected from your account.</Text>
           {deleteError && <Text style={styles.profileErrorText}>{deleteError}</Text>}
           <Pressable style={[styles.dangerCta, deletingAccount && styles.ctaDisabled]} onPress={confirmDeleteAccount} disabled={deletingAccount}>
             <Text style={styles.dangerCtaText}>{deletingAccount ? 'Deleting account...' : 'Delete account'}</Text>
@@ -2667,12 +2900,24 @@ function ShowingRequestSheet({ listing, auth, requestedAgent, open, onOpenAuth, 
       setName((current) => current || auth.userName || '')
       setEmail((current) => current || auth.userEmail || '')
       if (auth.getToken) {
-        fetchMe(auth.getToken)
-          .then((result) => {
+        Promise.all([fetchMe(auth.getToken), fetchSearchProfile(auth.getToken)])
+          .then(([result, searchResult]) => {
+            const saved = searchResult.search_profile
             setName(result.user.full_name || auth.userName || '')
             setEmail(result.user.email || auth.userEmail || '')
-            setPhone(result.user.phone || '+1671')
-            setPreferredContact(result.user.preferred_contact_method || 'phone')
+            setPhone(saved.phone || result.user.phone || '+1671')
+            setPreferredContact(saved.preferred_contact_method || result.user.preferred_contact_method || 'phone')
+            setPrequalifiedStatus(saved.prequalified_status || '')
+            setPurchaseTimeline(saved.purchase_timeline || '')
+            setLenderName(saved.lender_name || '')
+            setBudgetMin(profileValue(saved, 'budget_min'))
+            setBudgetMax(profileValue(saved, 'budget_max', String(Math.round(listing.price))))
+            setDesiredVillages(saved.desired_villages || listing.village.name || '')
+            setDesiredBeds(profileValue(saved, 'desired_beds', listing.beds ? String(listing.beds) : ''))
+            setDesiredBaths(profileValue(saved, 'desired_baths', listing.baths ? String(listing.baths) : ''))
+            setBuyerStatus(saved.buyer_status || '')
+            setAlreadyWorkingWithAgent(saved.already_working_with_agent || '')
+            setQualificationNotes(saved.notes || '')
           })
           .catch((profileError) => console.warn('Unable to prefill showing request profile', profileError))
       }
@@ -2853,11 +3098,19 @@ function PriceAlertSheet({ listing, auth, requestedAgent, open, onClose }: { lis
       setName((current) => current || auth.userName || '')
       setEmail((current) => current || auth.userEmail || '')
       if (auth.getToken) {
-        fetchMe(auth.getToken)
-          .then((result) => {
+        Promise.all([fetchMe(auth.getToken), fetchSearchProfile(auth.getToken)])
+          .then(([result, searchResult]) => {
+            const saved = searchResult.search_profile
             setName(result.user.full_name || auth.userName || '')
             setEmail(result.user.email || auth.userEmail || '')
-            setPhone(result.user.phone || '+1671')
+            setPhone(saved.phone || result.user.phone || '+1671')
+            setPrequalifiedStatus(saved.prequalified_status || '')
+            setPurchaseTimeline(saved.purchase_timeline || '')
+            setLenderName(saved.lender_name || '')
+            setBudgetMin(profileValue(saved, 'budget_min'))
+            setBudgetMax(profileValue(saved, 'budget_max'))
+            setBuyerStatus(saved.buyer_status || '')
+            setAlreadyWorkingWithAgent(saved.already_working_with_agent || '')
           })
           .catch((profileError) => console.warn('Unable to prefill price alert profile', profileError))
       }
@@ -3135,6 +3388,8 @@ const styles = StyleSheet.create({
   profileActionsPanel: { backgroundColor: 'white', borderColor: '#eadfce', borderRadius: 24, borderWidth: 1, gap: 12, padding: 16 },
   profileSectionTitle: { color: colors.ink, fontSize: 20, fontWeight: '900', letterSpacing: -0.4 },
   profileSectionCopy: { color: colors.muted, fontSize: 13, fontWeight: '700', lineHeight: 19 },
+  searchProfileMeter: { backgroundColor: colors.mint, borderRadius: 20, gap: 6, padding: 12 },
+  searchProfileMeterKicker: { color: colors.green2, fontSize: 11, fontWeight: '900', letterSpacing: 1.6, textTransform: 'uppercase' },
   profileErrorText: { color: '#b91c1c', fontSize: 13, fontWeight: '800', lineHeight: 18 },
   deleteAccountPanel: { backgroundColor: '#fff8f6', borderColor: '#fecaca', borderRadius: 24, borderWidth: 1, gap: 10, padding: 16 },
   deleteAccountTitle: { color: '#7f1d1d', fontSize: 20, fontWeight: '900', letterSpacing: -0.4 },
@@ -3267,6 +3522,10 @@ const styles = StyleSheet.create({
   qualificationChoiceActive: { backgroundColor: colors.mint, borderColor: colors.green2 },
   qualificationChoiceText: { color: colors.muted, fontSize: 12, fontWeight: '900' },
   qualificationChoiceTextActive: { color: colors.green2 },
+  profilePromptToggle: { backgroundColor: colors.sand, borderColor: colors.line, borderRadius: 18, borderWidth: 1, padding: 13 },
+  profilePromptToggleActive: { backgroundColor: colors.mint, borderColor: colors.green2 },
+  profilePromptToggleText: { color: colors.muted, fontSize: 13, fontWeight: '800', lineHeight: 18 },
+  profilePromptToggleTextActive: { color: colors.green },
   requestError: { color: '#a33b2f', fontSize: 13, fontWeight: '800', lineHeight: 19, marginTop: 12 },
   requestSuccess: { paddingVertical: 20 },
   requestHistoryCard: { backgroundColor: 'white', borderRadius: 26, marginTop: 12, overflow: 'hidden', shadowColor: colors.green, shadowOpacity: 0.08, shadowRadius: 18, shadowOffset: { width: 0, height: 8 } },

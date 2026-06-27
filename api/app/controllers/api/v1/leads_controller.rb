@@ -53,7 +53,10 @@ module Api
         assign_requested_agent_from_params(lead, permitted[:requested_agent_id])
         return if performed?
 
-        lead.user = current_user if current_user
+        if current_user
+          lead.user = current_user
+          apply_current_user_search_profile(lead)
+        end
         lead.lead_intent_session = intent_session if intent_session
         lead.queue_request_received_notification = true
 
@@ -332,6 +335,13 @@ module Api
       def sufficient_lead_intent_context?(session)
         events = session.lead_intent_events
         events.where(event_name: MEANINGFUL_INTENT_EVENTS_FOR_LEAD_LINK).count >= MINIMUM_INTENT_EVENTS_FOR_LEAD_LINK
+      end
+
+      def apply_current_user_search_profile(lead)
+        profile = current_user&.buyer_search_profile
+        return unless profile
+
+        profile.apply_to_lead(lead)
       end
 
       def mark_intent_session_converted(lead, intent_session)

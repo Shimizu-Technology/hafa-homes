@@ -156,7 +156,11 @@ class LeadIntentSession < ApplicationRecord
     trigger = prompt_trigger(latest_event)
     return ineligible_prompt("not_enough_intent") unless trigger
 
+    profile_context = search_profile_prompt_context(trigger)
+    return ineligible_prompt(profile_context[:ineligible_reason]) if profile_context&.key?(:ineligible_reason)
+
     prompt_key = [
+      profile_context&.fetch(:kind) || "lead",
       trigger[:key],
       summary.fetch("unique_listing_view_count", 0),
       summary.fetch("saved_listing_count", 0),
@@ -166,16 +170,20 @@ class LeadIntentSession < ApplicationRecord
     return ineligible_prompt("already_prompted") if last_prompt_key == prompt_key
 
     update_columns(last_prompt_key: prompt_key, updated_at: Time.current)
+    profile_context&.dig(:profile)&.update_column(:last_prompted_at, Time.current) if profile_context&.dig(:profile)&.persisted?
 
     {
       eligible: true,
       key: prompt_key,
       trigger: trigger[:key],
-      title: trigger[:title],
-      body: trigger[:body],
-      cta: "Get matched with an agent",
+      title: profile_context&.dig(:title) || trigger[:title],
+      body: profile_context&.dig(:body) || trigger[:body],
+      cta: profile_context&.dig(:cta) || "Get matched with an agent",
       snooze_hours: prompt_snooze_hours,
-      suggested: suggested_prompt_defaults,
+      profile_prompt: profile_context.present?,
+      profile_prompt_kind: profile_context&.dig(:kind),
+      create_lead_default: profile_context ? false : true,
+      suggested: suggested_prompt_defaults(profile_context&.dig(:profile)),
       summary: public_summary
     }
   end
@@ -348,12 +356,91 @@ class LeadIntentSession < ApplicationRecord
     }
   end
 
-  def suggested_prompt_defaults
+  def search_profile_prompt_context(_trigger)
+    return nil unless user
+
+    profile = user.buyer_search_profile
+    return finish_search_profile_context(profile) unless profile&.complete?
+    return update_search_profile_context(profile) if search_profile_diverged?(profile)
+
+    { ineligible_reason: "complete_search_profile" }
+  end
+
+  def finish_search_profile_context(profile)
+    {
+      kind: "finish_search_profile",
+      profile: profile,
+      title: "Save your search profile once.",
+      body: "Add your budget, villages, timeline, and readiness to your account so Hafa Homes can prefill requests and route your search better.",
+      cta: "Save search profile"
+    }
+  end
+
+  def update_search_profile_context(profile)
+    {
+      kind: "update_search_profile",
+      profile: profile,
+      title: "Update your search profile?",
+      body: search_profile_divergence_message(profile),
+      cta: "Update profile"
+    }
+  end
+
+  def search_profile_diverged?(profile)
+    viewed_villages_outside_profile?(profile) || viewed_prices_outside_profile?(profile)
+  end
+
+  def viewed_villages_outside_profile?(profile)
+    saved_villages = profile.desired_villages.to_s.downcase.split(/[,;]+/).map(&:squish).reject(&:blank?)
+    return false if saved_villages.empty?
+
+    summary.fetch("top_villages", []).any? do |village|
+      name = village["name"].to_s.downcase.squish
+      village["count"].to_i >= 2 && name.present? && saved_villages.none? { |saved| saved.include?(name) || name.include?(saved) }
+    end
+  end
+
+  def viewed_prices_outside_profile?(profile)
+    viewed_min = summary["viewed_price_min"].to_f if summary["viewed_price_min"].present?
+    viewed_max = summary["viewed_price_max"].to_f if summary["viewed_price_max"].present?
+    budget_min = profile.budget_min&.to_f
+    budget_max = profile.budget_max&.to_f
+    return false unless viewed_min || viewed_max
+
+    (budget_min && viewed_max && viewed_max < budget_min * 0.9) || (budget_max && viewed_min && viewed_min > budget_max * 1.1)
+  end
+
+  def search_profile_divergence_message(profile)
+    top_village = summary.fetch("top_villages", []).first&.fetch("name", nil)
+    price_min = summary["viewed_price_min"]
+    price_max = summary["viewed_price_max"]
+    if top_village.present? && viewed_villages_outside_profile?(profile)
+      return "You have been looking around #{top_village}. Add it to your saved preferences so future requests and agent follow-up match your real search."
+    end
+
+    if price_min.present? || price_max.present?
+      return "Your recent browsing is outside your saved budget range. Update your profile so Hafa Homes can prefill requests with the right price context."
+    end
+
+    "Your recent browsing looks different from your saved profile. Update your preferences so Hafa Homes can prefill future requests correctly."
+  end
+
+  def suggested_prompt_defaults(profile = nil)
     top_villages = summary.fetch("top_villages", []).map { |village| village["name"] }.compact.first(3)
     {
-      desired_villages: top_villages.join(", ").presence,
-      budget_min: summary["viewed_price_min"],
-      budget_max: summary["viewed_price_max"],
+      preferred_contact_method: profile&.preferred_contact_method,
+      phone: profile&.phone,
+      prequalified_status: profile&.prequalified_status,
+      lender_name: profile&.lender_name,
+      purchase_timeline: profile&.purchase_timeline,
+      desired_villages: top_villages.join(", ").presence || profile&.desired_villages,
+      budget_min: summary["viewed_price_min"] || profile&.budget_min,
+      budget_max: summary["viewed_price_max"] || profile&.budget_max,
+      desired_beds: profile&.desired_beds,
+      desired_baths: profile&.desired_baths,
+      buyer_status: profile&.buyer_status,
+      already_working_with_agent: profile&.already_working_with_agent,
+      notes: profile&.notes,
       listing_id: summary["latest_listing_id"]
     }.compact
   end

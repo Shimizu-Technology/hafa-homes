@@ -470,10 +470,10 @@ type LeadIntentPrompt = {
   body?: string
   cta?: string
   snooze_hours?: number
-  suggested?: {
-    desired_villages?: string
-    budget_min?: number
-    budget_max?: number
+  profile_prompt?: boolean
+  profile_prompt_kind?: 'finish_search_profile' | 'update_search_profile'
+  create_lead_default?: boolean
+  suggested?: Partial<SearchProfile> & {
     listing_id?: number
   }
   summary?: LeadIntentSummary
@@ -573,6 +573,7 @@ type Lead = {
   lead_tasks?: LeadTask[]
   lead_activities?: LeadActivity[]
   crm_summary?: CrmSummary
+  current_search_profile?: SearchProfile | null
   listing?: { id: number; title: string; address?: string; price: number; listing_kind: 'sale' | 'rent'; property_type?: string; village: string; primary_photo_url?: string; brokerage?: Brokerage | null; agent?: Agent | null } | null
   brokerage?: Brokerage | null
   requested_agent?: Agent | null
@@ -636,6 +637,55 @@ type SavedListingsResponse = { listing_ids: number[]; listings: Listing[] }
 type SaveListingResponse = { listing: Listing; listing_id: number; saved: boolean }
 
 type MeResponse = { user: CurrentUser }
+
+type SearchProfile = {
+  id?: number
+  user_id?: number
+  brokerage_id?: number
+  preferred_contact_method?: 'phone' | 'text' | 'email'
+  phone?: string
+  prequalified_status?: string
+  prequalified_status_label?: string
+  lender_name?: string
+  purchase_timeline?: string
+  purchase_timeline_label?: string
+  budget_min?: number
+  budget_max?: number
+  budget_range_label?: string
+  desired_villages?: string
+  desired_beds?: number
+  desired_baths?: number
+  buyer_status?: string
+  buyer_status_label?: string
+  already_working_with_agent?: string
+  already_working_with_agent_label?: string
+  notes?: string
+  completed_at?: string
+  completion_status?: 'complete' | 'incomplete'
+  completion_percentage?: number
+  completion_missing_fields?: string[]
+  qualification_summary?: string
+  last_prompted_at?: string
+  created_at?: string
+  updated_at?: string
+}
+
+type SearchProfileResponse = { search_profile: SearchProfile }
+type SearchProfilePayload = Partial<{
+  preferred_contact_method: string
+  phone: string
+  prequalified_status: string
+  lender_name: string
+  purchase_timeline: string
+  budget_min: string
+  budget_max: string
+  desired_villages: string
+  desired_beds: string
+  desired_baths: string
+  buyer_status: string
+  already_working_with_agent: string
+  notes: string
+}>
 
 type LeadPayload = {
   lead_type: string
@@ -766,6 +816,22 @@ async function updateMe(payload: Partial<Pick<CurrentUser, 'first_name' | 'last_
     body: JSON.stringify({ user: payload }),
   })
   if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to update profile'), response.status)
+  return response.json()
+}
+
+async function fetchSearchProfile(): Promise<SearchProfileResponse> {
+  const response = await fetch(`${API_URL}/api/v1/me/search_profile`, { headers: await authHeaders() })
+  if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to load search profile'), response.status)
+  return response.json()
+}
+
+async function updateSearchProfile(payload: SearchProfilePayload): Promise<SearchProfileResponse> {
+  const response = await fetch(`${API_URL}/api/v1/me/search_profile`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+    body: JSON.stringify({ search_profile: payload }),
+  })
+  if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to update search profile'), response.status)
   return response.json()
 }
 
@@ -1026,6 +1092,49 @@ async function submitLead(payload: LeadPayload, retryAfterIntentReset: boolean):
   return response.json()
 }
 
+function searchProfilePayloadFromForm(form: FormData): SearchProfilePayload {
+  return {
+    preferred_contact_method: String(form.get('preferred_contact_method') || '').trim(),
+    phone: String(form.get('phone') || '').trim(),
+    prequalified_status: String(form.get('prequalified_status') || '').trim(),
+    lender_name: String(form.get('lender_name') || '').trim(),
+    purchase_timeline: String(form.get('purchase_timeline') || '').trim(),
+    budget_min: String(form.get('budget_min') || '').trim(),
+    budget_max: String(form.get('budget_max') || '').trim(),
+    desired_villages: String(form.get('desired_villages') || '').trim(),
+    desired_beds: String(form.get('desired_beds') || '').trim(),
+    desired_baths: String(form.get('desired_baths') || '').trim(),
+    buyer_status: String(form.get('buyer_status') || '').trim(),
+    already_working_with_agent: String(form.get('already_working_with_agent') || '').trim(),
+    notes: String(form.get('notes') || form.get('qualification_notes') || '').trim(),
+  }
+}
+
+function profileDefault(profile: SearchProfile | undefined | null, field: keyof SearchProfile, fallback = '') {
+  const value = profile?.[field]
+  return value === undefined || value === null ? fallback : String(value)
+}
+
+function mergedPromptProfile(prompt: LeadIntentPrompt, searchProfile?: SearchProfile | null): SearchProfile {
+  return { ...(searchProfile || {}), ...(prompt.suggested || {}) }
+}
+
+function leadFieldsFromSearchProfile(profile?: SearchProfile | null) {
+  return {
+    prequalified_status: profileDefault(profile, 'prequalified_status'),
+    lender_name: profileDefault(profile, 'lender_name'),
+    purchase_timeline: profileDefault(profile, 'purchase_timeline'),
+    budget_min: profileDefault(profile, 'budget_min'),
+    budget_max: profileDefault(profile, 'budget_max'),
+    desired_villages: profileDefault(profile, 'desired_villages'),
+    desired_beds: profileDefault(profile, 'desired_beds'),
+    desired_baths: profileDefault(profile, 'desired_baths'),
+    buyer_status: profileDefault(profile, 'buyer_status'),
+    already_working_with_agent: profileDefault(profile, 'already_working_with_agent'),
+    qualification_notes: profileDefault(profile, 'notes'),
+  }
+}
+
 const preferredTimeOptions = [
   { value: 'morning', label: 'Morning' },
   { value: 'afternoon', label: 'Afternoon' },
@@ -1275,11 +1384,23 @@ function App() {
 function ProgressiveLeadPrompt() {
   const [prompt, setPrompt] = useState<LeadIntentPrompt | null>(null)
   const [dismissedKey, setDismissedKey] = useState<string | null>(null)
-  const mutation = useMutation({ mutationFn: createLead })
+  const mutation = useMutation({
+    mutationFn: async (variables: { profilePayload?: SearchProfilePayload; leadPayload?: LeadPayload; createLeadRequested: boolean; profilePrompt: boolean }) => {
+      const profileResponse = variables.profilePrompt && variables.profilePayload ? await updateSearchProfile(variables.profilePayload) : null
+      const leadResponse = variables.createLeadRequested && variables.leadPayload ? await createLead(variables.leadPayload) : null
+      return { search_profile: profileResponse?.search_profile, lead: leadResponse?.lead, profile_only: !leadResponse }
+    },
+  })
   const { isClerkEnabled, isSignedIn, userId } = useAuthContext()
   const { data: meData } = useQuery({
     queryKey: ['me', userId, 'progressive-lead-prompt'],
     queryFn: fetchMe,
+    enabled: Boolean(prompt) && isClerkEnabled && isSignedIn && Boolean(userId),
+    retry: false,
+  })
+  const { data: searchProfileData, refetch: refetchSearchProfile } = useQuery({
+    queryKey: ['me', userId, 'search-profile', 'progressive-lead-prompt'],
+    queryFn: fetchSearchProfile,
     enabled: Boolean(prompt) && isClerkEnabled && isSignedIn && Boolean(userId),
     retry: false,
   })
@@ -1289,6 +1410,7 @@ function ProgressiveLeadPrompt() {
     enabled: Boolean(prompt) && isClerkEnabled && isSignedIn,
   })
   const profile = meData?.user
+  const searchProfile = searchProfileData?.search_profile
 
   useEffect(() => {
     function handlePrompt(event: Event) {
@@ -1310,6 +1432,8 @@ function ProgressiveLeadPrompt() {
   const selectedAgent = agentsData?.agents.find((agent) => agent.id === selectedAgentId)
   const promptTitle = activePrompt.title || 'Want an agent to send matching homes?'
   const promptBody = activePrompt.body || 'Share a few details and the brokerage team can follow up with useful Guam listings.'
+  const promptProfile = mergedPromptProfile(activePrompt, searchProfile)
+  const isProfilePrompt = Boolean(activePrompt.profile_prompt)
 
   function handleDismiss(reason = 'dismissed') {
     setDismissedKey(activePrompt.key || null)
@@ -1324,30 +1448,29 @@ function ProgressiveLeadPrompt() {
     const email = String(form.get('email') || profile?.email || '').trim()
     if (!email) return
 
-    mutation.mutate({
+    const profilePrompt = Boolean(activePrompt.profile_prompt)
+    const profilePayload = searchProfilePayloadFromForm(form)
+    const createLeadRequested = !profilePrompt || form.get('agent_help_requested') === 'on'
+    const leadProfileFields = leadFieldsFromSearchProfile({ ...searchProfilePayloadFromForm(form), notes: String(form.get('notes') || form.get('qualification_notes') || '') } as SearchProfile)
+    const leadPayload: LeadPayload = {
       listing_id: activePrompt.suggested?.listing_id,
       lead_type: 'search_assist',
       name: name || 'Hafa Homes searcher',
       email,
       phone: String(form.get('phone') || profile?.phone || '').trim(),
-      preferred_contact_method: 'email',
+      preferred_contact_method: String(form.get('preferred_contact_method') || profile?.preferred_contact_method || 'email'),
       source_campaign: `progressive_prompt:${activePrompt.trigger || 'search_intent'}`,
       source_url: typeof window !== 'undefined' ? window.location.href : '',
       requested_agent_id: selectedAgent?.id,
-      prequalified_status: String(form.get('prequalified_status') || ''),
-      purchase_timeline: String(form.get('purchase_timeline') || ''),
-      budget_min: String(form.get('budget_min') || ''),
-      budget_max: String(form.get('budget_max') || ''),
-      desired_villages: String(form.get('desired_villages') || ''),
-      desired_beds: String(form.get('desired_beds') || ''),
-      desired_baths: String(form.get('desired_baths') || ''),
-      buyer_status: String(form.get('buyer_status') || ''),
-      already_working_with_agent: String(form.get('already_working_with_agent') || ''),
+      ...leadProfileFields,
       intent_session_token: currentLeadIntentSessionToken(),
       message: `Progressive search assist prompt: ${activePrompt.trigger || 'search_intent'}`,
-    }, {
+    }
+
+    mutation.mutate({ profilePayload, leadPayload, createLeadRequested, profilePrompt }, {
       onSuccess: () => {
         setDismissedKey(activePrompt.key || null)
+        if (profilePrompt) void refetchSearchProfile()
       },
     })
   }
@@ -1357,8 +1480,8 @@ function ProgressiveLeadPrompt() {
       {mutation.isSuccess ? (
         <div className="text-center">
           <CheckCircle2 className="mx-auto text-[#0f705e]" size={36} />
-          <h2 className="mt-3 text-2xl font-semibold tracking-[-0.05em]">Search details sent</h2>
-          <p className="mt-2 text-sm leading-6 text-[#66746f]">The brokerage team can use your search context to follow up with better matches.</p>
+          <h2 className="mt-3 text-2xl font-semibold tracking-[-0.05em]">{mutation.data?.profile_only ? 'Search profile saved' : 'Search details sent'}</h2>
+          <p className="mt-2 text-sm leading-6 text-[#66746f]">{mutation.data?.profile_only ? 'Your saved preferences can now prefill future requests across Hafa Homes.' : 'The brokerage team can use your search context to follow up with better matches.'}</p>
           <button onClick={() => setPrompt(null)} className="mt-4 min-h-11 w-full rounded-2xl bg-[#0f3d35] px-4 text-sm font-bold text-white">Done</button>
         </div>
       ) : (
@@ -1377,41 +1500,60 @@ function ProgressiveLeadPrompt() {
           <div className="mt-4 grid gap-3 md:grid-cols-2">
             <Input name="email" label="Email" type="email" defaultValue={profile?.email || ''} required />
             <Input name="name" label="Name" defaultValue={profile?.full_name || ''} />
-            <Input name="phone" label="Phone optional" defaultValue={profile?.phone || '+1671'} inputMode="tel" />
+            <Input name="phone" label="Phone optional" defaultValue={profileDefault(promptProfile, 'phone', profile?.phone || '+1671')} inputMode="tel" />
+            <label className="grid gap-2 text-sm font-semibold text-[#304942]">
+              Preferred contact
+              <select name="preferred_contact_method" defaultValue={profileDefault(promptProfile, 'preferred_contact_method', profile?.preferred_contact_method || 'email')} className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
+                {preferredContactOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+            </label>
             <label className="grid gap-2 text-sm font-semibold text-[#304942]">
               Timeline
-              <select name="purchase_timeline" defaultValue="" className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
+              <select name="purchase_timeline" defaultValue={profileDefault(promptProfile, 'purchase_timeline')} className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
                 {purchaseTimelineOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
               </select>
             </label>
-            <Input name="desired_villages" label="Desired villages" defaultValue={activePrompt.suggested?.desired_villages || ''} placeholder="Dededo, Yigo, Tamuning" />
+            <Input name="desired_villages" label="Desired villages" defaultValue={profileDefault(promptProfile, 'desired_villages')} placeholder="Dededo, Yigo, Tamuning" />
             <label className="grid gap-2 text-sm font-semibold text-[#304942]">
               Prequalified?
-              <select name="prequalified_status" defaultValue="" className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
+              <select name="prequalified_status" defaultValue={profileDefault(promptProfile, 'prequalified_status')} className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
                 {prequalifiedOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
               </select>
             </label>
-            <Input name="budget_min" label="Budget min optional" type="number" min="0" step="1000" defaultValue={activePrompt.suggested?.budget_min ? String(Math.round(activePrompt.suggested.budget_min)) : ''} />
-            <Input name="budget_max" label="Budget max optional" type="number" min="0" step="1000" defaultValue={activePrompt.suggested?.budget_max ? String(Math.round(activePrompt.suggested.budget_max)) : ''} />
-            <Input name="desired_beds" label="Beds optional" type="number" min="0" step="1" />
-            <Input name="desired_baths" label="Baths optional" type="number" min="0" step="0.5" />
+            <Input name="lender_name" label="Lender / bank optional" defaultValue={profileDefault(promptProfile, 'lender_name')} placeholder="Bank of Guam, Coast360..." />
+            <Input name="budget_min" label="Budget min optional" type="number" min="0" step="1000" defaultValue={profileDefault(promptProfile, 'budget_min')} />
+            <Input name="budget_max" label="Budget max optional" type="number" min="0" step="1000" defaultValue={profileDefault(promptProfile, 'budget_max')} />
+            <Input name="desired_beds" label="Beds optional" type="number" min="0" step="1" defaultValue={profileDefault(promptProfile, 'desired_beds')} />
+            <Input name="desired_baths" label="Baths optional" type="number" min="0" step="0.5" defaultValue={profileDefault(promptProfile, 'desired_baths')} />
             <label className="grid gap-2 text-sm font-semibold text-[#304942]">
               Buyer type
-              <select name="buyer_status" defaultValue="" className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
+              <select name="buyer_status" defaultValue={profileDefault(promptProfile, 'buyer_status')} className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
                 {buyerStatusOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
               </select>
             </label>
             <label className="grid gap-2 text-sm font-semibold text-[#304942]">
               Working with an agent?
-              <select name="already_working_with_agent" defaultValue="" className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
+              <select name="already_working_with_agent" defaultValue={profileDefault(promptProfile, 'already_working_with_agent')} className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
                 {agentRelationshipOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
               </select>
             </label>
           </div>
 
-          {mutation.isError && <p className="mt-3 text-sm font-semibold text-red-700">{displayErrorMessage(mutation.error, 'Unable to send search details right now.')}</p>}
+          <label className="mt-3 grid gap-2 text-sm font-semibold text-[#304942]">
+            Notes for your search profile
+            <textarea name="notes" rows={3} defaultValue={profileDefault(promptProfile, 'notes')} className="rounded-2xl border border-[#dce5df] bg-white px-4 py-3" placeholder="Relocating this summer, needs pet-friendly, prefers central Guam..." />
+          </label>
+
+          {isProfilePrompt && (
+            <label className="mt-3 flex items-start gap-3 rounded-2xl bg-[#e9f5ef] p-3 text-sm font-semibold leading-6 text-[#304942]">
+              <input name="agent_help_requested" type="checkbox" className="mt-1 h-4 w-4 rounded border-[#0f705e] text-[#0f705e]" />
+              <span>Also ask a Hafa Homes agent to follow up using this search context.</span>
+            </label>
+          )}
+
+          {mutation.isError && <p className="mt-3 text-sm font-semibold text-red-700">{displayErrorMessage(mutation.error, 'Unable to save search details right now.')}</p>}
           <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto]">
-            <button disabled={mutation.isPending} className="min-h-12 rounded-2xl bg-[#0f3d35] px-5 text-sm font-bold text-white disabled:opacity-60">{mutation.isPending ? 'Sending...' : activePrompt.cta || 'Get matched with an agent'}</button>
+            <button disabled={mutation.isPending} className="min-h-12 rounded-2xl bg-[#0f3d35] px-5 text-sm font-bold text-white disabled:opacity-60">{mutation.isPending ? 'Saving...' : activePrompt.cta || 'Get matched with an agent'}</button>
             <button type="button" onClick={() => handleDismiss('not_now')} className="min-h-12 rounded-2xl bg-[#edf0ec] px-5 text-sm font-bold text-[#304942]">Not now</button>
           </div>
         </form>
@@ -2567,7 +2709,14 @@ function AccountPage() {
     enabled: isClerkEnabled && isSignedIn && Boolean(userId),
     retry: false,
   })
+  const { data: searchProfileData, isLoading: isSearchProfileLoading, refetch: refetchSearchProfile } = useQuery({
+    queryKey: ['me', userId, 'search-profile', 'account'],
+    queryFn: fetchSearchProfile,
+    enabled: isClerkEnabled && isSignedIn && Boolean(userId),
+    retry: false,
+  })
   const profileMutation = useMutation({ mutationFn: updateMe, onSuccess: () => refetch() })
+  const searchProfileMutation = useMutation({ mutationFn: updateSearchProfile, onSuccess: () => refetchSearchProfile() })
   const deleteMutation = useMutation({
     mutationFn: deleteCurrentAccount,
     onSuccess: async () => {
@@ -2581,7 +2730,7 @@ function AccountPage() {
     },
   })
 
-  if (isLoading || isMeLoading) return <Shell compact><StateCard>Checking account...</StateCard></Shell>
+  if (isLoading || isMeLoading || isSearchProfileLoading) return <Shell compact><StateCard>Checking account...</StateCard></Shell>
 
   if (!isClerkEnabled) {
     return (
@@ -2665,10 +2814,12 @@ function AccountPage() {
           </div>
         </form>
 
+        <SearchProfileCard profile={searchProfileData?.search_profile} mutation={searchProfileMutation} />
+
         <div className="rounded-[2rem] border border-red-200 bg-[#fff8f6] p-6 shadow-sm">
           <p className="text-sm font-semibold uppercase tracking-[0.2em] text-red-700">Delete account</p>
           <h2 className="mt-3 text-3xl font-semibold tracking-[-0.05em] text-[#491d1d]">Permanently remove your account.</h2>
-          <p className="mt-3 text-sm leading-6 text-[#7c4a43]">This deletes your Clerk/Hafa Homes account and synced saved homes. Showing/contact requests are preserved for brokerage follow-up, but they will no longer be linked to your account.</p>
+          <p className="mt-3 text-sm leading-6 text-[#7c4a43]">This deletes your Clerk/Hafa Homes account, synced saved homes, and saved search profile. Showing/contact requests are preserved for brokerage follow-up, but they will no longer be linked to your account.</p>
 
           {!deletePanelOpen ? (
             <button type="button" onClick={() => setDeletePanelOpen(true)} className="mt-5 rounded-full bg-red-700 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-red-900/10">Delete account</button>
@@ -2694,6 +2845,84 @@ function AccountPage() {
         </div>
       </section>
     </Shell>
+  )
+}
+
+type SearchProfileMutation = { mutate: (payload: SearchProfilePayload) => void; isPending: boolean; isError: boolean; isSuccess: boolean; error: unknown }
+
+function SearchProfileCard({ profile, mutation }: { profile?: SearchProfile; mutation: SearchProfileMutation }) {
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    mutation.mutate(searchProfilePayloadFromForm(new FormData(event.currentTarget)))
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="rounded-[2rem] bg-[#102f2a] p-6 text-white shadow-2xl shadow-[#0f3d35]/15 lg:col-span-2">
+      <div className="grid gap-5 lg:grid-cols-[0.85fr_1.15fr]">
+        <div>
+          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#bdebdc]">Search profile</p>
+          <h2 className="mt-3 text-3xl font-semibold tracking-[-0.05em]">Save what you are looking for once.</h2>
+          <p className="mt-3 text-sm leading-6 text-white/70">These preferences prefill showing requests, price alerts, and future prompts. Complete profiles avoid the longer qualification popup.</p>
+          <div className="mt-5 rounded-3xl bg-white/10 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-xs font-bold uppercase tracking-[0.16em] text-white/55">Completion</span>
+              <span className="rounded-full bg-white px-3 py-1 text-xs font-black uppercase tracking-[0.12em] text-[#0f3d35]">{profile?.completion_status === 'complete' ? 'Complete' : `${profile?.completion_percentage ?? 0}%`}</span>
+            </div>
+            <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/15">
+              <div className="h-full rounded-full bg-[#f5c16c]" style={{ width: `${profile?.completion_percentage ?? 0}%` }} />
+            </div>
+            <p className="mt-3 text-xs font-semibold leading-5 text-white/62">{profile?.qualification_summary || 'Add contact preference, timeline, search criteria, and readiness.'}</p>
+          </div>
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-2">
+          <label className="grid gap-2 text-sm font-semibold text-white/86">
+            Preferred contact
+            <select name="preferred_contact_method" defaultValue={profileDefault(profile, 'preferred_contact_method', 'email')} className="min-h-12 rounded-2xl border border-white/10 bg-white px-4 text-[#17211f]">
+              {preferredContactOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+          </label>
+          <Input name="phone" label="Phone" defaultValue={profileDefault(profile, 'phone')} inputMode="tel" labelClassName="!text-white/86" className="border-white/10 bg-white text-[#17211f]" />
+          <label className="grid gap-2 text-sm font-semibold text-white/86">
+            Timeline
+            <select name="purchase_timeline" defaultValue={profileDefault(profile, 'purchase_timeline')} className="min-h-12 rounded-2xl border border-white/10 bg-white px-4 text-[#17211f]">
+              {purchaseTimelineOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+          </label>
+          <label className="grid gap-2 text-sm font-semibold text-white/86">
+            Prequalified?
+            <select name="prequalified_status" defaultValue={profileDefault(profile, 'prequalified_status')} className="min-h-12 rounded-2xl border border-white/10 bg-white px-4 text-[#17211f]">
+              {prequalifiedOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+          </label>
+          <Input name="lender_name" label="Lender / bank optional" defaultValue={profileDefault(profile, 'lender_name')} labelClassName="!text-white/86" className="border-white/10 bg-white text-[#17211f]" />
+          <Input name="desired_villages" label="Desired villages" defaultValue={profileDefault(profile, 'desired_villages')} placeholder="Dededo, Yigo, Tamuning" labelClassName="!text-white/86" className="border-white/10 bg-white text-[#17211f]" />
+          <Input name="budget_min" label="Budget min" type="number" min="0" step="1000" defaultValue={profileDefault(profile, 'budget_min')} labelClassName="!text-white/86" className="border-white/10 bg-white text-[#17211f]" />
+          <Input name="budget_max" label="Budget max" type="number" min="0" step="1000" defaultValue={profileDefault(profile, 'budget_max')} labelClassName="!text-white/86" className="border-white/10 bg-white text-[#17211f]" />
+          <Input name="desired_beds" label="Beds" type="number" min="0" step="1" defaultValue={profileDefault(profile, 'desired_beds')} labelClassName="!text-white/86" className="border-white/10 bg-white text-[#17211f]" />
+          <Input name="desired_baths" label="Baths" type="number" min="0" step="0.5" defaultValue={profileDefault(profile, 'desired_baths')} labelClassName="!text-white/86" className="border-white/10 bg-white text-[#17211f]" />
+          <label className="grid gap-2 text-sm font-semibold text-white/86">
+            Buyer type
+            <select name="buyer_status" defaultValue={profileDefault(profile, 'buyer_status')} className="min-h-12 rounded-2xl border border-white/10 bg-white px-4 text-[#17211f]">
+              {buyerStatusOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+          </label>
+          <label className="grid gap-2 text-sm font-semibold text-white/86">
+            Working with an agent?
+            <select name="already_working_with_agent" defaultValue={profileDefault(profile, 'already_working_with_agent')} className="min-h-12 rounded-2xl border border-white/10 bg-white px-4 text-[#17211f]">
+              {agentRelationshipOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+          </label>
+          <label className="grid gap-2 text-sm font-semibold text-white/86 md:col-span-2">
+            Notes
+            <textarea name="notes" rows={3} defaultValue={profileDefault(profile, 'notes')} className="rounded-2xl border border-white/10 bg-white px-4 py-3 text-[#17211f]" placeholder="Relocating, school zone, pet-friendly, commute, or must-haves..." />
+          </label>
+          {mutation.isError && <p className="text-sm font-semibold text-[#ffd6d6] md:col-span-2">{displayErrorMessage(mutation.error, 'Unable to save search profile right now.')}</p>}
+          {mutation.isSuccess && <p className="text-sm font-semibold text-[#bdebdc] md:col-span-2">Search profile saved.</p>}
+          <button disabled={mutation.isPending} className="min-h-12 rounded-2xl bg-[#f5c16c] px-5 text-sm font-black text-[#102f2a] disabled:opacity-60 md:col-span-2">{mutation.isPending ? 'Saving...' : 'Save search profile'}</button>
+        </div>
+      </div>
+    </form>
   )
 }
 
@@ -2779,11 +3008,11 @@ function PrivacyPage() {
         <div className="grid gap-5 rounded-[2rem] bg-white p-6 text-sm leading-7 text-[#3d4d48] shadow-sm md:p-8">
           <p><strong className="text-[#17211f]">Information we collect.</strong> Hafa Homes may collect contact details you submit through showing requests, price alerts, saved searches, or similar forms, plus first-party app usage information such as listing views, saved homes, search filters, agent selections, and request-form interactions.</p>
           <p><strong className="text-[#17211f]">How we use it.</strong> We use submitted information and first-party search activity to respond to inquiries, coordinate real estate follow-up, suggest more relevant listings, improve listing search, troubleshoot the app, and understand aggregate product usage.</p>
-          <p><strong className="text-[#17211f]">Saved listings.</strong> Signed-in saved homes are stored with your Hafa Homes account so they can sync across web and mobile. The native app may also cache listing details locally on your device for performance.</p>
-          <p><strong className="text-[#17211f]">Account deletion.</strong> Signed-in users can delete their account from the Account screen in the web app or the More screen in the mobile app. Deleting an account removes synced saved homes and disconnects account links from request history while preserving submitted showing/contact requests for brokerage follow-up.</p>
+          <p><strong className="text-[#17211f]">Saved listings and search profile.</strong> Signed-in saved homes and buyer/search profile preferences are stored with your Hafa Homes account so they can sync across web and mobile and prefill future requests. The native app may also cache listing details locally on your device for performance.</p>
+          <p><strong className="text-[#17211f]">Account deletion.</strong> Signed-in users can delete their account from the Account screen in the web app or the More screen in the mobile app. Deleting an account removes synced saved homes and search profile data and disconnects account links from request history while preserving submitted showing/contact requests for brokerage follow-up.</p>
           <p><strong className="text-[#17211f]">Third-party services.</strong> The app may use services such as Clerk for authentication, Mapbox for maps, hosting providers for the API/web app, and analytics or monitoring tools when enabled.</p>
           <p><strong className="text-[#17211f]">Contact.</strong> For privacy questions or data requests, email <a className="font-bold text-[#0f705e]" href="mailto:hello@hafahomes.com">hello@hafahomes.com</a>.</p>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#7b8a84]">Last updated June 25, 2026</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#7b8a84]">Last updated June 27, 2026</p>
         </div>
       </section>
     </Shell>
@@ -3892,6 +4121,8 @@ function LeadDetailPage() {
 
               <LeadQualificationCard lead={lead} />
 
+              <LeadSearchProfileSnapshot profile={lead.current_search_profile} />
+
               <LeadIntentCard intent={lead.intent_summary} />
 
               <LeadCrmPanel lead={lead} noteMutation={noteMutation} noteUpdateMutation={noteUpdateMutation} taskMutation={taskMutation} taskUpdateMutation={taskUpdateMutation} />
@@ -3988,6 +4219,40 @@ function LeadQualificationCard({ lead, compact = false }: { lead: Lead; compact?
       {!compact && lead.qualification_notes && (
         <p className="mt-3 rounded-2xl bg-white p-3 text-sm font-semibold leading-6 text-[#53645f]">{lead.qualification_notes}</p>
       )}
+    </section>
+  )
+}
+
+function LeadSearchProfileSnapshot({ profile }: { profile?: SearchProfile | null }) {
+  if (!profile) return null
+
+  const items = [
+    ['Completion', profile.completion_status === 'complete' ? 'Complete' : `${profile.completion_percentage ?? 0}%`],
+    ['Timeline', profile.purchase_timeline_label || 'Not provided'],
+    ['Budget', profile.budget_range_label || 'Not provided'],
+    ['Villages', profile.desired_villages || 'Not provided'],
+    ['Beds / baths', `${profile.desired_beds ? `${profile.desired_beds}+ beds` : 'Beds not set'} · ${profile.desired_baths ? `${profile.desired_baths}+ baths` : 'Baths not set'}`],
+    ['Prequalification', profile.prequalified_status_label || 'Not provided'],
+  ]
+
+  return (
+    <section className="rounded-[1.5rem] border border-[#dfe8e2] bg-white p-4 shadow-sm sm:p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#0f705e]">Current search profile</p>
+          <p className="mt-2 text-sm font-semibold leading-6 text-[#304942]">{profile.qualification_summary || 'Signed-in shopper profile is still incomplete.'}</p>
+        </div>
+        <span className="rounded-full bg-[#f6f1e8] px-3 py-1 text-xs font-black uppercase tracking-[0.12em] text-[#0f3d35]">Live profile</span>
+      </div>
+      <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        {items.map(([label, value]) => (
+          <div key={label} className="rounded-2xl bg-[#fbfaf6] px-3 py-2">
+            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#7b8a84]">{label}</p>
+            <p className="mt-1 text-sm font-bold text-[#17211f]">{value}</p>
+          </div>
+        ))}
+      </div>
+      {profile.notes && <p className="mt-3 rounded-2xl bg-[#fbfaf6] p-3 text-sm font-semibold leading-6 text-[#53645f]">{profile.notes}</p>}
     </section>
   )
 }
@@ -5405,7 +5670,7 @@ function MobileMenuDrawer({ open, onClose }: { open: boolean; onClose: () => voi
   )
 }
 
-function QualificationFields({ compact = false, defaultBudgetMax }: { compact?: boolean; defaultBudgetMax?: string }) {
+function QualificationFields({ compact = false, defaultBudgetMax, searchProfile }: { compact?: boolean; defaultBudgetMax?: string; searchProfile?: SearchProfile | null }) {
   return (
     <div className="rounded-[1.5rem] border border-[#dce5df] bg-[#fbfaf6] p-4 md:col-span-2">
       <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#0f705e]">Buyer readiness</p>
@@ -5413,31 +5678,31 @@ function QualificationFields({ compact = false, defaultBudgetMax }: { compact?: 
       <div className="mt-4 grid gap-3 md:grid-cols-2">
         <label className="grid gap-2 text-sm font-semibold text-[#304942]">
           Prequalified?
-          <select name="prequalified_status" defaultValue="" className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
+          <select name="prequalified_status" defaultValue={profileDefault(searchProfile, 'prequalified_status')} className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
             {prequalifiedOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
         </label>
         <label className="grid gap-2 text-sm font-semibold text-[#304942]">
           Timeline
-          <select name="purchase_timeline" defaultValue="" className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
+          <select name="purchase_timeline" defaultValue={profileDefault(searchProfile, 'purchase_timeline')} className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
             {purchaseTimelineOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
         </label>
-        <Input name="lender_name" label="Lender / bank optional" placeholder="Bank of Guam, Coast360..." />
+        <Input name="lender_name" label="Lender / bank optional" defaultValue={profileDefault(searchProfile, 'lender_name')} placeholder="Bank of Guam, Coast360..." />
         <label className="grid gap-2 text-sm font-semibold text-[#304942]">
           Buyer type
-          <select name="buyer_status" defaultValue="" className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
+          <select name="buyer_status" defaultValue={profileDefault(searchProfile, 'buyer_status')} className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
             {buyerStatusOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
         </label>
-        <Input name="budget_min" label="Budget min" type="number" min="0" step="1000" placeholder="450000" />
-        <Input name="budget_max" label="Budget max" type="number" min="0" step="1000" defaultValue={defaultBudgetMax} placeholder="650000" />
-        {!compact && <Input name="desired_villages" label="Desired villages" placeholder="Dededo, Yigo, Tamuning" />}
-        {!compact && <Input name="desired_beds" label="Desired beds" type="number" min="0" step="1" placeholder="3" />}
-        {!compact && <Input name="desired_baths" label="Desired baths" type="number" min="0" step="0.5" placeholder="2" />}
+        <Input name="budget_min" label="Budget min" type="number" min="0" step="1000" defaultValue={profileDefault(searchProfile, 'budget_min')} placeholder="450000" />
+        <Input name="budget_max" label="Budget max" type="number" min="0" step="1000" defaultValue={profileDefault(searchProfile, 'budget_max', defaultBudgetMax || '')} placeholder="650000" />
+        {!compact && <Input name="desired_villages" label="Desired villages" defaultValue={profileDefault(searchProfile, 'desired_villages')} placeholder="Dededo, Yigo, Tamuning" />}
+        {!compact && <Input name="desired_beds" label="Desired beds" type="number" min="0" step="1" defaultValue={profileDefault(searchProfile, 'desired_beds')} placeholder="3" />}
+        {!compact && <Input name="desired_baths" label="Desired baths" type="number" min="0" step="0.5" defaultValue={profileDefault(searchProfile, 'desired_baths')} placeholder="2" />}
         <label className="grid gap-2 text-sm font-semibold text-[#304942]">
           Already working with an agent?
-          <select name="already_working_with_agent" defaultValue="" className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
+          <select name="already_working_with_agent" defaultValue={profileDefault(searchProfile, 'already_working_with_agent')} className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
             {agentRelationshipOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
         </label>
@@ -5445,7 +5710,7 @@ function QualificationFields({ compact = false, defaultBudgetMax }: { compact?: 
       {!compact && (
         <label className="mt-3 grid gap-2 text-sm font-semibold text-[#304942]">
           Anything else the agent should know?
-          <textarea name="qualification_notes" rows={3} className="rounded-2xl border border-[#dce5df] bg-white px-4 py-3" placeholder="Relocating next month, needs pet-friendly, prefers central Guam..." />
+          <textarea name="qualification_notes" rows={3} defaultValue={profileDefault(searchProfile, 'notes')} className="rounded-2xl border border-[#dce5df] bg-white px-4 py-3" placeholder="Relocating next month, needs pet-friendly, prefers central Guam..." />
         </label>
       )}
     </div>
@@ -5464,12 +5729,19 @@ function PriceTrackerModal({ listing, open, onClose }: { listing: Listing; open:
     enabled: open && isClerkEnabled && isSignedIn && Boolean(userId),
     retry: false,
   })
+  const { data: searchProfileData } = useQuery({
+    queryKey: ['me', userId, 'search-profile', 'price-tracker-prefill'],
+    queryFn: fetchSearchProfile,
+    enabled: open && isClerkEnabled && isSignedIn && Boolean(userId),
+    retry: false,
+  })
   const { data: agentsData } = useQuery({
     queryKey: ['agents', 'routing', 'price-tracker'],
     queryFn: () => fetchAgents(),
     enabled: open && canSelectAgent,
   })
   const profile = meData?.user
+  const searchProfile = searchProfileData?.search_profile
   const wasOpenRef = useRef(false)
 
   useEffect(() => {
@@ -5561,8 +5833,8 @@ function PriceTrackerModal({ listing, open, onClose }: { listing: Listing; open:
               <Input name="target_price" label="Target price" inputMode="numeric" placeholder="450000" required />
               <Input name="email" label="Email for alerts" type="email" defaultValue={profile?.email || ''} required />
               <Input name="name" label="Name" defaultValue={profile?.full_name || 'Hafa Homes user'} />
-              <Input name="phone" label="Phone optional" defaultValue={profile?.phone || '+1671'} inputMode="tel" />
-              <QualificationFields compact />
+              <Input name="phone" label="Phone optional" defaultValue={searchProfile?.phone || profile?.phone || '+1671'} inputMode="tel" />
+              <QualificationFields compact searchProfile={searchProfile} />
             </div>
             {mutation.isError && <p className="mt-3 text-sm font-semibold text-red-700">Unable to save tracker right now.</p>}
             <div className="mt-5 grid grid-cols-2 gap-3">
@@ -5586,12 +5858,19 @@ function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean
     enabled: open && isClerkEnabled && isSignedIn && Boolean(userId),
     retry: false,
   })
+  const { data: searchProfileData } = useQuery({
+    queryKey: ['me', userId, 'search-profile', 'lead-prefill'],
+    queryFn: fetchSearchProfile,
+    enabled: open && isClerkEnabled && isSignedIn && Boolean(userId),
+    retry: false,
+  })
   const { data: agentsData } = useQuery({
     queryKey: ['agents', 'routing', 'lead-modal'],
     queryFn: () => fetchAgents(),
     enabled: open && canSelectAgent,
   })
   const profile = meData?.user
+  const searchProfile = searchProfileData?.search_profile
   const routingAgents = canSelectAgent ? agentsData?.agents ?? [] : []
   const defaultAgentId = (() => {
     if (!canSelectAgent) return null
@@ -5735,10 +6014,10 @@ function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean
             <div className="mt-4 grid gap-3 md:mt-5">
               <Input name="name" label="Name" defaultValue={profile?.full_name || ''} required />
               <Input name="email" label="Email" type="email" defaultValue={profile?.email || ''} required />
-              <Input name="phone" label="Phone" defaultValue={profile?.phone || '+1671'} inputMode="tel" />
+              <Input name="phone" label="Phone" defaultValue={searchProfile?.phone || profile?.phone || '+1671'} inputMode="tel" />
               <label className="grid gap-2 text-sm font-semibold text-[#304942]">
                 Preferred contact
-                <select name="preferred_contact_method" defaultValue={profile?.preferred_contact_method || 'phone'} className="min-h-12 rounded-2xl border border-[#dce5df] px-4">
+                <select name="preferred_contact_method" defaultValue={searchProfile?.preferred_contact_method || profile?.preferred_contact_method || 'phone'} className="min-h-12 rounded-2xl border border-[#dce5df] px-4">
                   {preferredContactOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                 </select>
               </label>
@@ -5748,7 +6027,7 @@ function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean
                   {preferredTimeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                 </select>
               </label>
-              <QualificationFields defaultBudgetMax={String(Math.round(listing.price))} />
+              <QualificationFields defaultBudgetMax={String(Math.round(listing.price))} searchProfile={searchProfile} />
               <label className="grid gap-2 text-sm font-semibold text-[#304942]">
                 Message
                 <textarea name="message" rows={4} className="rounded-2xl border border-[#dce5df] px-4 py-3" defaultValue={`I'm interested in ${listing.title}.`} />
@@ -5904,8 +6183,8 @@ function Metric({ label, value }: { label: string; value: number }) {
   return <div className="rounded-2xl bg-white/10 p-4"><p className="text-xs font-bold uppercase tracking-[0.16em] text-white/50">{label}</p><p className="mt-1 text-3xl font-bold tracking-[-0.05em]">{value}</p></div>
 }
 
-function Input({ label, ...props }: React.InputHTMLAttributes<HTMLInputElement> & { label: string }) {
-  return <label className="grid min-w-0 gap-2 text-sm font-semibold text-[#304942]">{label}<input {...props} className="min-h-12 w-full min-w-0 rounded-2xl border border-[#dce5df] px-4" /></label>
+function Input({ label, labelClassName = '', className = '', ...props }: React.InputHTMLAttributes<HTMLInputElement> & { label: string; labelClassName?: string }) {
+  return <label className={`grid min-w-0 gap-2 text-sm font-semibold text-[#304942] ${labelClassName}`}>{label}<input {...props} className={`min-h-12 w-full min-w-0 rounded-2xl border border-[#dce5df] px-4 ${className}`} /></label>
 }
 
 export default App
