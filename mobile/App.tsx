@@ -1344,6 +1344,14 @@ function ProgressiveLeadPromptSheet({ prompt, auth, selectedAgent, onDismiss, on
 
   if (!prompt) return null
   const activePrompt = prompt
+  const promptCreatesLead = !activePrompt.profile_prompt || agentHelpRequested
+  const profileSubmitAction = activePrompt.profile_prompt_kind === 'update_search_profile' ? 'Update profile' : 'Save profile'
+  const profileSubmittingLabel = activePrompt.profile_prompt_kind === 'update_search_profile' ? 'Updating profile...' : 'Saving profile...'
+  const submitButtonLabel = submitting
+    ? (promptCreatesLead ? 'Sending request...' : profileSubmittingLabel)
+    : activePrompt.profile_prompt
+      ? (agentHelpRequested ? `${profileSubmitAction} and request follow-up` : activePrompt.cta || profileSubmitAction)
+      : activePrompt.cta || 'Get matched with an agent'
 
   async function handleSubmit() {
     const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
@@ -1470,7 +1478,7 @@ function ProgressiveLeadPromptSheet({ prompt, auth, selectedAgent, onDismiss, on
               </View>
               {error && <Text style={styles.requestError}>{error}</Text>}
               <Pressable disabled={submitting} style={[styles.primaryCta, submitting && styles.ctaDisabled]} onPress={handleSubmit}>
-                <Text style={styles.primaryCtaText}>{submitting ? 'Saving...' : prompt.cta || 'Get matched with an agent'}</Text>
+                <Text style={styles.primaryCtaText}>{submitButtonLabel}</Text>
               </Pressable>
               <Pressable style={styles.secondaryCta} onPress={() => onDismiss('not_now')}><Text style={styles.secondaryCtaText}>Not now</Text></Pressable>
             </ScrollView>
