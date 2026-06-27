@@ -1274,7 +1274,9 @@ function ProgressiveLeadPromptSheet({ prompt, auth, selectedAgent, onDismiss, on
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!prompt) return
+    if (!prompt) return undefined
+
+    let cancelled = false
 
     setSubmitted(false)
     setError(null)
@@ -1283,15 +1285,22 @@ function ProgressiveLeadPromptSheet({ prompt, auth, selectedAgent, onDismiss, on
     setPhone('+1671')
     setPreferredContact('email')
     setAgentHelpRequested(false)
+    setPrequalifiedStatus('')
+    setPurchaseTimeline('')
     setDesiredVillages(prompt.suggested?.desired_villages || '')
     setBudgetMin(prompt.suggested?.budget_min ? String(Math.round(prompt.suggested.budget_min)) : '')
     setBudgetMax(prompt.suggested?.budget_max ? String(Math.round(prompt.suggested.budget_max)) : '')
+    setDesiredBeds('')
+    setDesiredBaths('')
+    setBuyerStatus('')
+    setAlreadyWorkingWithAgent('')
     setLenderName('')
     setNotes('')
 
     if (auth.isSignedIn && auth.getToken) {
       fetchSearchProfile(auth.getToken)
         .then((result) => {
+          if (cancelled) return
           const merged = mergedPromptProfile(prompt, result.search_profile)
           setPhone(profileValue(merged, 'phone', '+1671'))
           setPreferredContact((profileValue(merged, 'preferred_contact_method', 'email') || 'email') as 'phone' | 'text' | 'email')
@@ -1307,8 +1316,12 @@ function ProgressiveLeadPromptSheet({ prompt, auth, selectedAgent, onDismiss, on
           setLenderName(profileValue(merged, 'lender_name'))
           setNotes(profileValue(merged, 'notes'))
         })
-        .catch((profileError) => console.warn('Unable to prefill search profile prompt', profileError))
+        .catch((profileError) => {
+          if (!cancelled) console.warn('Unable to prefill search profile prompt', profileError)
+        })
     }
+
+    return () => { cancelled = true }
   }, [auth.getToken, auth.isSignedIn, auth.userEmail, auth.userName, prompt])
 
   if (!prompt) return null

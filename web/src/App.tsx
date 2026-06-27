@@ -2814,7 +2814,7 @@ function AccountPage() {
           </div>
         </form>
 
-        <SearchProfileCard profile={searchProfileData?.search_profile} mutation={searchProfileMutation} />
+        <SearchProfileCard key={searchProfileData?.search_profile?.updated_at || searchProfileData?.search_profile?.id || 'new-search-profile'} profile={searchProfileData?.search_profile} mutation={searchProfileMutation} />
 
         <div className="rounded-[2rem] border border-red-200 bg-[#fff8f6] p-6 shadow-sm">
           <p className="text-sm font-semibold uppercase tracking-[0.2em] text-red-700">Delete account</p>
