@@ -26,6 +26,7 @@ import {
 
 type TabKey = 'search' | 'map' | 'agents' | 'saved' | 'requests' | 'more'
 type ListingKind = 'sale' | 'rent'
+type MapCamera = { center: [number, number]; zoom: number }
 
 type Feature = {
   id: number
@@ -140,6 +141,34 @@ type ConsumerLead = {
   latest_showing_appointment?: ShowingAppointment | null
 }
 
+type LeadIntentSummary = {
+  narrative?: string | null
+  unique_listing_view_count?: number
+  saved_listing_count?: number
+  search_filter_count?: number
+  form_open_count?: number
+  top_villages?: Array<{ name: string; count: number }>
+  viewed_price_min?: number
+  viewed_price_max?: number
+  latest_listing_id?: number
+}
+
+type LeadIntentPrompt = {
+  eligible: boolean
+  key?: string
+  trigger?: string
+  title?: string
+  body?: string
+  cta?: string
+  suggested?: {
+    desired_villages?: string
+    budget_min?: number
+    budget_max?: number
+    listing_id?: number
+  }
+  summary?: LeadIntentSummary
+}
+
 type GetAuthToken = (options?: { template?: string }) => Promise<string | null>
 
 type CurrentUser = {
@@ -183,6 +212,9 @@ const FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1600047509807-ba8f99d2
 const LEGACY_SAVED_LISTING_IDS_KEY = 'hafaHomes:savedListingIds'
 const LEGACY_SAVED_LISTINGS_KEY = 'hafaHomes:savedListings'
 const SELECTED_AGENT_ID_KEY = 'hafaHomes:selectedAgentId'
+const LEAD_INTENT_SESSION_TOKEN_KEY = 'hafaHomes:leadIntentSessionToken'
+const LEAD_INTENT_CONTEXT_REQUIRED_KEY = 'hafaHomes:leadIntentContextRequired'
+const MEANINGFUL_LEAD_INTENT_EVENTS = new Set(['listing_detail_viewed', 'listing_saved', 'search_filter_changed', 'map_marker_clicked', 'saved_search_created'])
 const OAUTH_CALLBACK_PATH = 'oauth-native-callback'
 const AUTH_FLOW_TIMEOUT_MS = 25_000
 
@@ -354,6 +386,140 @@ async function authHeaders(getToken?: GetAuthToken): Promise<Record<string, stri
   }
 }
 
+async function currentLeadIntentSessionToken() {
+  return (await AsyncStorage.getItem(LEAD_INTENT_SESSION_TOKEN_KEY)) || ''
+}
+
+async function leadIntentSessionToken() {
+  const existing = await currentLeadIntentSessionToken()
+  if (existing) return existing
+
+  const randomSource = typeof globalThis.crypto?.randomUUID === 'function' ? globalThis.crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`
+  await AsyncStorage.setItem(LEAD_INTENT_SESSION_TOKEN_KEY, randomSource)
+  return randomSource
+}
+
+async function clearLeadIntentSessionToken() {
+  await AsyncStorage.removeItem(LEAD_INTENT_SESSION_TOKEN_KEY)
+}
+
+async function resetLeadIntentSessionToken() {
+  await clearLeadIntentSessionToken()
+  return leadIntentSessionToken()
+}
+
+type LeadIntentContextGuard = { token?: string; eventCount: number; meaningfulEventCount: number; startedAt: number }
+
+async function markLeadIntentCurrentContextRequired() {
+  await AsyncStorage.setItem(LEAD_INTENT_CONTEXT_REQUIRED_KEY, JSON.stringify({ eventCount: 0, meaningfulEventCount: 0, startedAt: Date.now() }))
+}
+
+async function leadIntentCurrentContextGuard(): Promise<LeadIntentContextGuard | null> {
+  const raw = await AsyncStorage.getItem(LEAD_INTENT_CONTEXT_REQUIRED_KEY)
+  if (!raw) return null
+  if (raw === 'true') return { eventCount: 0, meaningfulEventCount: 0, startedAt: Date.now() }
+
+  try {
+    const parsed = JSON.parse(raw) as Partial<LeadIntentContextGuard>
+    return { token: parsed.token, eventCount: Number(parsed.eventCount || 0), meaningfulEventCount: Number(parsed.meaningfulEventCount || 0), startedAt: Number(parsed.startedAt || Date.now()) }
+  } catch {
+    return { eventCount: 0, meaningfulEventCount: 0, startedAt: Date.now() }
+  }
+}
+
+async function saveLeadIntentCurrentContextGuard(guard: LeadIntentContextGuard) {
+  await AsyncStorage.setItem(LEAD_INTENT_CONTEXT_REQUIRED_KEY, JSON.stringify(guard))
+}
+
+async function clearLeadIntentCurrentContextRequired() {
+  await AsyncStorage.removeItem(LEAD_INTENT_CONTEXT_REQUIRED_KEY)
+}
+
+async function leadIntentCurrentContextRequired() {
+  return (await leadIntentCurrentContextGuard()) !== null
+}
+
+async function noteLeadIntentCurrentContextEvent(sessionToken: string, eventName: string) {
+  const guard = await leadIntentCurrentContextGuard()
+  if (!guard) return
+
+  const sameToken = !guard.token || guard.token === sessionToken
+  const isMeaningfulEvent = MEANINGFUL_LEAD_INTENT_EVENTS.has(eventName)
+  const nextGuard = {
+    token: sessionToken,
+    eventCount: sameToken ? guard.eventCount + 1 : 1,
+    meaningfulEventCount: sameToken ? guard.meaningfulEventCount + (isMeaningfulEvent ? 1 : 0) : (isMeaningfulEvent ? 1 : 0),
+    startedAt: guard.startedAt || Date.now(),
+  }
+
+  if (nextGuard.meaningfulEventCount >= 2) {
+    await clearLeadIntentCurrentContextRequired()
+  } else {
+    await saveLeadIntentCurrentContextGuard(nextGuard)
+  }
+}
+
+function leadIntentClientEventId(eventName: string) {
+  return `${eventName}:${Date.now()}:${Math.random().toString(36).slice(2)}`
+}
+
+async function recordLeadIntentEvent(eventName: string, payload: { listing_id?: number; village_id?: number; agent_id?: number; source?: string; metadata?: Record<string, unknown> } = {}, getToken?: GetAuthToken) {
+  try {
+    let sessionToken = await leadIntentSessionToken()
+    const clientEventId = leadIntentClientEventId(eventName)
+
+    async function postEvent(token: string) {
+      return fetch(`${API_URL}/api/v1/lead_intent/events`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(await authHeaders(getToken)) },
+        body: JSON.stringify({
+          lead_intent_event: {
+            session_token: token,
+            event_name: eventName,
+            client_event_id: clientEventId,
+            source: payload.source || 'mobile',
+            listing_id: payload.listing_id,
+            village_id: payload.village_id,
+            agent_id: payload.agent_id,
+            metadata: payload.metadata || {},
+          },
+        }),
+      })
+    }
+
+    let response = await postEvent(sessionToken)
+    if (response.status === 409) {
+      sessionToken = await resetLeadIntentSessionToken()
+      response = await postEvent(sessionToken)
+    }
+    if (!response.ok) return null
+
+    await noteLeadIntentCurrentContextEvent(sessionToken, eventName)
+    return response.json() as Promise<{ prompt: LeadIntentPrompt; lead_intent_session: LeadIntentSummary }>
+  } catch (intentError) {
+    console.warn('Unable to record Hafa Homes lead intent', intentError)
+    return null
+  }
+}
+
+async function dismissLeadIntentPrompt(promptKey?: string, reason = 'dismissed', getToken?: GetAuthToken) {
+  try {
+    const sessionToken = await currentLeadIntentSessionToken()
+    if (!sessionToken) return
+    const response = await fetch(`${API_URL}/api/v1/lead_intent/dismiss`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(await authHeaders(getToken)) },
+      body: JSON.stringify({ lead_intent: { session_token: sessionToken, prompt_key: promptKey, reason } }),
+    })
+    if (response.status === 409) {
+      await clearLeadIntentSessionToken()
+      await markLeadIntentCurrentContextRequired()
+    }
+  } catch (intentError) {
+    console.warn('Unable to dismiss Hafa Homes lead intent prompt', intentError)
+  }
+}
+
 async function fetchSavedListings(getToken: GetAuthToken): Promise<{ listing_ids: number[]; listings: Listing[] }> {
   const response = await fetch(`${API_URL}/api/v1/me/saved_listings`, {
     headers: await authHeaders(getToken),
@@ -380,9 +546,9 @@ async function removeSavedListingForUser(listingId: number, getToken: GetAuthTok
   return response.json()
 }
 
-async function createLead(payload: {
-  listing_id: number
-  lead_type: 'showing_request' | 'price_tracker'
+type CreateLeadPayload = {
+  listing_id?: number
+  lead_type: 'showing_request' | 'price_tracker' | 'search_assist'
   name: string
   email: string
   phone: string
@@ -405,15 +571,36 @@ async function createLead(payload: {
   buyer_status?: string
   already_working_with_agent?: string
   qualification_notes?: string
+  intent_session_token?: string
   message: string
-}, getToken?: GetAuthToken) {
+}
+
+async function createLead(payload: CreateLeadPayload, getToken?: GetAuthToken, retryAfterIntentReset = true) {
+  if (payload.lead_type === 'search_assist' && !payload.intent_session_token) {
+    throw new ApiRequestError('Your search session refreshed. Please keep browsing or reopen the prompt so we can attach the right search context.', 409)
+  }
+
+  if (!payload.intent_session_token && await leadIntentCurrentContextRequired()) {
+    throw new ApiRequestError('Your search session refreshed after sign-in. Please view the home again and reopen this form before submitting.', 409)
+  }
+
   const response = await fetch(`${API_URL}/api/v1/leads`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(await authHeaders(getToken)) },
     body: JSON.stringify({ lead: payload }),
   })
 
+  if (response.status === 409 && retryAfterIntentReset && payload.intent_session_token) {
+    const conflictPayload = await response.clone().json().catch(() => null) as { reset_session?: boolean } | null
+    if (conflictPayload?.reset_session) {
+      await clearLeadIntentSessionToken()
+      await markLeadIntentCurrentContextRequired()
+      throw new ApiRequestError('Your search session refreshed after sign-in. Please view the home again and reopen this form before submitting.', response.status)
+    }
+  }
+
   if (!response.ok) throw new ApiRequestError(await apiErrorMessage(response, 'Unable to send request'), response.status)
+  await clearLeadIntentCurrentContextRequired()
   return response.json()
 }
 
@@ -503,7 +690,10 @@ function AppContent({ auth }: { auth: AppAuth }) {
   const [pendingSaveListingId, setPendingSaveListingId] = useState<number | null>(null)
   const [legacySaveMigrationAttempted, setLegacySaveMigrationAttempted] = useState(false)
   const [authPrompt, setAuthPrompt] = useState<AuthPrompt | null>(null)
+  const [leadIntentPrompt, setLeadIntentPrompt] = useState<LeadIntentPrompt | null>(null)
+  const [dismissedLeadIntentPromptKey, setDismissedLeadIntentPromptKey] = useState<string | null>(null)
   const [fullMapOpen, setFullMapOpen] = useState(false)
+  const [mapCamera, setMapCamera] = useState<MapCamera | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -646,9 +836,13 @@ function AppContent({ auth }: { auth: AppAuth }) {
     }
 
     setSelectedAgentId(agentId)
-    if (agentId) AsyncStorage.setItem(SELECTED_AGENT_ID_KEY, String(agentId)).catch((storageError) => console.warn('Unable to save selected agent', storageError))
-    else AsyncStorage.removeItem(SELECTED_AGENT_ID_KEY).catch((storageError) => console.warn('Unable to clear selected agent', storageError))
-  }, [auth.getToken, auth.isSignedIn])
+    if (agentId) {
+      AsyncStorage.setItem(SELECTED_AGENT_ID_KEY, String(agentId)).catch((storageError) => console.warn('Unable to save selected agent', storageError))
+      recordLeadIntentEvent('agent_selected', { agent_id: agentId, source: 'mobile', metadata: { surface: selectedListing ? 'listing_detail' : 'agents_tab' } }, auth.getToken)
+    } else {
+      AsyncStorage.removeItem(SELECTED_AGENT_ID_KEY).catch((storageError) => console.warn('Unable to clear selected agent', storageError))
+    }
+  }, [auth.getToken, auth.isSignedIn, selectedListing])
 
   useEffect(() => {
     let cancelled = false
@@ -769,6 +963,29 @@ function AppContent({ auth }: { auth: AppAuth }) {
     setAuthPrompt({ initialMode: 'sign-in', ...prompt })
   }
 
+  const trackLeadIntent = useCallback(async (eventName: string, payload: { listing_id?: number; village_id?: number; agent_id?: number; source?: string; metadata?: Record<string, unknown> } = {}) => {
+    const result = await recordLeadIntentEvent(eventName, payload, auth.isSignedIn ? auth.getToken : undefined)
+    const prompt = result?.prompt
+    if (prompt?.eligible && prompt.key && prompt.key !== dismissedLeadIntentPromptKey) setLeadIntentPrompt(prompt)
+  }, [auth.getToken, auth.isSignedIn, dismissedLeadIntentPromptKey])
+
+  const viewedListingRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    if (!selectedListing || viewedListingRef.current === selectedListing.id) return
+
+    viewedListingRef.current = selectedListing.id
+    trackLeadIntent('listing_detail_viewed', { listing_id: selectedListing.id, source: 'mobile', metadata: { surface: 'listing_detail', listing_kind: selectedListing.listing_kind } })
+  }, [selectedListing, trackLeadIntent])
+
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      if (searchQuery.trim()) trackLeadIntent('search_filter_changed', { source: 'mobile', metadata: { filter: 'query', value: searchQuery.trim(), listing_kind: kind, surface: 'search_bar' } })
+    }, 700)
+
+    return () => clearTimeout(timeout)
+  }, [kind, searchQuery, trackLeadIntent])
+
   function cacheListingForSave(listingId: number) {
     const listingToCache = listingCache[listingId] ?? listings.find((listing) => listing.id === listingId) ?? selectedListing
     if (listingToCache && !listingCache[listingId]) {
@@ -785,6 +1002,7 @@ function AppContent({ auth }: { auth: AppAuth }) {
     try {
       const result = await saveListingForUser(listingId, auth.getToken)
       if (result.listing) setListingCache((current) => ({ ...current, [result.listing.id]: result.listing }))
+      await trackLeadIntent('listing_saved', { listing_id: listingId, source: 'mobile', metadata: { surface: 'save_button' } })
     } catch (saveError) {
       console.warn('Unable to save Hafa Homes listing', saveError)
       setSavedListingIds((current) => current.filter((id) => id !== listingId))
@@ -833,17 +1051,33 @@ function AppContent({ auth }: { auth: AppAuth }) {
 
   if (selectedListing) {
     return (
-      <ListingDetailScreen
-        listing={selectedListing}
-        saved={savedListingIds.includes(selectedListing.id)}
-        auth={auth}
-        agents={selectedListingAgents}
-        selectedAgent={selectedAgent}
-        onSelectAgent={selectAgent}
-        onBack={() => setSelectedListing(null)}
-        onOpenAuth={openAuthPrompt}
-        onToggleSaved={() => toggleSaved(selectedListing.id)}
-      />
+      <>
+        <ListingDetailScreen
+          listing={selectedListing}
+          saved={savedListingIds.includes(selectedListing.id)}
+          auth={auth}
+          agents={selectedListingAgents}
+          selectedAgent={selectedAgent}
+          onSelectAgent={selectAgent}
+          onBack={() => setSelectedListing(null)}
+          onOpenAuth={openAuthPrompt}
+          onToggleSaved={() => toggleSaved(selectedListing.id)}
+          onTrackIntent={trackLeadIntent}
+        />
+        <ProgressiveLeadPromptSheet
+          prompt={leadIntentPrompt}
+          auth={auth}
+          selectedAgent={selectedAgent}
+          onDismiss={(reason) => {
+            setDismissedLeadIntentPromptKey(leadIntentPrompt?.key || null)
+            dismissLeadIntentPrompt(leadIntentPrompt?.key, reason, auth.isSignedIn ? auth.getToken : undefined)
+            setLeadIntentPrompt(null)
+          }}
+          onSubmitted={() => setDismissedLeadIntentPromptKey(leadIntentPrompt?.key || null)}
+          onClose={() => setLeadIntentPrompt(null)}
+        />
+        {auth.clerkEnabled && <AuthModal open={Boolean(authPrompt)} prompt={authPrompt} onClose={() => setAuthPrompt(null)} />}
+      </>
     )
   }
 
@@ -874,7 +1108,7 @@ function AppContent({ auth }: { auth: AppAuth }) {
         </View>
         <View style={styles.segmentedControl}>
           {(['sale', 'rent'] as const).map((option) => (
-            <Pressable key={option} onPress={() => setKind(option)} style={[styles.segmentButton, kind === option && styles.segmentButtonActive]}>
+            <Pressable key={option} onPress={() => { setKind(option); trackLeadIntent('search_filter_changed', { source: 'mobile', metadata: { filter: 'kind', value: option, listing_kind: option, surface: 'segment_control' } }) }} style={[styles.segmentButton, kind === option && styles.segmentButtonActive]}>
               <Text style={[styles.segmentText, kind === option && styles.segmentTextActive]}>{option === 'sale' ? 'Buy' : 'Rent'}</Text>
             </Pressable>
           ))}
@@ -901,6 +1135,8 @@ function AppContent({ auth }: { auth: AppAuth }) {
                 onOpen={setSelectedListing}
                 onToggleSaved={toggleSaved}
                 fullMap={fullMapOpen}
+                initialCamera={mapCamera}
+                onCameraChange={setMapCamera}
                 onToggleFullMap={() => setFullMapOpen((current) => !current)}
               />
         )}
@@ -931,8 +1167,146 @@ function AppContent({ auth }: { auth: AppAuth }) {
           </Pressable>
         ))}
       </View>}
+      <ProgressiveLeadPromptSheet
+        prompt={leadIntentPrompt}
+        auth={auth}
+        selectedAgent={selectedAgent}
+        onDismiss={(reason) => {
+          setDismissedLeadIntentPromptKey(leadIntentPrompt?.key || null)
+          dismissLeadIntentPrompt(leadIntentPrompt?.key, reason, auth.isSignedIn ? auth.getToken : undefined)
+          setLeadIntentPrompt(null)
+        }}
+        onSubmitted={() => setDismissedLeadIntentPromptKey(leadIntentPrompt?.key || null)}
+        onClose={() => setLeadIntentPrompt(null)}
+      />
       {auth.clerkEnabled && <AuthModal open={Boolean(authPrompt)} prompt={authPrompt} onClose={() => setAuthPrompt(null)} />}
     </SafeAreaView>
+  )
+}
+
+function ProgressiveLeadPromptSheet({ prompt, auth, selectedAgent, onDismiss, onSubmitted, onClose }: { prompt: LeadIntentPrompt | null; auth: AppAuth; selectedAgent: Agent | null; onDismiss: (reason: string) => void; onSubmitted: () => void; onClose: () => void }) {
+  const [name, setName] = useState('')
+  const [email, setEmail] = useState('')
+  const [phone, setPhone] = useState('+1671')
+  const [prequalifiedStatus, setPrequalifiedStatus] = useState('')
+  const [purchaseTimeline, setPurchaseTimeline] = useState('')
+  const [budgetMin, setBudgetMin] = useState('')
+  const [budgetMax, setBudgetMax] = useState('')
+  const [desiredVillages, setDesiredVillages] = useState('')
+  const [desiredBeds, setDesiredBeds] = useState('')
+  const [desiredBaths, setDesiredBaths] = useState('')
+  const [buyerStatus, setBuyerStatus] = useState('')
+  const [alreadyWorkingWithAgent, setAlreadyWorkingWithAgent] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [submitted, setSubmitted] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!prompt) return
+
+    setSubmitted(false)
+    setError(null)
+    setName(auth.userName || '')
+    setEmail(auth.userEmail || '')
+    setPhone('+1671')
+    setDesiredVillages(prompt.suggested?.desired_villages || '')
+    setBudgetMin(prompt.suggested?.budget_min ? String(Math.round(prompt.suggested.budget_min)) : '')
+    setBudgetMax(prompt.suggested?.budget_max ? String(Math.round(prompt.suggested.budget_max)) : '')
+  }, [auth.userEmail, auth.userName, prompt])
+
+  if (!prompt) return null
+
+  async function handleSubmit() {
+    const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
+    if (!emailValid) {
+      setError('Please add a valid email so the team can follow up.')
+      return
+    }
+
+    setSubmitting(true)
+    setError(null)
+    try {
+      const token = await currentLeadIntentSessionToken()
+      await createLead({
+        listing_id: prompt?.suggested?.listing_id,
+        lead_type: 'search_assist',
+        name: name.trim() || 'Hafa Homes searcher',
+        email: email.trim(),
+        phone: phone.trim(),
+        preferred_contact_method: 'email',
+        source_campaign: `progressive_prompt:${prompt?.trigger || 'search_intent'}`,
+        source_url: 'hafahomes:///search',
+        requested_agent_id: auth.isSignedIn ? selectedAgent?.id : undefined,
+        prequalified_status: prequalifiedStatus,
+        purchase_timeline: purchaseTimeline,
+        budget_min: budgetMin.trim(),
+        budget_max: budgetMax.trim(),
+        desired_villages: desiredVillages.trim(),
+        desired_beds: desiredBeds.trim(),
+        desired_baths: desiredBaths.trim(),
+        buyer_status: buyerStatus,
+        already_working_with_agent: alreadyWorkingWithAgent,
+        intent_session_token: token,
+        message: `Progressive search assist prompt: ${prompt?.trigger || 'search_intent'}`,
+      }, auth.isSignedIn ? auth.getToken : undefined)
+      setSubmitted(true)
+      onSubmitted()
+    } catch (submitError) {
+      console.warn('Unable to submit progressive search assist lead', submitError)
+      setError(submitError instanceof Error ? submitError.message : 'We could not send your search details yet.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <Modal visible transparent animationType="slide" onRequestClose={() => onDismiss('system_close')}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.sheetBackdrop}>
+        <Pressable style={styles.sheetScrim} onPress={() => onDismiss('scrim')} />
+        <View style={styles.requestSheet}>
+          {submitted ? (
+            <View style={styles.requestSuccess}>
+              <Text style={styles.kicker}>Search assist sent</Text>
+              <Text style={styles.requestTitle}>The brokerage team has your search context.</Text>
+              <Text style={styles.requestCopy}>An agent can use these details to follow up with better Guam listing matches.</Text>
+              <Pressable style={styles.primaryCta} onPress={onClose}><Text style={styles.primaryCtaText}>Done</Text></Pressable>
+            </View>
+          ) : (
+            <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+              <View style={styles.sheetHandle} />
+              <View style={styles.sheetHeaderRow}>
+                <View style={styles.sheetHeaderCopy}>
+                  <Text style={styles.kicker}>Search assist</Text>
+                  <Text style={styles.requestTitle}>{prompt.title || 'Want an agent to send matching homes?'}</Text>
+                </View>
+                <Pressable onPress={() => onDismiss('closed')} style={styles.sheetCloseButton}><Text style={styles.sheetCloseText}>×</Text></Pressable>
+              </View>
+              <Text style={styles.requestCopy}>{prompt.body || 'Share a few details and the brokerage team can follow up with useful Guam listings.'}</Text>
+              {prompt.summary?.narrative && <Text style={styles.intentSummaryText}>{prompt.summary.narrative}</Text>}
+              <View style={styles.requestFieldGroup}>
+                <RequestInput label="Email" value={email} onChangeText={setEmail} placeholder="you@example.com" keyboardType="email-address" autoCapitalize="none" />
+                <RequestInput label="Name" value={name} onChangeText={setName} placeholder="Your name" />
+                <RequestInput label="Phone optional" value={phone} onChangeText={setPhone} placeholder="+1671" keyboardType="phone-pad" />
+                <QualificationChoiceGroup label="Timeline" options={purchaseTimelineOptions} value={purchaseTimeline} onChange={setPurchaseTimeline} />
+                <RequestInput label="Desired villages" value={desiredVillages} onChangeText={setDesiredVillages} placeholder="Dededo, Yigo, Tamuning" />
+                <QualificationChoiceGroup label="Prequalified?" options={prequalifiedOptions} value={prequalifiedStatus} onChange={setPrequalifiedStatus} />
+                <RequestInput label="Budget min optional" value={budgetMin} onChangeText={setBudgetMin} placeholder="450000" keyboardType="number-pad" />
+                <RequestInput label="Budget max optional" value={budgetMax} onChangeText={setBudgetMax} placeholder="650000" keyboardType="number-pad" />
+                <RequestInput label="Beds optional" value={desiredBeds} onChangeText={setDesiredBeds} placeholder="3" keyboardType="number-pad" />
+                <RequestInput label="Baths optional" value={desiredBaths} onChangeText={setDesiredBaths} placeholder="2" keyboardType="number-pad" />
+                <QualificationChoiceGroup label="Buyer type" options={buyerStatusOptions} value={buyerStatus} onChange={setBuyerStatus} />
+                <QualificationChoiceGroup label="Working with an agent?" options={agentRelationshipOptions} value={alreadyWorkingWithAgent} onChange={setAlreadyWorkingWithAgent} />
+              </View>
+              {error && <Text style={styles.requestError}>{error}</Text>}
+              <Pressable disabled={submitting} style={[styles.primaryCta, submitting && styles.ctaDisabled]} onPress={handleSubmit}>
+                <Text style={styles.primaryCtaText}>{submitting ? 'Sending...' : prompt.cta || 'Get matched with an agent'}</Text>
+              </Pressable>
+              <Pressable style={styles.secondaryCta} onPress={() => onDismiss('not_now')}><Text style={styles.secondaryCtaText}>Not now</Text></Pressable>
+            </ScrollView>
+          )}
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
   )
 }
 
@@ -983,11 +1357,12 @@ function SearchScreen({ listings, savedIds, onOpen, onToggleSaved }: { listings:
   )
 }
 
-function MapScreen({ listings, savedIds, onOpen, onToggleSaved, fullMap, onToggleFullMap }: { listings: Listing[]; savedIds: number[]; onOpen: (listing: Listing) => void; onToggleSaved: (listingId: number) => void; fullMap: boolean; onToggleFullMap: () => void }) {
+function MapScreen({ listings, savedIds, onOpen, onToggleSaved, fullMap, initialCamera, onCameraChange, onToggleFullMap }: { listings: Listing[]; savedIds: number[]; onOpen: (listing: Listing) => void; onToggleSaved: (listingId: number) => void; fullMap: boolean; initialCamera: MapCamera | null; onCameraChange: (camera: MapCamera) => void; onToggleFullMap: () => void }) {
   const [mapLoading, setMapLoading] = useState(true)
   const [previewListing, setPreviewListing] = useState<Listing | null>(null)
+  const initialCameraRef = useRef(initialCamera)
   const points = useMemo(() => listings.filter((listing) => listing.latitude && listing.longitude), [listings])
-  const mapHtml = useMemo(() => buildMapHtml(points), [points])
+  const mapHtml = useMemo(() => buildMapHtml(points, initialCameraRef.current), [points])
   const mapSource = useMemo(() => ({ html: mapHtml }), [mapHtml])
 
   useEffect(() => {
@@ -1018,6 +1393,13 @@ function MapScreen({ listings, savedIds, onOpen, onToggleSaved, fullMap, onToggl
                 if (message.type === 'listing-preview') {
                   const listing = listings.find((item) => item.id === Number(message.id))
                   if (listing) setPreviewListing(listing)
+                  return
+                }
+                if (message.type === 'map-camera' && Array.isArray(message.center) && typeof message.zoom === 'number') {
+                  const [longitude, latitude] = message.center.map(Number)
+                  if (Number.isFinite(longitude) && Number.isFinite(latitude) && Number.isFinite(message.zoom)) {
+                    onCameraChange({ center: [longitude, latitude], zoom: message.zoom })
+                  }
                   return
                 }
               } catch {
@@ -1111,7 +1493,7 @@ function htmlSafeJson(value: unknown) {
     .replace(/\u2029/g, '\\u2029')
 }
 
-function buildMapHtml(points: Listing[]) {
+function buildMapHtml(points: Listing[], initialCamera?: MapCamera | null) {
   const safePoints = points.map((listing) => ({
     id: listing.id,
     price: currency(listing.price, listing.listing_kind).replace('/mo', ''),
@@ -1120,6 +1502,9 @@ function buildMapHtml(points: Listing[]) {
     title: listing.title,
     village: listing.village.name,
   }))
+  const safeInitialCamera = initialCamera && Array.isArray(initialCamera.center) && Number.isFinite(initialCamera.center[0]) && Number.isFinite(initialCamera.center[1]) && Number.isFinite(initialCamera.zoom)
+    ? { center: initialCamera.center, zoom: initialCamera.zoom }
+    : null
 
   return `<!doctype html>
 <html>
@@ -1172,6 +1557,7 @@ function buildMapHtml(points: Listing[]) {
     <script>
       mapboxgl.accessToken = ${htmlSafeJson(MAPBOX_TOKEN || '')};
       const points = ${htmlSafeJson(safePoints)};
+      const initialCamera = ${htmlSafeJson(safeInitialCamera)};
       const map = new mapboxgl.Map({
         container: 'map',
         style: 'mapbox://styles/mapbox/outdoors-v12',
@@ -1237,13 +1623,26 @@ function buildMapHtml(points: Listing[]) {
         clusterMarkers.forEach((marker) => { marker.getElement().style.display = showPrices ? 'none' : 'inline-flex'; });
       }
 
-      map.on('zoomend', updateMarkerVisibility);
-      map.on('moveend', updateMarkerVisibility);
+      function postCamera() {
+        const center = map.getCenter();
+        postMessage({ type: 'map-camera', center: [center.lng, center.lat], zoom: map.getZoom() });
+      }
+
+      function updateAfterMove() {
+        updateMarkerVisibility();
+        postCamera();
+      }
+
+      map.on('zoomend', updateAfterMove);
+      map.on('moveend', updateAfterMove);
       map.on('load', () => {
-        if (!bounds.isEmpty()) {
+        if (initialCamera && Array.isArray(initialCamera.center) && Number.isFinite(initialCamera.zoom)) {
+          map.jumpTo({ center: initialCamera.center, zoom: initialCamera.zoom });
+        } else if (!bounds.isEmpty()) {
           map.fitBounds(bounds, { padding: { top: 130, right: 70, bottom: 120, left: 70 }, maxZoom: 12.2, duration: 650 });
         }
         updateMarkerVisibility();
+        postCamera();
         map.once('idle', () => postMessage({ type: 'map-ready' }));
       });
     </script>
@@ -2038,7 +2437,7 @@ function CalculatorInput({ label, value, onChangeText, prefix, suffix }: { label
   )
 }
 
-function ListingDetailScreen({ listing, saved, auth, agents, selectedAgent, onSelectAgent, onBack, onOpenAuth, onToggleSaved }: { listing: Listing; saved: boolean; auth: AppAuth; agents: Agent[]; selectedAgent: Agent | null; onSelectAgent: (agentId: number | null) => void; onBack: () => void; onOpenAuth: (prompt?: AuthPrompt) => void; onToggleSaved: () => void }) {
+function ListingDetailScreen({ listing, saved, auth, agents, selectedAgent, onSelectAgent, onBack, onOpenAuth, onToggleSaved, onTrackIntent }: { listing: Listing; saved: boolean; auth: AppAuth; agents: Agent[]; selectedAgent: Agent | null; onSelectAgent: (agentId: number | null) => void; onBack: () => void; onOpenAuth: (prompt?: AuthPrompt) => void; onToggleSaved: () => void; onTrackIntent: (eventName: string, payload?: { listing_id?: number; village_id?: number; agent_id?: number; source?: string; metadata?: Record<string, unknown> }) => void }) {
   const [detailListing, setDetailListing] = useState(listing)
   const [imageUri, setImageUri] = useState(listing.photos?.[0]?.url || listing.primary_photo_url || FALLBACK_IMAGE)
   const [photoIndex, setPhotoIndex] = useState(0)
@@ -2146,12 +2545,12 @@ function ListingDetailScreen({ listing, saved, auth, agents, selectedAgent, onSe
               </Pressable>
             )}
           </View>
-          <Pressable disabled={Boolean(detailError)} style={[styles.primaryCta, detailError && styles.ctaDisabled]} onPress={() => setShowRequestForm(true)}>
+          <Pressable disabled={Boolean(detailError)} style={[styles.primaryCta, detailError && styles.ctaDisabled]} onPress={() => { setShowRequestForm(true); onTrackIntent('showing_form_opened', { listing_id: detailListing.id, source: 'mobile', metadata: { surface: 'listing_detail', listing_kind: detailListing.listing_kind } }) }}>
             <Text style={styles.primaryCtaText}>Request a showing</Text>
           </Pressable>
           <Pressable
             style={styles.secondaryCta}
-            onPress={() => setShowPriceTracker(true)}
+            onPress={() => { setShowPriceTracker(true); onTrackIntent('price_tracker_opened', { listing_id: detailListing.id, source: 'mobile', metadata: { surface: 'listing_detail', listing_kind: detailListing.listing_kind } }) }}
           >
             <Text style={styles.secondaryCtaText}>Add price alert</Text>
           </Pressable>
@@ -2241,6 +2640,19 @@ function ShowingRequestSheet({ listing, auth, requestedAgent, open, onOpenAuth, 
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const wasOpenRef = useRef(false)
+
+  useEffect(() => {
+    if (open) {
+      wasOpenRef.current = true
+      return
+    }
+
+    if (wasOpenRef.current && !submitted) {
+      recordLeadIntentEvent('lead_form_abandoned', { listing_id: listing.id, source: 'mobile', metadata: { surface: 'showing_request', listing_kind: listing.listing_kind } }, auth.isSignedIn ? auth.getToken : undefined)
+    }
+    wasOpenRef.current = false
+  }, [auth.getToken, auth.isSignedIn, listing.id, listing.listing_kind, open, submitted])
 
   useEffect(() => {
     if (!open) return
@@ -2277,6 +2689,7 @@ function ShowingRequestSheet({ listing, auth, requestedAgent, open, onOpenAuth, 
     setSubmitting(true)
     setError(null)
     try {
+      const token = await currentLeadIntentSessionToken()
       await createLead({
         listing_id: listing.id,
         lead_type: 'showing_request',
@@ -2299,6 +2712,7 @@ function ShowingRequestSheet({ listing, auth, requestedAgent, open, onOpenAuth, 
         buyer_status: buyerStatus,
         already_working_with_agent: alreadyWorkingWithAgent,
         qualification_notes: qualificationNotes.trim(),
+        intent_session_token: token || undefined,
         message: `${message.trim()}\n\nListing: ${listing.title} — ${listing.address}, ${listing.village.name}`,
       }, auth.isSignedIn ? auth.getToken : undefined)
       setSubmitted(true)
@@ -2415,6 +2829,19 @@ function PriceAlertSheet({ listing, auth, requestedAgent, open, onClose }: { lis
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const wasOpenRef = useRef(false)
+
+  useEffect(() => {
+    if (open) {
+      wasOpenRef.current = true
+      return
+    }
+
+    if (wasOpenRef.current && !submitted) {
+      recordLeadIntentEvent('lead_form_abandoned', { listing_id: listing.id, source: 'mobile', metadata: { surface: 'price_tracker', listing_kind: listing.listing_kind } }, auth.isSignedIn ? auth.getToken : undefined)
+    }
+    wasOpenRef.current = false
+  }, [auth.getToken, auth.isSignedIn, listing.id, listing.listing_kind, open, submitted])
 
   useEffect(() => {
     if (!open) return
@@ -2447,6 +2874,7 @@ function PriceAlertSheet({ listing, auth, requestedAgent, open, onClose }: { lis
     setSubmitting(true)
     setError(null)
     try {
+      const token = await currentLeadIntentSessionToken()
       await createLead({
         listing_id: listing.id,
         lead_type: 'price_tracker',
@@ -2464,6 +2892,7 @@ function PriceAlertSheet({ listing, auth, requestedAgent, open, onClose }: { lis
         budget_max: budgetMax.trim(),
         buyer_status: buyerStatus,
         already_working_with_agent: alreadyWorkingWithAgent,
+        intent_session_token: token || undefined,
         message: `Target price: ${targetPrice.trim()}\n\nListing: ${listing.title} — ${listing.address}, ${listing.village.name}`,
       }, auth.isSignedIn ? auth.getToken : undefined)
       setSubmitted(true)
@@ -2820,6 +3249,7 @@ const styles = StyleSheet.create({
   sheetCloseText: { color: colors.muted, fontSize: 28, fontWeight: '700', lineHeight: 32 },
   requestTitle: { color: colors.ink, fontSize: 27, fontWeight: '900', letterSpacing: -0.9, marginTop: 4 },
   requestCopy: { color: colors.muted, fontSize: 15, fontWeight: '700', lineHeight: 23, marginTop: 10 },
+  intentSummaryText: { backgroundColor: colors.sand, borderRadius: 16, color: colors.muted, fontSize: 12, fontWeight: '900', letterSpacing: 0.8, lineHeight: 18, marginTop: 12, padding: 12, textTransform: 'uppercase' },
   requestListingSummary: { backgroundColor: colors.sand, borderRadius: 22, marginTop: 16, padding: 14 },
   requestListingPrice: { color: colors.green, fontSize: 23, fontWeight: '900', letterSpacing: -0.7 },
   requestListingTitle: { color: colors.ink, fontSize: 15, fontWeight: '900', marginTop: 3 },

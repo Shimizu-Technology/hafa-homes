@@ -6,6 +6,8 @@ class Brokerage < ApplicationRecord
   has_many :users, through: :brokerage_memberships
   has_many :listings, dependent: :nullify
   has_many :leads, dependent: :nullify
+  has_many :lead_intent_sessions, dependent: :nullify
+  has_many :lead_intent_events, dependent: :nullify
   has_many :showing_appointments, dependent: :nullify
 
   normalizes :slug, with: ->(slug) { slug.to_s.strip.downcase.parameterize }

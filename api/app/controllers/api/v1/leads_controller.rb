@@ -4,6 +4,17 @@ module Api
       include ClerkAuthenticatable
       include StaffLeadScoping
 
+      MINIMUM_INTENT_EVENTS_FOR_LEAD_LINK = 2
+      MEANINGFUL_INTENT_EVENTS_FOR_LEAD_LINK = %w[
+        listing_detail_viewed
+        listing_saved
+        search_filter_changed
+        map_marker_clicked
+        saved_search_created
+      ].freeze
+
+      class InsufficientLeadIntentContextError < StandardError; end
+
       before_action :authenticate_user!, only: [:index, :show, :update, :send_notification]
       before_action :require_staff!, only: [:index, :show, :update, :send_notification]
       before_action :authenticate_user_optional, only: [:create]
@@ -16,7 +27,7 @@ module Api
         leads = leads.order(created_at: :desc).limit(100)
 
         render json: {
-          leads: leads.map { |lead| LeadSerializer.summary(lead) },
+          leads: leads.map { |lead| LeadSerializer.staff_summary(lead) },
           assignable_agents: assignable_agents_for_scope.map(&:as_api_json)
         }
       end
@@ -31,6 +42,7 @@ module Api
       def create
         permitted = lead_params
         normalize_blank_lead_values(permitted)
+        intent_session = lead_intent_session_from_token(permitted.delete(:intent_session_token))
         lead = Lead.new(permitted.except(:listing_id, :requested_agent_id))
         lead.listing = active_listing_from_params(permitted)
         return if performed?
@@ -42,14 +54,20 @@ module Api
         return if performed?
 
         lead.user = current_user if current_user
+        lead.lead_intent_session = intent_session if intent_session
         lead.queue_request_received_notification = true
 
         if lead.save
-          record_audit_event(action: "lead_created", target: lead, lead: lead, metadata: { lead_type: lead.lead_type, source: lead.lead_source })
-          render json: { lead: LeadSerializer.summary(lead) }, status: :created
+          mark_intent_session_converted(lead, intent_session)
+          record_audit_event(action: "lead_created", target: lead, lead: lead, metadata: { lead_type: lead.lead_type, source: lead.lead_source, lead_intent_session_id: intent_session&.id })
+          render json: { lead: serialized_created_lead(lead) }, status: :created
         else
           render json: { errors: lead.errors.full_messages }, status: :unprocessable_entity
         end
+      rescue LeadIntentSession::ScopeMismatchError => e
+        render_intent_session_scope_mismatch(e)
+      rescue InsufficientLeadIntentContextError => e
+        render_insufficient_intent_context(e)
       end
 
       def update
@@ -166,7 +184,7 @@ module Api
         %i[
           phone preferred_time preferred_tour_date tour_type target_price message source_campaign source_url
           prequalified_status lender_name purchase_timeline budget_min budget_max desired_villages desired_beds desired_baths
-          buyer_status already_working_with_agent qualification_notes
+          buyer_status already_working_with_agent qualification_notes intent_session_token
         ].each do |key|
           permitted[key] = nil if permitted.key?(key) && permitted[key].blank?
         end
@@ -240,6 +258,7 @@ module Api
           :buyer_status,
           :already_working_with_agent,
           :qualification_notes,
+          :intent_session_token,
           :listing_id,
           :requested_agent_id
         )
@@ -279,6 +298,56 @@ module Api
         Listing.active.find_by(id: permitted[:listing_id]).tap do |listing|
           render json: { errors: ["Listing not found"] }, status: :unprocessable_entity unless listing
         end
+      end
+
+      def lead_intent_session_from_token(token)
+        return nil if token.blank?
+
+        brokerage = current_routing_brokerage
+        session = LeadIntentSession.find_scoped_by_token(token, user: current_user, brokerage: brokerage)
+        return nil unless session
+        raise InsufficientLeadIntentContextError, "Intent session needs more current browsing context before lead submission" unless sufficient_lead_intent_context?(session)
+
+        session
+      rescue ArgumentError
+        nil
+      end
+
+      def render_intent_session_scope_mismatch(error)
+        render json: {
+          errors: [error.message],
+          reset_session: true,
+          prompt: { eligible: false, reason: "session_scope_mismatch" }
+        }, status: :conflict
+      end
+
+      def render_insufficient_intent_context(error)
+        render json: {
+          errors: [error.message],
+          rebuild_intent_context: true,
+          prompt: { eligible: false, reason: "insufficient_intent_context" }
+        }, status: :conflict
+      end
+
+      def sufficient_lead_intent_context?(session)
+        events = session.lead_intent_events
+        events.where(event_name: MEANINGFUL_INTENT_EVENTS_FOR_LEAD_LINK).count >= MINIMUM_INTENT_EVENTS_FOR_LEAD_LINK
+      end
+
+      def mark_intent_session_converted(lead, intent_session)
+        return unless intent_session
+
+        intent_session.mark_converted!(lead)
+        LeadActivity.record!(
+          lead: lead,
+          action: "search_intent_captured",
+          summary: "Search intent captured before lead conversion",
+          metadata: Api::V1::LeadIntentSessionSerializer.summary(intent_session).to_h.except(:id, :requested_agent)
+        )
+      end
+
+      def serialized_created_lead(lead)
+        current_user&.staff? ? LeadSerializer.staff_summary(lead) : LeadSerializer.consumer(lead)
       end
 
       def lead_update_params

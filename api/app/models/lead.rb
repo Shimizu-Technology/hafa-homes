@@ -9,6 +9,7 @@ class Lead < ApplicationRecord
   belongs_to :listing, optional: true
   belongs_to :user, optional: true
   belongs_to :brokerage, optional: true
+  belongs_to :lead_intent_session, optional: true
   belongs_to :requested_agent, class_name: "Agent", optional: true, inverse_of: :requested_leads
   belongs_to :assigned_agent, class_name: "Agent", optional: true, inverse_of: :assigned_leads
   has_many :showing_appointments, dependent: :destroy

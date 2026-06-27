@@ -10,6 +10,8 @@ class User < ApplicationRecord
   has_many :saved_listing_records, class_name: "SavedListing", dependent: :destroy
   has_many :saved_listings, through: :saved_listing_records, source: :listing
   has_many :leads, dependent: :nullify
+  has_many :lead_intent_sessions, dependent: :nullify
+  has_many :lead_intent_events, dependent: :nullify
   has_many :brokerage_memberships, dependent: :destroy
   has_many :brokerages, through: :brokerage_memberships
   has_many :agent_profiles, class_name: "Agent", dependent: :nullify

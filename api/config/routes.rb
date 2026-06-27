@@ -13,6 +13,10 @@ Rails.application.routes.draw do
       end
       resources :villages, only: [:index]
       resources :agents, only: [:index]
+      resource :lead_intent, only: [], controller: :lead_intents do
+        post :events
+        post :dismiss
+      end
       resources :leads, only: [:index, :show, :create, :update] do
         post :notifications, on: :member, to: "leads#send_notification"
         resources :lead_notes, only: [:index, :create], path: "notes"
@@ -27,9 +31,10 @@ Rails.application.routes.draw do
 
       namespace :admin do
         get "dashboard", to: "dashboard#show"
-        resources :brokerages, only: [:index]
+        resources :brokerages, only: [:index, :update]
         resources :agents, only: [:index]
         resources :users, only: [:index, :create, :update]
+        resources :lead_intent_sessions, only: [:index]
         resources :audit_events, only: [:index]
       end
     end

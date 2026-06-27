@@ -18,6 +18,7 @@ import {
   DatabaseZap,
   Heart,
   Home,
+  Info,
   Map,
   MapPin,
   Maximize2,
@@ -48,6 +49,9 @@ import { useAuthContext } from './contexts/AuthContext'
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
 const FALLBACK_LISTING_IMAGE = 'https://images.unsplash.com/photo-1600047509807-ba8f99d2cdde?auto=format&fit=crop&w=1400&q=80'
+const LEAD_INTENT_SESSION_TOKEN_KEY = 'hafaHomes:leadIntentSessionToken'
+const LEAD_INTENT_CONTEXT_REQUIRED_KEY = 'hafaHomes:leadIntentContextRequired'
+const MEANINGFUL_LEAD_INTENT_EVENTS = new Set(['listing_detail_viewed', 'listing_saved', 'search_filter_changed', 'map_marker_clicked', 'saved_search_created'])
 
 class ApiFetchError extends Error {
   status: number
@@ -73,6 +77,161 @@ async function apiErrorMessage(response: Response, fallback: string) {
 
 function displayErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback
+}
+
+function currentLeadIntentSessionToken() {
+  if (typeof window === 'undefined') return ''
+
+  return window.localStorage.getItem(LEAD_INTENT_SESSION_TOKEN_KEY) || ''
+}
+
+function leadIntentSessionToken() {
+  if (typeof window === 'undefined') return ''
+
+  const existing = currentLeadIntentSessionToken()
+  if (existing) return existing
+
+  const token = window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`
+  window.localStorage.setItem(LEAD_INTENT_SESSION_TOKEN_KEY, token)
+  return token
+}
+
+function clearLeadIntentSessionToken() {
+  if (typeof window === 'undefined') return
+
+  window.localStorage.removeItem(LEAD_INTENT_SESSION_TOKEN_KEY)
+}
+
+function resetLeadIntentSessionToken() {
+  clearLeadIntentSessionToken()
+  return leadIntentSessionToken()
+}
+
+type LeadIntentContextGuard = { token?: string; eventCount: number; meaningfulEventCount: number; startedAt: number }
+
+function markLeadIntentCurrentContextRequired() {
+  if (typeof window === 'undefined') return
+
+  window.localStorage.setItem(LEAD_INTENT_CONTEXT_REQUIRED_KEY, JSON.stringify({ eventCount: 0, meaningfulEventCount: 0, startedAt: Date.now() }))
+}
+
+function leadIntentCurrentContextGuard(): LeadIntentContextGuard | null {
+  if (typeof window === 'undefined') return null
+
+  const raw = window.localStorage.getItem(LEAD_INTENT_CONTEXT_REQUIRED_KEY)
+  if (!raw) return null
+  if (raw === 'true') return { eventCount: 0, meaningfulEventCount: 0, startedAt: Date.now() }
+
+  try {
+    const parsed = JSON.parse(raw) as Partial<LeadIntentContextGuard>
+    return { token: parsed.token, eventCount: Number(parsed.eventCount || 0), meaningfulEventCount: Number(parsed.meaningfulEventCount || 0), startedAt: Number(parsed.startedAt || Date.now()) }
+  } catch {
+    return { eventCount: 0, meaningfulEventCount: 0, startedAt: Date.now() }
+  }
+}
+
+function saveLeadIntentCurrentContextGuard(guard: LeadIntentContextGuard) {
+  if (typeof window === 'undefined') return
+
+  window.localStorage.setItem(LEAD_INTENT_CONTEXT_REQUIRED_KEY, JSON.stringify(guard))
+}
+
+function clearLeadIntentCurrentContextRequired() {
+  if (typeof window === 'undefined') return
+
+  window.localStorage.removeItem(LEAD_INTENT_CONTEXT_REQUIRED_KEY)
+}
+
+function leadIntentCurrentContextRequired() {
+  return leadIntentCurrentContextGuard() !== null
+}
+
+function noteLeadIntentCurrentContextEvent(sessionToken: string, eventName: string) {
+  const guard = leadIntentCurrentContextGuard()
+  if (!guard) return
+
+  const sameToken = !guard.token || guard.token === sessionToken
+  const isMeaningfulEvent = MEANINGFUL_LEAD_INTENT_EVENTS.has(eventName)
+  const nextGuard = {
+    token: sessionToken,
+    eventCount: sameToken ? guard.eventCount + 1 : 1,
+    meaningfulEventCount: sameToken ? guard.meaningfulEventCount + (isMeaningfulEvent ? 1 : 0) : (isMeaningfulEvent ? 1 : 0),
+    startedAt: guard.startedAt || Date.now(),
+  }
+
+  if (nextGuard.meaningfulEventCount >= 2) {
+    clearLeadIntentCurrentContextRequired()
+  } else {
+    saveLeadIntentCurrentContextGuard(nextGuard)
+  }
+}
+
+function leadIntentClientEventId(eventName: string) {
+  return `${eventName}:${Date.now()}:${Math.random().toString(36).slice(2)}`
+}
+
+async function recordLeadIntentEvent(eventName: string, payload: { listing_id?: number; village_id?: number; agent_id?: number; source?: string; metadata?: Record<string, unknown> } = {}) {
+  let sessionToken = leadIntentSessionToken()
+  if (!sessionToken) return null
+  const clientEventId = leadIntentClientEventId(eventName)
+
+  async function postEvent(token: string) {
+    return fetch(`${API_URL}/api/v1/lead_intent/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+      body: JSON.stringify({
+        lead_intent_event: {
+          session_token: token,
+          event_name: eventName,
+          client_event_id: clientEventId,
+          source: payload.source || 'web',
+          listing_id: payload.listing_id,
+          village_id: payload.village_id,
+          agent_id: payload.agent_id,
+          metadata: payload.metadata || {},
+        },
+      }),
+    })
+  }
+
+  try {
+    let response = await postEvent(sessionToken)
+    if (response.status === 409) {
+      sessionToken = resetLeadIntentSessionToken()
+      if (!sessionToken) return null
+      response = await postEvent(sessionToken)
+    }
+    if (!response.ok) return null
+
+    noteLeadIntentCurrentContextEvent(sessionToken, eventName)
+    const result = await response.json() as LeadIntentEventResponse
+    if (result.prompt?.eligible && typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('hafaHomes:leadIntentPrompt', { detail: { prompt: result.prompt, sessionToken } }))
+    }
+    return result
+  } catch (intentError) {
+    console.warn('Unable to record Hafa Homes lead intent', intentError)
+    return null
+  }
+}
+
+async function dismissLeadIntentPrompt(promptKey?: string, reason = 'dismissed') {
+  const sessionToken = currentLeadIntentSessionToken()
+  if (!sessionToken) return
+
+  try {
+    const response = await fetch(`${API_URL}/api/v1/lead_intent/dismiss`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+      body: JSON.stringify({ lead_intent: { session_token: sessionToken, prompt_key: promptKey, reason } }),
+    })
+    if (response.status === 409) {
+      clearLeadIntentSessionToken()
+      markLeadIntentCurrentContextRequired()
+    }
+  } catch (intentError) {
+    console.warn('Unable to dismiss Hafa Homes lead intent prompt', intentError)
+  }
 }
 
 type LocalIntel = {
@@ -113,6 +272,7 @@ type Brokerage = {
   website_url?: string
   app_display_name?: string
   compliance_disclaimer?: string
+  settings?: Record<string, unknown>
 }
 
 type Agent = {
@@ -176,6 +336,7 @@ type SyncRunsResponse = { data_sync_runs: SyncRun[] }
 
 type LeadStatus = 'new' | 'contacted' | 'showing_scheduled' | 'nurturing' | 'closed' | 'lost' | 'spam' | 'archived'
 type ShowingStatus = 'proposed' | 'confirmed' | 'completed' | 'cancelled' | 'no_show'
+type PromptMode = 'growth' | 'balanced' | 'selective'
 
 type NotificationDelivery = {
   id: number
@@ -277,6 +438,87 @@ type ShowingAppointment = {
   agent?: Agent | null
 }
 
+type LeadIntentSummary = {
+  id?: number
+  status?: string
+  prompt_mode?: string
+  last_seen_at?: string
+  converted_at?: string
+  requested_agent_id?: number
+  requested_agent?: Agent | null
+  events_count?: number
+  listing_view_count?: number
+  unique_listing_view_count?: number
+  saved_listing_count?: number
+  top_villages?: Array<{ name: string; count: number }>
+  viewed_price_min?: number
+  viewed_price_max?: number
+  latest_listing_id?: number
+  latest_listing_title?: string
+  form_open_count?: number
+  form_abandon_count?: number
+  search_filter_count?: number
+  agent_selected_count?: number
+  narrative?: string | null
+}
+
+type LeadIntentPrompt = {
+  eligible: boolean
+  key?: string
+  trigger?: string
+  title?: string
+  body?: string
+  cta?: string
+  snooze_hours?: number
+  suggested?: {
+    desired_villages?: string
+    budget_min?: number
+    budget_max?: number
+    listing_id?: number
+  }
+  summary?: LeadIntentSummary
+  reason?: string
+}
+
+type LeadIntentEventResponse = {
+  lead_intent_session: LeadIntentSummary
+  lead_intent_event?: { id: number; event_name: string; occurred_at: string }
+  prompt: LeadIntentPrompt
+}
+
+type AdminLeadIntentEvent = {
+  id: number
+  event_name: string
+  label?: string
+  source?: string
+  occurred_at: string
+  metadata?: Record<string, unknown>
+  listing?: { id: number; title: string; price?: number; listing_kind?: 'sale' | 'rent'; village?: string; primary_photo_url?: string } | null
+  village?: { id: number; name: string } | null
+  agent?: Agent | null
+}
+
+type AdminLeadIntentSession = LeadIntentSummary & {
+  user?: { id: number; full_name: string; email: string; role: string } | null
+  identity_label?: string
+  brokerage?: Brokerage | null
+  converted_lead?: { id: number; name: string; email: string; status: string } | null
+  prompt_snoozed_until?: string
+  last_prompt_key?: string
+  last_prompt_dismissed_at?: string
+  prompt_dismissal_count?: number
+  high_intent?: boolean
+  recent_events?: AdminLeadIntentEvent[]
+}
+
+type AdminLeadIntentSessionsResponse = {
+  lead_intent_sessions: AdminLeadIntentSession[]
+  metrics: { active_sessions: number; signed_in_sessions: number; high_intent_sessions: number; converted_sessions: number }
+  top_villages: Array<{ name: string; count: number }>
+  top_listings: Array<{ id: number; title: string; village?: string; price?: number; listing_kind?: 'sale' | 'rent'; primary_photo_url?: string; view_count: number }>
+  pagination: PaginationMeta
+}
+
 type Lead = {
   id: number
   lead_type: string
@@ -324,6 +566,7 @@ type Lead = {
   updated_at?: string
   consumer_status_label?: string
   latest_showing_appointment?: ShowingAppointment | null
+  intent_summary?: LeadIntentSummary | null
   showing_appointments?: ShowingAppointment[]
   notification_deliveries?: NotificationDelivery[]
   lead_notes?: LeadNote[]
@@ -415,6 +658,7 @@ type LeadPayload = {
   buyer_status?: string
   already_working_with_agent?: string
   qualification_notes?: string
+  intent_session_token?: string
   source_campaign?: string
   source_url?: string
   message: string
@@ -562,6 +806,13 @@ async function fetchAdminDashboard(): Promise<AdminDashboardResponse> {
   return response.json()
 }
 
+async function fetchAdminLeadIntentSessions(params: { status?: string; identity?: string; q?: string; sort?: string; page?: string; per_page?: string } = {}): Promise<AdminLeadIntentSessionsResponse> {
+  const query = buildQuery({ status: params.status, identity: params.identity, q: params.q, sort: params.sort, page: params.page, per_page: params.per_page })
+  const response = await fetch(`${API_URL}/api/v1/admin/lead_intent_sessions${query ? `?${query}` : ''}`, { headers: await authHeaders() })
+  if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to load search intent'), response.status)
+  return response.json()
+}
+
 async function fetchShowingAppointments(): Promise<ShowingAppointmentsResponse> {
   const response = await fetch(`${API_URL}/api/v1/showing_appointments`, { headers: await authHeaders() })
   if (!response.ok) throw new Error('Unable to load showing schedule')
@@ -571,6 +822,22 @@ async function fetchShowingAppointments(): Promise<ShowingAppointmentsResponse> 
 async function fetchAdminUsers(): Promise<AdminUsersResponse> {
   const response = await fetch(`${API_URL}/api/v1/admin/users`, { headers: await authHeaders() })
   if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to load users'), response.status)
+  return response.json()
+}
+
+async function fetchAdminBrokerages(): Promise<{ brokerages: Brokerage[] }> {
+  const response = await fetch(`${API_URL}/api/v1/admin/brokerages`, { headers: await authHeaders() })
+  if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to load brokerages'), response.status)
+  return response.json()
+}
+
+async function updateAdminBrokerage(id: number, payload: Record<string, unknown>): Promise<{ brokerage: Brokerage }> {
+  const response = await fetch(`${API_URL}/api/v1/admin/brokerages/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+    body: JSON.stringify({ brokerage: payload }),
+  })
+  if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to update brokerage'), response.status)
   return response.json()
 }
 
@@ -726,13 +993,36 @@ async function saveSearch(payload: { name: string; email: string; alert_frequenc
   return response.json()
 }
 
-async function createLead(payload: LeadPayload) {
+async function createLead(payload: LeadPayload): Promise<{ lead: Lead }> {
+  return submitLead(payload, true)
+}
+
+async function submitLead(payload: LeadPayload, retryAfterIntentReset: boolean): Promise<{ lead: Lead }> {
+  if (payload.lead_type === 'search_assist' && !payload.intent_session_token) {
+    throw new ApiFetchError('Your search session refreshed. Please keep browsing or reopen the prompt so we can attach the right search context.', 409)
+  }
+
+  if (!payload.intent_session_token && leadIntentCurrentContextRequired()) {
+    throw new ApiFetchError('Your search session refreshed after sign-in. Please view the home again and reopen this form before submitting.', 409)
+  }
+
   const response = await fetch(`${API_URL}/api/v1/leads`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
     body: JSON.stringify({ lead: payload }),
   })
+
+  if (response.status === 409 && retryAfterIntentReset && payload.intent_session_token) {
+    const conflictPayload = await response.clone().json().catch(() => null) as { reset_session?: boolean } | null
+    if (conflictPayload?.reset_session) {
+      clearLeadIntentSessionToken()
+      markLeadIntentCurrentContextRequired()
+      throw new ApiFetchError('Your search session refreshed after sign-in. Please view the home again and reopen this form before submitting.', response.status)
+    }
+  }
+
   if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to submit lead'), response.status)
+  clearLeadIntentCurrentContextRequired()
   return response.json()
 }
 
@@ -970,13 +1260,163 @@ function App() {
         <Route path="/admin" element={<RequireStaff><AdminDashboardPage /></RequireStaff>} />
         <Route path="/admin/sync" element={<RequireStaff><SyncPage /></RequireStaff>} />
         <Route path="/admin/leads" element={<RequireStaff><LeadsPage /></RequireStaff>} />
+        <Route path="/admin/intent" element={<RequireStaff><AdminIntentPage /></RequireStaff>} />
         <Route path="/admin/leads/:id" element={<RequireStaff><LeadDetailPage /></RequireStaff>} />
         <Route path="/admin/showings" element={<RequireStaff><AdminShowingsPage /></RequireStaff>} />
         <Route path="/admin/users" element={<RequireStaff><AdminUsersPage /></RequireStaff>} />
         <Route path="/admin/audit" element={<RequireStaff><AdminAuditPage /></RequireStaff>} />
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
+      <ProgressiveLeadPrompt />
     </>
+  )
+}
+
+function ProgressiveLeadPrompt() {
+  const [prompt, setPrompt] = useState<LeadIntentPrompt | null>(null)
+  const [dismissedKey, setDismissedKey] = useState<string | null>(null)
+  const mutation = useMutation({ mutationFn: createLead })
+  const { isClerkEnabled, isSignedIn, userId } = useAuthContext()
+  const { data: meData } = useQuery({
+    queryKey: ['me', userId, 'progressive-lead-prompt'],
+    queryFn: fetchMe,
+    enabled: Boolean(prompt) && isClerkEnabled && isSignedIn && Boolean(userId),
+    retry: false,
+  })
+  const { data: agentsData } = useQuery({
+    queryKey: ['agents', 'routing', 'progressive-lead-prompt'],
+    queryFn: () => fetchAgents(),
+    enabled: Boolean(prompt) && isClerkEnabled && isSignedIn,
+  })
+  const profile = meData?.user
+
+  useEffect(() => {
+    function handlePrompt(event: Event) {
+      const detail = (event as CustomEvent<{ prompt?: LeadIntentPrompt }>).detail
+      const nextPrompt = detail?.prompt
+      if (!nextPrompt?.eligible || !nextPrompt.key || nextPrompt.key === dismissedKey) return
+      setPrompt(nextPrompt)
+      mutation.reset()
+    }
+
+    window.addEventListener('hafaHomes:leadIntentPrompt', handlePrompt)
+    return () => window.removeEventListener('hafaHomes:leadIntentPrompt', handlePrompt)
+  }, [dismissedKey, mutation])
+
+  if (!prompt) return null
+
+  const activePrompt = prompt
+  const selectedAgentId = isClerkEnabled && isSignedIn ? storedSelectedAgentId() : null
+  const selectedAgent = agentsData?.agents.find((agent) => agent.id === selectedAgentId)
+  const promptTitle = activePrompt.title || 'Want an agent to send matching homes?'
+  const promptBody = activePrompt.body || 'Share a few details and the brokerage team can follow up with useful Guam listings.'
+
+  function handleDismiss(reason = 'dismissed') {
+    setDismissedKey(activePrompt.key || null)
+    dismissLeadIntentPrompt(activePrompt.key, reason)
+    setPrompt(null)
+  }
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const form = new FormData(event.currentTarget)
+    const name = String(form.get('name') || profile?.full_name || '').trim()
+    const email = String(form.get('email') || profile?.email || '').trim()
+    if (!email) return
+
+    mutation.mutate({
+      listing_id: activePrompt.suggested?.listing_id,
+      lead_type: 'search_assist',
+      name: name || 'Hafa Homes searcher',
+      email,
+      phone: String(form.get('phone') || profile?.phone || '').trim(),
+      preferred_contact_method: 'email',
+      source_campaign: `progressive_prompt:${activePrompt.trigger || 'search_intent'}`,
+      source_url: typeof window !== 'undefined' ? window.location.href : '',
+      requested_agent_id: selectedAgent?.id,
+      prequalified_status: String(form.get('prequalified_status') || ''),
+      purchase_timeline: String(form.get('purchase_timeline') || ''),
+      budget_min: String(form.get('budget_min') || ''),
+      budget_max: String(form.get('budget_max') || ''),
+      desired_villages: String(form.get('desired_villages') || ''),
+      desired_beds: String(form.get('desired_beds') || ''),
+      desired_baths: String(form.get('desired_baths') || ''),
+      buyer_status: String(form.get('buyer_status') || ''),
+      already_working_with_agent: String(form.get('already_working_with_agent') || ''),
+      intent_session_token: currentLeadIntentSessionToken(),
+      message: `Progressive search assist prompt: ${activePrompt.trigger || 'search_intent'}`,
+    }, {
+      onSuccess: () => {
+        setDismissedKey(activePrompt.key || null)
+      },
+    })
+  }
+
+  return (
+    <div className="fixed inset-x-3 bottom-3 z-[85] mx-auto max-w-xl rounded-[2rem] border border-white/60 bg-white/95 p-4 shadow-2xl shadow-[#0f3d35]/20 backdrop-blur md:bottom-6 md:p-5">
+      {mutation.isSuccess ? (
+        <div className="text-center">
+          <CheckCircle2 className="mx-auto text-[#0f705e]" size={36} />
+          <h2 className="mt-3 text-2xl font-semibold tracking-[-0.05em]">Search details sent</h2>
+          <p className="mt-2 text-sm leading-6 text-[#66746f]">The brokerage team can use your search context to follow up with better matches.</p>
+          <button onClick={() => setPrompt(null)} className="mt-4 min-h-11 w-full rounded-2xl bg-[#0f3d35] px-4 text-sm font-bold text-white">Done</button>
+        </div>
+      ) : (
+        <form onSubmit={handleSubmit}>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#0f705e]">Search assist</p>
+              <h2 className="mt-1 text-2xl font-semibold tracking-[-0.05em]">{promptTitle}</h2>
+              <p className="mt-2 text-sm leading-6 text-[#66746f]">{promptBody}</p>
+            </div>
+            <button type="button" onClick={() => handleDismiss('closed')} className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-[#d7ded9] text-[#304942]"><X size={18} /></button>
+          </div>
+
+          {activePrompt.summary?.narrative && <p className="mt-3 rounded-2xl bg-[#f6f1e8] p-3 text-xs font-bold uppercase tracking-[0.12em] text-[#53645f]">{activePrompt.summary.narrative}</p>}
+
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            <Input name="email" label="Email" type="email" defaultValue={profile?.email || ''} required />
+            <Input name="name" label="Name" defaultValue={profile?.full_name || ''} />
+            <Input name="phone" label="Phone optional" defaultValue={profile?.phone || '+1671'} inputMode="tel" />
+            <label className="grid gap-2 text-sm font-semibold text-[#304942]">
+              Timeline
+              <select name="purchase_timeline" defaultValue="" className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
+                {purchaseTimelineOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+            </label>
+            <Input name="desired_villages" label="Desired villages" defaultValue={activePrompt.suggested?.desired_villages || ''} placeholder="Dededo, Yigo, Tamuning" />
+            <label className="grid gap-2 text-sm font-semibold text-[#304942]">
+              Prequalified?
+              <select name="prequalified_status" defaultValue="" className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
+                {prequalifiedOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+            </label>
+            <Input name="budget_min" label="Budget min optional" type="number" min="0" step="1000" defaultValue={activePrompt.suggested?.budget_min ? String(Math.round(activePrompt.suggested.budget_min)) : ''} />
+            <Input name="budget_max" label="Budget max optional" type="number" min="0" step="1000" defaultValue={activePrompt.suggested?.budget_max ? String(Math.round(activePrompt.suggested.budget_max)) : ''} />
+            <Input name="desired_beds" label="Beds optional" type="number" min="0" step="1" />
+            <Input name="desired_baths" label="Baths optional" type="number" min="0" step="0.5" />
+            <label className="grid gap-2 text-sm font-semibold text-[#304942]">
+              Buyer type
+              <select name="buyer_status" defaultValue="" className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
+                {buyerStatusOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+            </label>
+            <label className="grid gap-2 text-sm font-semibold text-[#304942]">
+              Working with an agent?
+              <select name="already_working_with_agent" defaultValue="" className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
+                {agentRelationshipOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+            </label>
+          </div>
+
+          {mutation.isError && <p className="mt-3 text-sm font-semibold text-red-700">{displayErrorMessage(mutation.error, 'Unable to send search details right now.')}</p>}
+          <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto]">
+            <button disabled={mutation.isPending} className="min-h-12 rounded-2xl bg-[#0f3d35] px-5 text-sm font-bold text-white disabled:opacity-60">{mutation.isPending ? 'Sending...' : activePrompt.cta || 'Get matched with an agent'}</button>
+            <button type="button" onClick={() => handleDismiss('not_now')} className="min-h-12 rounded-2xl bg-[#edf0ec] px-5 text-sm font-bold text-[#304942]">Not now</button>
+          </div>
+        </form>
+      )}
+    </div>
   )
 }
 
@@ -1106,6 +1546,7 @@ function SearchPage() {
     else next.delete(key)
     setSearchParams(next)
     captureAnalyticsEvent('search_filter_changed', { filter: key, value: value || null, listing_kind: kind })
+    recordLeadIntentEvent('search_filter_changed', { source: 'web', metadata: { filter: key, value: value || '', listing_kind: kind, surface: 'search_page' } })
   }
 
   function toggleFeature(slug: string) {
@@ -1120,6 +1561,7 @@ function SearchPage() {
     ;['village', 'property_type', 'beds', 'max_price', 'features'].forEach((key) => next.delete(key))
     setSearchParams(next)
     captureAnalyticsEvent('search_filter_cleared', { listing_kind: kind, surface: 'mobile_filter_sheet' })
+    recordLeadIntentEvent('search_filter_changed', { source: 'web', metadata: { filter: 'clear', value: '', listing_kind: kind, surface: 'mobile_filter_sheet' } })
   }
 
   return (
@@ -1133,6 +1575,7 @@ function SearchPage() {
           onViewModeChange={(value) => {
             setViewMode(value)
             captureAnalyticsEvent('search_view_changed', { view_mode: value, surface: 'mobile_header' })
+            recordLeadIntentEvent('search_view_changed', { source: 'web', metadata: { view_mode: value, surface: 'mobile_header' } })
           }}
           onFilterClick={() => setShowFilters(true)}
           onMenuClick={() => setMobileMenuOpen(true)}
@@ -1243,11 +1686,12 @@ function SearchPage() {
               title={`Latest Guam ${kind === 'sale' ? 'homes for sale' : 'rentals'}`}
               action={
                 <div className="hidden items-center gap-2 md:flex">
-                  <button onClick={() => setSaveSearchOpen(true)} className="inline-flex items-center gap-2 rounded-full border border-[#d7ded9] bg-white px-4 py-2 text-sm font-semibold"><Bell size={16} /> Save search</button>
+                  <button onClick={() => { setSaveSearchOpen(true); recordLeadIntentEvent('saved_search_opened', { source: 'web', metadata: { surface: 'desktop_toolbar', listing_kind: kind } }) }} className="inline-flex items-center gap-2 rounded-full border border-[#d7ded9] bg-white px-4 py-2 text-sm font-semibold"><Bell size={16} /> Save search</button>
                   <button onClick={() => {
                     const nextViewMode = viewMode === 'list' ? 'map' : 'list'
                     setViewMode(nextViewMode)
                     captureAnalyticsEvent('search_view_changed', { view_mode: nextViewMode, surface: 'desktop_toolbar' })
+                    recordLeadIntentEvent('search_view_changed', { source: 'web', metadata: { view_mode: nextViewMode, surface: 'desktop_toolbar' } })
                   }} className="inline-flex items-center gap-2 rounded-full border border-[#d7ded9] bg-white px-4 py-2 text-sm font-semibold"><Map size={16} /> {viewMode === 'list' ? 'Map view' : 'List view'}</button>
                   <Link to="/account/requests" className="inline-flex items-center gap-2 rounded-full border border-[#d7ded9] bg-white px-4 py-2 text-sm font-semibold"><MessageSquare size={16} /> My requests</Link>
                 </div>
@@ -1502,7 +1946,10 @@ function ListingCard({ listing }: { listing: Listing }) {
   const saveMutation = useMutation({
     mutationFn: () => isSaved ? removeSavedListingForUser(listing.id) : saveListingForUser(listing.id),
     onMutate: () => setOptimisticSaved((current) => !current),
-    onSuccess: () => refetchSaved(),
+    onSuccess: (response) => {
+      refetchSaved()
+      recordLeadIntentEvent(response.saved ? 'listing_saved' : 'listing_unsaved', { listing_id: listing.id, source: 'web', metadata: { surface: 'listing_card', listing_kind: listing.listing_kind, selected: response.saved } })
+    },
     onError: () => setOptimisticSaved((current) => !current),
   })
 
@@ -1558,6 +2005,7 @@ function ListingDetailPage() {
   const [localSaved, setLocalSaved] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [photoIndex, setPhotoIndex] = useState(0)
+  const viewedListingRef = useRef<number | null>(null)
   const { data, isLoading, isError } = useQuery({ queryKey: ['listing', id], queryFn: () => fetchListing(id), enabled: Boolean(id) })
   const { data: savedData, refetch: refetchSaved } = useQuery({ queryKey: ['saved-listings', userId], queryFn: fetchSavedListings, enabled: isClerkEnabled && isSignedIn })
   const { data: routingAgentsData, isLoading: routingAgentsLoading } = useQuery({ queryKey: ['agents', 'routing', 'listing-detail'], queryFn: () => fetchAgents(), enabled: isClerkEnabled && isSignedIn && Boolean(data?.listing) })
@@ -1567,7 +2015,10 @@ function ListingDetailPage() {
   const saveMutation = useMutation({
     mutationFn: () => listing && saved ? removeSavedListingForUser(listing.id) : listing ? saveListingForUser(listing.id) : Promise.reject(new Error('No listing loaded')),
     onMutate: () => setLocalSaved((current) => !current),
-    onSuccess: () => refetchSaved(),
+    onSuccess: (response) => {
+      refetchSaved()
+      if (listing) recordLeadIntentEvent(response.saved ? 'listing_saved' : 'listing_unsaved', { listing_id: listing.id, source: 'web', metadata: { surface: 'listing_detail', listing_kind: listing.listing_kind, selected: response.saved } })
+    },
     onError: () => setLocalSaved((current) => !current),
   })
   const photos = listing?.photos?.length ? listing.photos : listing ? [{ id: 0, url: listing.primary_photo_url, position: 1, alt_text: listing.title }] : []
@@ -1577,12 +2028,24 @@ function ListingDetailPage() {
     else setSelectedAgentId(null)
   }, [isClerkEnabled, isSignedIn, listing?.id])
 
+  useEffect(() => {
+    if (!listing || fromAdmin || viewedListingRef.current === listing.id) return
+
+    viewedListingRef.current = listing.id
+    recordLeadIntentEvent('listing_detail_viewed', {
+      listing_id: listing.id,
+      source: 'web',
+      metadata: { surface: 'listing_detail', listing_kind: listing.listing_kind, path: window.location.pathname },
+    })
+  }, [fromAdmin, listing])
+
   function selectPreferredAgent(agentId: number | null) {
     if (!isClerkEnabled || !isSignedIn) return
 
     setSelectedAgentId(agentId)
     storeSelectedAgentId(agentId)
     captureAnalyticsEvent(agentId ? 'agent_selected' : 'agent_selection_cleared', { agent_id: agentId ?? undefined, source: 'listing_detail' })
+    if (agentId) recordLeadIntentEvent('agent_selected', { agent_id: agentId, listing_id: listing?.id, source: 'web', metadata: { surface: 'listing_detail' } })
   }
 
   async function shareListing() {
@@ -1612,6 +2075,7 @@ function ListingDetailPage() {
                 <button onClick={() => {
                   setLeadOpen(true)
                   captureAnalyticsEvent('lead_modal_opened', { listing_id: listing.id, source: 'mobile_header' })
+                  recordLeadIntentEvent('showing_form_opened', { listing_id: listing.id, source: 'web', metadata: { surface: 'mobile_header', listing_kind: listing.listing_kind } })
                 }} className="min-h-12 rounded-2xl bg-[#e99f3e] px-5 text-sm font-bold text-[#25170b] hover:bg-[#f2ad4e] active:scale-[0.98]">Request</button>
                 <button onClick={() => setMenuOpen(true)} className="grid h-12 w-12 place-items-center rounded-full bg-white/10 hover:bg-white/15 active:scale-[0.98]"><Menu size={20} /></button>
               </div>
@@ -1684,10 +2148,12 @@ function ListingDetailPage() {
                   <button onClick={() => {
                     setLeadOpen(true)
                     captureAnalyticsEvent('lead_modal_opened', { listing_id: listing.id, source: 'desktop_aside' })
+                    recordLeadIntentEvent('showing_form_opened', { listing_id: listing.id, source: 'web', metadata: { surface: 'desktop_aside', listing_kind: listing.listing_kind } })
                   }} className="mt-5 w-full rounded-2xl bg-[#0f3d35] px-4 py-3 text-sm font-bold text-white">Request a showing</button>
                   <button onClick={() => {
                     setPriceTrackerOpen(true)
                     captureAnalyticsEvent('price_tracker_opened', { listing_id: listing.id, source: 'desktop_aside' })
+                    recordLeadIntentEvent('price_tracker_opened', { listing_id: listing.id, source: 'web', metadata: { surface: 'desktop_aside', listing_kind: listing.listing_kind } })
                   }} className="mt-3 w-full rounded-2xl border border-[#d7ded9] px-4 py-3 text-sm font-bold text-[#0f3d35]">Add price alert</button>
                   {isSignedIn ? (
                     <button onClick={() => saveMutation.mutate()} className="mt-3 w-full rounded-2xl border border-[#d7ded9] px-4 py-3 text-sm font-bold text-[#0f3d35]">{saved ? 'Remove saved home' : 'Save home'}</button>
@@ -1710,6 +2176,7 @@ function ListingDetailPage() {
             <button onClick={() => {
               setPriceTrackerOpen(true)
               captureAnalyticsEvent('price_tracker_opened', { listing_id: listing.id, source: 'mobile_action_bar' })
+              recordLeadIntentEvent('price_tracker_opened', { listing_id: listing.id, source: 'web', metadata: { surface: 'mobile_action_bar', listing_kind: listing.listing_kind } })
             }} className="flex min-h-16 flex-col items-center justify-center gap-1"><TrendingUp size={23} /> Price alert</button>
             {isSignedIn ? (
               <button onClick={() => {
@@ -2310,13 +2777,13 @@ function PrivacyPage() {
       />
       <section className="mx-auto max-w-4xl px-5 pb-12">
         <div className="grid gap-5 rounded-[2rem] bg-white p-6 text-sm leading-7 text-[#3d4d48] shadow-sm md:p-8">
-          <p><strong className="text-[#17211f]">Information we collect.</strong> Hafa Homes may collect contact details you submit through showing requests, price alerts, saved searches, or similar forms, plus basic app usage information used to improve the product.</p>
-          <p><strong className="text-[#17211f]">How we use it.</strong> We use submitted information to respond to inquiries, coordinate real estate follow-up, improve listing search, troubleshoot the app, and understand aggregate product usage.</p>
+          <p><strong className="text-[#17211f]">Information we collect.</strong> Hafa Homes may collect contact details you submit through showing requests, price alerts, saved searches, or similar forms, plus first-party app usage information such as listing views, saved homes, search filters, agent selections, and request-form interactions.</p>
+          <p><strong className="text-[#17211f]">How we use it.</strong> We use submitted information and first-party search activity to respond to inquiries, coordinate real estate follow-up, suggest more relevant listings, improve listing search, troubleshoot the app, and understand aggregate product usage.</p>
           <p><strong className="text-[#17211f]">Saved listings.</strong> Signed-in saved homes are stored with your Hafa Homes account so they can sync across web and mobile. The native app may also cache listing details locally on your device for performance.</p>
           <p><strong className="text-[#17211f]">Account deletion.</strong> Signed-in users can delete their account from the Account screen in the web app or the More screen in the mobile app. Deleting an account removes synced saved homes and disconnects account links from request history while preserving submitted showing/contact requests for brokerage follow-up.</p>
           <p><strong className="text-[#17211f]">Third-party services.</strong> The app may use services such as Clerk for authentication, Mapbox for maps, hosting providers for the API/web app, and analytics or monitoring tools when enabled.</p>
           <p><strong className="text-[#17211f]">Contact.</strong> For privacy questions or data requests, email <a className="font-bold text-[#0f705e]" href="mailto:hello@hafahomes.com">hello@hafahomes.com</a>.</p>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#7b8a84]">Last updated May 25, 2026</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#7b8a84]">Last updated June 25, 2026</p>
         </div>
       </section>
     </Shell>
@@ -2460,6 +2927,7 @@ function RealMap({ listings, className, immersive, style }: { listings: Listing[
       markerElement.setAttribute('aria-label', `Open ${listing.title}`)
       markerElement.addEventListener('click', () => {
         captureAnalyticsEvent('map_marker_clicked', { listing_id: listing.id, listing_kind: listing.listing_kind })
+        recordLeadIntentEvent('map_marker_clicked', { listing_id: listing.id, source: 'web', metadata: { surface: 'map_marker', listing_kind: listing.listing_kind } })
         navigate(`/listings/${listing.id}`)
       })
 
@@ -2593,6 +3061,8 @@ function SaveSearchModal({ open, onClose, filters }: { open: boolean; onClose: (
       email: String(form.get('email') || ''),
       alert_frequency: String(form.get('alert_frequency') || 'daily'),
       filters,
+    }, {
+      onSuccess: () => recordLeadIntentEvent('saved_search_created', { source: 'web', metadata: { surface: 'save_search_modal' } }),
     })
   }
 
@@ -2651,6 +3121,7 @@ function AdminShell({ children, title, kicker, description }: { children: React.
       items: [
         { label: 'Dashboard', href: '/admin', icon: <Home size={18} /> },
         { label: 'Leads', href: '/admin/leads', icon: <ClipboardList size={18} /> },
+        { label: 'Search intent', href: '/admin/intent', icon: <Compass size={18} /> },
         { label: 'Showings', href: '/admin/showings', icon: <Clock3 size={18} /> },
       ],
     },
@@ -2815,6 +3286,456 @@ function AdminPanel({ title, children }: { title: string; children: React.ReactN
   return <div className="rounded-[1.75rem] bg-white p-4 shadow-sm sm:rounded-[2rem] sm:p-5"><h2 className="text-xl font-semibold tracking-[-0.04em] sm:text-2xl">{title}</h2><div className="mt-4">{children}</div></div>
 }
 
+function AdminIntentPage() {
+  const [statusFilter, setStatusFilter] = useState('')
+  const [identityFilter, setIdentityFilter] = useState('')
+  const [sortBy, setSortBy] = useState('last_seen')
+  const [searchInput, setSearchInput] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [page, setPage] = useState(1)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+
+  useEffect(() => {
+    setPage(1)
+  }, [statusFilter, identityFilter, sortBy, searchQuery])
+
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['admin-lead-intent-sessions', statusFilter, identityFilter, sortBy, searchQuery, page],
+    queryFn: () => fetchAdminLeadIntentSessions({ status: statusFilter || undefined, identity: identityFilter || undefined, sort: sortBy || undefined, q: searchQuery || undefined, page: String(page), per_page: '10' }),
+  })
+  const { data: brokeragesData, refetch: refetchBrokerages } = useQuery({ queryKey: ['admin-brokerages', 'prompt-settings'], queryFn: fetchAdminBrokerages })
+  const promptSettingsMutation = useMutation({
+    mutationFn: ({ id, payload }: { id: number; payload: Record<string, unknown> }) => updateAdminBrokerage(id, payload),
+    onSuccess: () => refetchBrokerages(),
+  })
+  const sessions = data?.lead_intent_sessions ?? []
+  const metrics = data?.metrics
+  const pagination = data?.pagination
+  const brokerages = brokeragesData?.brokerages ?? []
+  const primaryBrokerage = brokerages[0]
+
+  return (
+    <AdminShell kicker="Search intent" title="Live buyer intent" description="First-party browsing signals from Hafa Homes search, saves, form opens, and progressive prompts. Signed-in shoppers are identified; anonymous visitors stay anonymous until they submit a lead.">
+      <section className="mx-auto max-w-7xl px-4 pb-12 sm:px-5">
+        <div className="mb-5 flex flex-col gap-4 rounded-[1.75rem] border border-[#dfe8e2] bg-white/85 p-4 shadow-sm backdrop-blur sm:rounded-[2rem] sm:p-5 lg:flex-row lg:items-center lg:justify-between">
+          <div className="max-w-3xl">
+            <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.2em] text-[#0f705e]"><SlidersHorizontal size={15} /> Progressive prompt rules</div>
+            <h2 className="mt-2 text-2xl font-semibold tracking-[-0.05em] text-[#17211f]">Control how often buyers see the lead prompt.</h2>
+            <p className="mt-2 text-sm font-semibold leading-6 text-[#66746f]">
+              {primaryBrokerage ? promptModeSummary(promptModeFromSettings(primaryBrokerage.settings), primaryBrokerage.settings) : 'Balanced mode prompts after a few clear buying signals, then waits before asking again.'}
+            </p>
+          </div>
+          <button type="button" onClick={() => setSettingsOpen(true)} className="inline-flex min-h-14 w-full items-center justify-center gap-2 whitespace-nowrap rounded-[1.35rem] bg-[#0f3d35] px-7 py-3.5 text-sm font-bold text-white shadow-xl shadow-[#0f3d35]/15 transition hover:-translate-y-0.5 hover:bg-[#0c312b] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#bdebdc] sm:w-auto sm:min-w-[190px]">
+            <SlidersHorizontal size={17} /> Prompt settings
+          </button>
+        </div>
+        <PromptSettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} brokerages={brokerages} mutation={promptSettingsMutation} />
+        {metrics && (
+          <div className="grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-4">
+            <AdminMetric label="Active sessions" value={metrics.active_sessions} tone="dark" />
+            <AdminMetric label="Signed in" value={metrics.signed_in_sessions} />
+            <AdminMetric label="High intent" value={metrics.high_intent_sessions} tone="warn" />
+            <AdminMetric label="Converted" value={metrics.converted_sessions} />
+          </div>
+        )}
+
+        <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="rounded-[1.75rem] bg-white p-4 shadow-sm sm:rounded-[2rem] sm:p-5">
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <h2 className="text-2xl font-semibold tracking-[-0.05em]">Recent search sessions</h2>
+                <p className="mt-2 text-sm font-semibold leading-6 text-[#66746f]">Use this as a coaching surface: saves, repeated village interest, and abandoned forms are the strongest outreach signals.</p>
+              </div>
+              <form onSubmit={(event) => { event.preventDefault(); setSearchQuery(searchInput.trim()) }} className="grid w-full gap-2 lg:max-w-3xl">
+                <div className="flex flex-wrap gap-2">
+                  <input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Search user, email, village, listing, or behavior" className="min-h-11 min-w-0 flex-1 rounded-2xl border border-[#dce5df] bg-white px-3 text-sm font-bold text-[#304942] sm:min-w-[240px]" />
+                  <button className="min-h-11 w-full rounded-2xl bg-[#0f3d35] px-4 text-sm font-bold text-white sm:w-auto">Search</button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="min-h-11 w-full rounded-2xl border border-[#dce5df] bg-white px-3 text-sm font-bold text-[#304942] sm:w-auto">
+                    <option value="">All statuses</option>
+                    <option value="active">Active</option>
+                    <option value="snoozed">Snoozed</option>
+                    <option value="converted">Converted</option>
+                  </select>
+                  <select value={identityFilter} onChange={(event) => setIdentityFilter(event.target.value)} className="min-h-11 w-full rounded-2xl border border-[#dce5df] bg-white px-3 text-sm font-bold text-[#304942] sm:w-auto">
+                    <option value="">All visitors</option>
+                    <option value="signed_in">Signed in</option>
+                    <option value="anonymous">Anonymous</option>
+                  </select>
+                  <select value={sortBy} onChange={(event) => setSortBy(event.target.value)} className="min-h-11 w-full rounded-2xl border border-[#dce5df] bg-white px-3 text-sm font-bold text-[#304942] sm:w-auto">
+                    <option value="last_seen">Last seen newest</option>
+                    <option value="oldest">Last seen oldest</option>
+                    <option value="views_desc">Most listings viewed</option>
+                    <option value="saved_desc">Most saved homes</option>
+                    <option value="forms_desc">Most abandoned forms</option>
+                  </select>
+                </div>
+              </form>
+            </div>
+
+            <div className="mt-5 grid gap-4">
+              {isLoading && <StateCard>Loading search intent...</StateCard>}
+              {isError && <StateCard tone="error">Unable to load search intent.</StateCard>}
+              {sessions.map((session) => <AdminIntentSessionCard key={session.id} session={session} />)}
+              {!isLoading && sessions.length === 0 && <StateCard>No search intent sessions match these filters yet.</StateCard>}
+              {pagination && pagination.total_pages > 1 && (
+                <PaginationControls pagination={pagination} onPageChange={setPage} />
+              )}
+            </div>
+          </div>
+
+          <aside className="space-y-4">
+            <div className="rounded-[1.75rem] bg-[#0f3d35] p-5 text-white shadow-xl shadow-[#0f3d35]/15 sm:rounded-[2rem]">
+              <TrendingUp className="text-[#bdebdc]" />
+              <p className="mt-5 text-xs font-bold uppercase tracking-[0.2em] text-white/55">Top villages</p>
+              <div className="mt-4 grid gap-2">
+                {(data?.top_villages ?? []).map((village) => (
+                  <div key={village.name} className="flex items-center justify-between rounded-2xl bg-white/10 px-3 py-2">
+                    <span className="text-sm font-bold">{village.name}</span>
+                    <span className="text-xs font-black uppercase tracking-[0.14em] text-[#bdebdc]">{village.count}</span>
+                  </div>
+                ))}
+                {data?.top_villages?.length === 0 && <p className="text-sm font-semibold leading-6 text-white/68">Village patterns will appear after shoppers view listing detail pages.</p>}
+              </div>
+            </div>
+            <div className="rounded-[1.75rem] bg-white p-5 shadow-sm sm:rounded-[2rem]">
+              <Home className="text-[#0f705e]" />
+              <p className="mt-5 text-xs font-bold uppercase tracking-[0.2em] text-[#7b8a84]">Top viewed homes</p>
+              <div className="mt-4 grid gap-3">
+                {(data?.top_listings ?? []).map((listing) => (
+                  <Link key={listing.id} to={`/listings/${listing.id}?from=admin`} className="grid gap-1 rounded-2xl bg-[#fbfaf6] p-3 transition hover:bg-[#f6f1e8]">
+                    <span className="text-sm font-black text-[#17211f]">{listing.title}</span>
+                    <span className="text-xs font-bold text-[#66746f]">{listing.village || 'Guam'} · {listing.price ? currency(listing.price, listing.listing_kind || 'sale') : 'Price not shown'}</span>
+                    <span className="text-[10px] font-black uppercase tracking-[0.14em] text-[#0f705e]">{listing.view_count} views</span>
+                  </Link>
+                ))}
+                {data?.top_listings?.length === 0 && <p className="text-sm font-semibold leading-6 text-[#66746f]">Listing-level view counts will appear after shoppers open property detail pages.</p>}
+              </div>
+            </div>
+            <div className="rounded-[1.75rem] border border-[#dfe8e2] bg-white p-5 shadow-sm sm:rounded-[2rem]">
+              <ShieldCheck className="text-[#0f705e]" />
+              <h2 className="mt-4 text-xl font-semibold tracking-[-0.04em]">Privacy guardrails</h2>
+              <p className="mt-2 text-sm font-semibold leading-6 text-[#66746f]">Anonymous visitors remain anonymous. Signed-in users are visible because they have an account. Prioritize outreach around saved homes, abandoned forms, and converted leads.</p>
+            </div>
+          </aside>
+        </div>
+      </section>
+    </AdminShell>
+  )
+}
+
+type PromptSettingsMutation = { mutate: (variables: { id: number; payload: Record<string, unknown> }) => void; isPending: boolean; isError: boolean; error: unknown }
+
+function PromptSettingsModal({ open, onClose, brokerages, mutation }: { open: boolean; onClose: () => void; brokerages: Brokerage[]; mutation: PromptSettingsMutation }) {
+  const [modeGuideOpen, setModeGuideOpen] = useState(false)
+
+  useEffect(() => {
+    if (!open) return
+    setModeGuideOpen(false)
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [open, onClose])
+
+  if (!open) return null
+
+  return (
+    <div className="fixed inset-0 z-[80] overflow-y-auto bg-[#0b1f1b]/55 px-2 py-3 backdrop-blur-sm sm:px-4 sm:py-8" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
+      <div role="dialog" aria-modal="true" aria-labelledby="prompt-settings-title" className="mx-auto w-full max-w-5xl rounded-[1.75rem] bg-[#fbfaf6] p-4 shadow-2xl shadow-black/25 sm:rounded-[2.25rem] sm:p-6">
+        <div className="border-b border-[#dfe8e2] pb-4 sm:pb-5">
+          <div className="flex items-center justify-between gap-3">
+            <div className="inline-flex items-center gap-2 rounded-full bg-[#e9f5ef] px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.16em] text-[#0f705e] sm:text-xs sm:tracking-[0.18em]"><SlidersHorizontal size={14} /> Prompt intensity</div>
+            <button type="button" onClick={onClose} aria-label="Close prompt settings" className="inline-flex h-11 w-11 shrink-0 items-center justify-center gap-2 rounded-2xl border border-[#d7ded9] bg-white text-sm font-bold text-[#304942] transition hover:bg-[#f6f1e8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0f705e] sm:w-auto sm:px-4 sm:py-2.5"><X size={17} /> <span className="hidden sm:inline">Close</span></button>
+          </div>
+          <div className="mt-4 max-w-3xl">
+            <h2 id="prompt-settings-title" className="text-2xl font-semibold leading-[1.02] tracking-[-0.06em] text-[#17211f] sm:text-3xl md:text-4xl">Set the right level of follow-up.</h2>
+            <p className="mt-3 text-sm font-semibold leading-6 text-[#66746f] sm:text-base sm:leading-7">These rules control when the progressive lead prompt appears while shoppers browse. Use Growth for lead-hungry teams, Balanced for the default experience, and Selective when you only want stronger intent.</p>
+          </div>
+        </div>
+
+        <button type="button" onClick={() => setModeGuideOpen((value) => !value)} aria-expanded={modeGuideOpen} className="mt-4 flex w-full items-center justify-between gap-4 rounded-[1.35rem] border border-[#dfe8e2] bg-white px-4 py-3 text-left shadow-sm transition hover:bg-[#f8f4ed] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0f705e]">
+          <span>
+            <span className="block text-sm font-black uppercase tracking-[0.16em] text-[#0f705e]">Mode guide</span>
+            <span className="mt-1 block text-sm font-semibold leading-5 text-[#66746f]">Compare Growth, Balanced, and Selective defaults.</span>
+          </span>
+          <ChevronRight className={`shrink-0 text-[#0f705e] transition-transform ${modeGuideOpen ? 'rotate-90' : ''}`} size={20} />
+        </button>
+
+        {modeGuideOpen && (
+          <div className="mt-3 grid gap-3 md:grid-cols-3">
+            {(['growth', 'balanced', 'selective'] as PromptMode[]).map((mode) => (
+              <div key={mode} className="rounded-[1.35rem] border border-[#dfe8e2] bg-white p-4 shadow-sm">
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-[#0f705e]">{promptModeTitle(mode)}</p>
+                <h3 className="mt-2 text-lg font-semibold tracking-[-0.05em] text-[#17211f] sm:text-xl">{promptModeHeadline(mode)}</h3>
+                <p className="mt-2 text-sm font-semibold leading-6 text-[#66746f]">{promptModeDescription(mode)}</p>
+                <div className="mt-3 grid gap-1 text-xs font-black uppercase tracking-[0.12em] text-[#53645f]">
+                  <span>{defaultPromptThreshold(mode)} listing views</span>
+                  <span>{promptModeDefaults(mode).searchFilters} filter changes</span>
+                  <span>{defaultPromptSnooze(mode)}h dismissal snooze</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="mt-4 grid gap-4">
+          {brokerages.map((brokerage) => <PromptSettingsCard key={`${brokerage.id}-${JSON.stringify(brokerage.settings || {})}`} brokerage={brokerage} mutation={mutation} />)}
+          {brokerages.length === 0 && <StateCard>No brokerages are available for prompt settings.</StateCard>}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function PromptSettingsCard({ brokerage, mutation }: { brokerage: Brokerage; mutation: PromptSettingsMutation }) {
+  const settings = brokerage.settings || {}
+  const mode = promptModeFromSettings(settings)
+  const enabled = settings.progressive_prompts_enabled === false || settings.progressive_prompts_enabled === 'false' ? 'false' : 'true'
+  const listingThreshold = promptSettingString(settings, 'listing_views_threshold')
+  const snoozeHours = promptSettingString(settings, 'prompt_snooze_hours')
+  const defaults = promptModeDefaults(mode)
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const form = new FormData(event.currentTarget)
+    const nextMode = promptModeFromValue(String(form.get('lead_prompt_mode') || 'balanced'))
+    const listingViews = String(form.get('listing_views_threshold') || '').trim()
+    const snooze = String(form.get('prompt_snooze_hours') || '').trim()
+    mutation.mutate({
+      id: brokerage.id,
+      payload: {
+        lead_prompt_mode: nextMode,
+        progressive_prompts_enabled: String(form.get('progressive_prompts_enabled') || 'true'),
+        listing_views_threshold: listingViews || null,
+        prompt_snooze_hours: snooze || null,
+      },
+    })
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="rounded-[1.5rem] border border-[#dfe8e2] bg-white p-4 shadow-sm sm:rounded-[2rem] sm:p-5">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="max-w-2xl">
+          <p className="text-xs font-black uppercase tracking-[0.2em] text-[#7b8a84]">Brokerage</p>
+          <h3 className="mt-1 text-2xl font-semibold tracking-[-0.05em] text-[#17211f]">{brokerage.name}</h3>
+          <p className="mt-2 text-sm font-semibold leading-6 text-[#66746f]">{promptModeSummary(mode, settings)}</p>
+        </div>
+        <button disabled={mutation.isPending} className="min-h-14 w-full whitespace-nowrap rounded-[1.35rem] bg-[#0f3d35] px-7 py-3.5 text-sm font-bold text-white shadow-xl shadow-[#0f3d35]/15 transition hover:-translate-y-0.5 disabled:translate-y-0 disabled:opacity-55 sm:w-auto">{mutation.isPending ? 'Saving...' : 'Save settings'}</button>
+      </div>
+
+      <div className="mt-5 grid gap-4 lg:grid-cols-4 lg:items-start">
+        <label className="grid content-start gap-2 text-sm font-bold text-[#304942]">
+          <PromptSettingLabel label="Mode" help="The mode sets the default trigger level: Growth prompts sooner, Balanced waits for a few clear signals, Selective waits for stronger repeated behavior." />
+          <select name="lead_prompt_mode" defaultValue={mode} className="min-h-14 min-w-0 rounded-2xl border border-[#dce5df] bg-white px-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0f705e]">
+            <option value="growth">Growth · sooner prompts</option>
+            <option value="balanced">Balanced · default</option>
+            <option value="selective">Selective · fewer prompts</option>
+          </select>
+        </label>
+        <label className="grid content-start gap-2 text-sm font-bold text-[#304942]">
+          <PromptSettingLabel label="Prompts" help="Turn this off to keep tracking search intent for admins while hiding the progressive lead prompt from public shoppers." />
+          <select name="progressive_prompts_enabled" defaultValue={enabled} className="min-h-14 min-w-0 rounded-2xl border border-[#dce5df] bg-white px-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0f705e]">
+            <option value="true">Enabled</option>
+            <option value="false">Disabled</option>
+          </select>
+        </label>
+        <label className="grid content-start gap-2 text-sm font-bold text-[#304942]">
+          <PromptSettingLabel label="Listing views" help="How many unique property detail pages someone can open before the multiple-listing prompt is allowed. Leave blank to use the mode default." />
+          <input name="listing_views_threshold" type="number" min="1" max="20" defaultValue={listingThreshold} placeholder={`Auto · ${defaults.listingViews}`} className="min-h-14 min-w-0 rounded-2xl border border-[#dce5df] bg-white px-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0f705e]" />
+          <span className="text-xs font-semibold leading-5 text-[#7b8a84]">Auto uses {defaults.listingViews} for {promptModeTitle(mode)}.</span>
+        </label>
+        <label className="grid content-start gap-2 text-sm font-bold text-[#304942]">
+          <PromptSettingLabel label="Snooze hours" help="How long to stay quiet after a shopper dismisses a prompt. Stronger new intent can still unlock a respectful re-prompt; repeated dismissals hard-snooze." />
+          <input name="prompt_snooze_hours" type="number" min="1" max="168" defaultValue={snoozeHours} placeholder={`Auto · ${defaults.snoozeHours}`} className="min-h-14 min-w-0 rounded-2xl border border-[#dce5df] bg-white px-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0f705e]" />
+          <span className="text-xs font-semibold leading-5 text-[#7b8a84]">Auto uses {defaults.snoozeHours} hours.</span>
+        </label>
+      </div>
+      {mutation.isError && <p className="mt-3 text-sm font-semibold text-[#b42318]">{displayErrorMessage(mutation.error, 'Unable to save prompt settings.')}</p>}
+    </form>
+  )
+}
+
+function PromptSettingLabel({ label, help }: { label: string; help: string }) {
+  return (
+    <span className="flex min-h-7 items-center gap-2">
+      <span>{label}</span>
+      <span className="group relative inline-flex">
+        <button type="button" aria-label={help} className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-[#cbd8d1] bg-[#fbfaf6] text-[#0f705e] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0f705e]"><Info size={12} /></button>
+        <span className="pointer-events-none absolute right-0 top-full z-20 mt-2 hidden w-64 rounded-2xl bg-[#17211f] p-3 text-xs font-semibold leading-5 text-white shadow-2xl group-hover:block group-focus-within:block sm:left-1/2 sm:right-auto sm:-translate-x-1/2">{help}</span>
+      </span>
+    </span>
+  )
+}
+
+function promptModeFromSettings(settings?: Record<string, unknown>): PromptMode {
+  return promptModeFromValue(String(settings?.lead_prompt_mode || 'balanced'))
+}
+
+function promptModeFromValue(value: string): PromptMode {
+  if (value === 'growth' || value === 'low_friction') return 'growth'
+  if (value === 'selective' || value === 'strict') return 'selective'
+  return 'balanced'
+}
+
+function promptSettingString(settings: Record<string, unknown>, key: string) {
+  const value = settings[key]
+  return value === undefined || value === null || value === '' ? '' : String(value)
+}
+
+function promptModeDefaults(mode: PromptMode) {
+  if (mode === 'growth') return { listingViews: 2, sameVillage: 2, searchFilters: 2, snoozeHours: 8, dismissals: 3 }
+  if (mode === 'selective') return { listingViews: 5, sameVillage: 3, searchFilters: 5, snoozeHours: 72, dismissals: 1 }
+  return { listingViews: 3, sameVillage: 2, searchFilters: 3, snoozeHours: 24, dismissals: 2 }
+}
+
+function promptModeTitle(mode: PromptMode) {
+  if (mode === 'growth') return 'Growth'
+  if (mode === 'selective') return 'Selective'
+  return 'Balanced'
+}
+
+function promptModeHeadline(mode: PromptMode) {
+  if (mode === 'growth') return 'For teams that want more at-bats.'
+  if (mode === 'selective') return 'For established teams that want fewer interruptions.'
+  return 'For a respectful default cadence.'
+}
+
+function promptModeDescription(mode: PromptMode) {
+  if (mode === 'growth') return 'Prompt after lighter intent signals and allow more re-prompts when behavior keeps getting stronger.'
+  if (mode === 'selective') return 'Wait for more property views or repeated searches, then stay quiet longer after a dismissal.'
+  return 'Prompt after a few meaningful actions, then cap repeated asks so browsing still feels open.'
+}
+
+function promptModeSummary(mode: PromptMode, settings?: Record<string, unknown>) {
+  const defaults = promptModeDefaults(mode)
+  const listingViews = promptSettingString(settings || {}, 'listing_views_threshold') || String(defaults.listingViews)
+  const snoozeHours = promptSettingString(settings || {}, 'prompt_snooze_hours') || String(defaults.snoozeHours)
+  const disabled = settings?.progressive_prompts_enabled === false || settings?.progressive_prompts_enabled === 'false'
+  const prefix = disabled ? 'Prompts are currently disabled. If enabled, ' : `${promptModeTitle(mode)} mode: `
+  return `${prefix}first prompt can appear after about ${listingViews} unique listing views, ${defaults.sameVillage} repeated same-area views, or ${defaults.searchFilters} search filter changes. Dismissed prompts stay quiet for about ${snoozeHours} hours, with respectful re-prompts only after stronger new intent.`
+}
+
+function defaultPromptThreshold(mode: PromptMode) {
+  return String(promptModeDefaults(mode).listingViews)
+}
+
+function defaultPromptSnooze(mode: PromptMode) {
+  return String(promptModeDefaults(mode).snoozeHours)
+}
+
+function AdminIntentSessionCard({ session }: { session: AdminLeadIntentSession }) {
+  const topVillages = session.top_villages ?? []
+  const events = session.recent_events ?? []
+  const statusClasses = intentStatusClasses(session.status)
+
+  return (
+    <article className="rounded-[1.5rem] border border-[#dfe8e2] bg-[#fbfaf6] p-4 transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[#0f3d35]/10 sm:p-5">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-xs font-black uppercase tracking-[0.2em] text-[#0f705e]">{session.user ? 'Signed-in shopper' : 'Anonymous visitor'}</p>
+            {session.high_intent && <span className="rounded-full bg-[#fee6ca] px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-[#7a3a00]">High intent</span>}
+          </div>
+          <h3 className="mt-2 text-2xl font-semibold tracking-[-0.05em]">{session.identity_label || 'Anonymous visitor'}</h3>
+          <p className="mt-2 text-sm font-semibold leading-6 text-[#53645f]">{session.narrative || 'Browsing context is still warming up.'}</p>
+          {session.user?.email && <p className="mt-1 text-sm font-bold text-[#0f705e]">{session.user.email}</p>}
+        </div>
+        <div className="text-right">
+          <span className={`rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.12em] ${statusClasses}`}>{session.status || 'active'}</span>
+          <p className="mt-2 text-xs font-bold uppercase tracking-[0.14em] text-[#7b8a84]">Last seen {formatDateTime(session.last_seen_at)}</p>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+        <IntentStat label="Viewed" value={`${session.unique_listing_view_count ?? 0} listings`} />
+        <IntentStat label="Saved" value={`${session.saved_listing_count ?? 0} homes`} />
+        <IntentStat label="Forms" value={`${session.form_open_count ?? 0} opened`} />
+        <IntentStat label="Abandoned" value={`${session.form_abandon_count ?? 0}`} />
+        <IntentStat label="Price range" value={intentPriceRange(session)} />
+      </div>
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        {topVillages.slice(0, 4).map((village) => <span key={village.name} className="rounded-full bg-white px-3 py-1 text-xs font-bold text-[#53645f]">{village.name} · {village.count}</span>)}
+        {session.requested_agent?.name && <span className="rounded-full bg-[#e9f5ef] px-3 py-1 text-xs font-bold text-[#0f705e]">Preferred agent: {session.requested_agent.name}</span>}
+      </div>
+
+      <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(260px,0.7fr)]">
+        <div className="rounded-2xl bg-white p-3">
+          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#7b8a84]">Recent activity</p>
+          <div className="mt-3 grid gap-2">
+            {events.slice(0, 5).map((event) => <IntentEventRow key={event.id} event={event} />)}
+            {events.length === 0 && <p className="text-sm font-semibold text-[#66746f]">No event trail yet.</p>}
+          </div>
+        </div>
+        <div className="rounded-2xl bg-white p-3">
+          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#7b8a84]">Next action</p>
+          {session.converted_lead ? (
+            <Link to={`/admin/leads/${session.converted_lead.id}`} className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-full bg-[#0f3d35] px-4 text-sm font-bold text-white">Open converted lead <ChevronRight size={16} /></Link>
+          ) : session.user ? (
+            <p className="mt-3 text-sm font-semibold leading-6 text-[#304942]">Signed-in shopper. Prioritize follow-up only when they save homes, request help, or repeatedly revisit a focused search.</p>
+          ) : (
+            <p className="mt-3 text-sm font-semibold leading-6 text-[#304942]">Anonymous visitor. Let the progressive prompt convert them before outreach.</p>
+          )}
+          {session.latest_listing_id && (
+            <Link to={`/listings/${session.latest_listing_id}?from=admin`} className="mt-3 inline-flex items-center gap-2 text-sm font-bold text-[#0f705e]">View latest listing <ChevronRight size={15} /></Link>
+          )}
+          {session.last_prompt_dismissed_at && <p className="mt-3 text-xs font-bold uppercase tracking-[0.14em] text-[#7b8a84]">Prompt dismissed {formatDateTime(session.last_prompt_dismissed_at)}</p>}
+        </div>
+      </div>
+    </article>
+  )
+}
+
+function IntentStat({ label, value }: { label: string; value: string }) {
+  return <div className="rounded-2xl bg-white px-3 py-2"><p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#7b8a84]">{label}</p><p className="mt-1 text-sm font-bold text-[#17211f]">{value}</p></div>
+}
+
+function PaginationControls({ pagination, onPageChange }: { pagination: PaginationMeta; onPageChange: (page: number) => void }) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-[#fbfaf6] p-3">
+      <p className="text-xs font-bold uppercase tracking-[0.14em] text-[#7b8a84]">Page {pagination.page} of {pagination.total_pages} · {pagination.total_count} total</p>
+      <div className="flex gap-2">
+        <button disabled={pagination.page <= 1} onClick={() => onPageChange(pagination.page - 1)} className="min-h-10 rounded-full border border-[#dce5df] bg-white px-4 text-sm font-bold text-[#304942] disabled:cursor-not-allowed disabled:opacity-45">Previous</button>
+        <button disabled={pagination.page >= pagination.total_pages} onClick={() => onPageChange(pagination.page + 1)} className="min-h-10 rounded-full bg-[#0f3d35] px-4 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-45">Next</button>
+      </div>
+    </div>
+  )
+}
+
+function IntentEventRow({ event }: { event: AdminLeadIntentEvent }) {
+  const context = event.listing?.title || event.village?.name || event.agent?.name || metadataSummary(event.metadata)
+  return (
+    <div className="rounded-2xl bg-[#fbfaf6] px-3 py-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm font-bold text-[#17211f]">{event.label || event.event_name.replaceAll('_', ' ')}</p>
+        <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#7b8a84]">{formatDateTime(event.occurred_at)}</span>
+      </div>
+      {context && <p className="mt-1 text-xs font-semibold leading-5 text-[#66746f]">{context}</p>}
+    </div>
+  )
+}
+
+function intentStatusClasses(status?: string) {
+  if (status === 'converted') return 'bg-[#e9f5ef] text-[#0f705e]'
+  if (status === 'snoozed') return 'bg-[#fff5d9] text-[#6b4508]'
+  return 'bg-[#dceee8] text-[#0f3d35]'
+}
+
+function intentPriceRange(intent: LeadIntentSummary) {
+  if (intent.viewed_price_min && intent.viewed_price_max) return `${currency(intent.viewed_price_min, 'sale')}–${currency(intent.viewed_price_max, 'sale')}`
+  if (intent.viewed_price_max) return `Up to ${currency(intent.viewed_price_max, 'sale')}`
+  return 'Not clear yet'
+}
+
+function metadataSummary(metadata?: Record<string, unknown>) {
+  if (!metadata) return ''
+  const parts = ['surface', 'filter', 'value', 'view_mode'].map((key) => metadata[key]).filter(Boolean).map(String)
+  return parts.join(' · ')
+}
+
 function LeadCompactRow({ lead }: { lead: Lead }) {
   return (
     <Link to={`/admin/leads/${lead.id}`} className="block rounded-2xl bg-[#f6f1e8] p-4 transition hover:bg-[#efe6d7]">
@@ -2895,7 +3816,10 @@ function LeadsPage() {
                 <LeadMeta icon={<UserRound size={16} />} label="Requested agent" value={lead.requested_agent?.name ?? 'Brokerage team'} />
                 <LeadMeta icon={<ClipboardList size={16} />} label="Assigned agent" value={lead.assigned_agent?.name ?? 'Needs assignment'} />
               </div>
-              <div className="mt-4"><LeadQualificationCard lead={lead} compact /></div>
+              <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                <LeadQualificationCard lead={lead} compact />
+                <LeadIntentCard intent={lead.intent_summary} compact />
+              </div>
               {lead.listing && <p className="mt-4 rounded-2xl bg-[#f6f1e8] p-3 text-sm font-semibold text-[#304942]">Interested in {lead.listing.title} · {lead.listing.village} · {currency(lead.listing.price, lead.listing.listing_kind)}</p>}
               {lead.message && <p className="mt-4 line-clamp-2 text-sm leading-6 text-[#66746f]">{lead.message}</p>}
               <div className="mt-4 flex justify-end"><Link to={`/admin/leads/${lead.id}`} className="inline-flex items-center gap-2 rounded-full bg-[#0f3d35] px-4 py-2 text-sm font-bold text-white">Open lead <ChevronRight size={16} /></Link></div>
@@ -2967,6 +3891,8 @@ function LeadDetailPage() {
               </article>
 
               <LeadQualificationCard lead={lead} />
+
+              <LeadIntentCard intent={lead.intent_summary} />
 
               <LeadCrmPanel lead={lead} noteMutation={noteMutation} noteUpdateMutation={noteUpdateMutation} taskMutation={taskMutation} taskUpdateMutation={taskUpdateMutation} />
             </div>
@@ -3061,6 +3987,45 @@ function LeadQualificationCard({ lead, compact = false }: { lead: Lead; compact?
       </div>
       {!compact && lead.qualification_notes && (
         <p className="mt-3 rounded-2xl bg-white p-3 text-sm font-semibold leading-6 text-[#53645f]">{lead.qualification_notes}</p>
+      )}
+    </section>
+  )
+}
+
+function LeadIntentCard({ intent, compact = false }: { intent?: LeadIntentSummary | null; compact?: boolean }) {
+  const hasIntent = Boolean(intent && ((intent.unique_listing_view_count ?? 0) > 0 || (intent.saved_listing_count ?? 0) > 0 || (intent.search_filter_count ?? 0) > 0 || (intent.form_open_count ?? 0) > 0))
+
+  return (
+    <section className={`rounded-[1.5rem] border border-[#dfe8e2] bg-white ${compact ? 'p-3' : 'p-4 sm:p-5'}`}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#0f705e]">Search intent</p>
+          <p className="mt-2 text-sm font-semibold leading-6 text-[#304942]">{intent?.narrative || 'No first-party browsing intent captured yet'}</p>
+        </div>
+        {hasIntent && <span className="rounded-full bg-[#e9f5ef] px-3 py-1 text-xs font-black uppercase tracking-[0.12em] text-[#0f705e]">Tracked</span>}
+      </div>
+      <div className={`mt-4 grid gap-2 ${compact ? 'md:grid-cols-4' : 'sm:grid-cols-2 lg:grid-cols-4'}`}>
+        <div className="rounded-2xl bg-[#fbfaf6] px-3 py-2">
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#7b8a84]">Viewed</p>
+          <p className="mt-1 text-sm font-bold text-[#17211f]">{intent?.unique_listing_view_count ?? 0} listings</p>
+        </div>
+        <div className="rounded-2xl bg-[#fbfaf6] px-3 py-2">
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#7b8a84]">Saved</p>
+          <p className="mt-1 text-sm font-bold text-[#17211f]">{intent?.saved_listing_count ?? 0} homes</p>
+        </div>
+        <div className="rounded-2xl bg-[#fbfaf6] px-3 py-2">
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#7b8a84]">Filters</p>
+          <p className="mt-1 text-sm font-bold text-[#17211f]">{intent?.search_filter_count ?? 0} changes</p>
+        </div>
+        <div className="rounded-2xl bg-[#fbfaf6] px-3 py-2">
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#7b8a84]">Forms opened</p>
+          <p className="mt-1 text-sm font-bold text-[#17211f]">{intent?.form_open_count ?? 0}</p>
+        </div>
+      </div>
+      {!compact && intent?.top_villages && intent.top_villages.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {intent.top_villages.slice(0, 4).map((village) => <span key={village.name} className="rounded-full bg-[#f6f1e8] px-3 py-1 text-xs font-bold text-[#53645f]">{village.name} · {village.count}</span>)}
+        </div>
       )}
     </section>
   )
@@ -4505,6 +5470,20 @@ function PriceTrackerModal({ listing, open, onClose }: { listing: Listing; open:
     enabled: open && canSelectAgent,
   })
   const profile = meData?.user
+  const wasOpenRef = useRef(false)
+
+  useEffect(() => {
+    if (open) {
+      wasOpenRef.current = true
+      return
+    }
+
+    if (wasOpenRef.current && !mutation.isSuccess) {
+      recordLeadIntentEvent('lead_form_abandoned', { listing_id: listing.id, source: 'web', metadata: { surface: 'price_tracker', listing_kind: listing.listing_kind } })
+    }
+    wasOpenRef.current = false
+  }, [listing.id, listing.listing_kind, mutation.isSuccess, open])
+
   if (!open) return null
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -4547,6 +5526,7 @@ function PriceTrackerModal({ listing, open, onClose }: { listing: Listing; open:
         budget_max: String(form.get('budget_max') || ''),
         buyer_status: String(form.get('buyer_status') || ''),
         already_working_with_agent: String(form.get('already_working_with_agent') || ''),
+        intent_session_token: currentLeadIntentSessionToken() || undefined,
         message: `Target price: ${String(form.get('target_price') || '')}`,
       })
     } catch {
@@ -4623,6 +5603,19 @@ function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean
   const [agentSelectionOverride, setAgentSelectionOverride] = useState<{ listingId: number; agentId: number | null } | null>(null)
   const effectiveSelectedAgentId = agentSelectionOverride?.listingId === listing.id ? agentSelectionOverride.agentId : defaultAgentId
   const selectedModalAgent = routingAgents.find((agent) => agent.id === effectiveSelectedAgentId) ?? null
+  const wasOpenRef = useRef(false)
+
+  useEffect(() => {
+    if (open) {
+      wasOpenRef.current = true
+      return
+    }
+
+    if (wasOpenRef.current && !mutation.isSuccess) {
+      recordLeadIntentEvent('lead_form_abandoned', { listing_id: listing.id, source: 'web', metadata: { surface: 'showing_request', listing_kind: listing.listing_kind } })
+    }
+    wasOpenRef.current = false
+  }, [listing.id, listing.listing_kind, mutation.isSuccess, open])
 
   if (!open) return null
 
@@ -4656,6 +5649,7 @@ function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean
       buyer_status: String(form.get('buyer_status') || ''),
       already_working_with_agent: String(form.get('already_working_with_agent') || ''),
       qualification_notes: String(form.get('qualification_notes') || ''),
+      intent_session_token: currentLeadIntentSessionToken() || undefined,
     })
   }
 
@@ -4668,6 +5662,7 @@ function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean
     if (nextAgentId) {
       storeSelectedAgentId(nextAgentId)
       captureAnalyticsEvent('agent_selected', { agent_id: nextAgentId, listing_id: listing.id, source: 'lead_modal' })
+      recordLeadIntentEvent('agent_selected', { agent_id: nextAgentId, listing_id: listing.id, source: 'web', metadata: { surface: 'lead_modal' } })
     } else {
       captureAnalyticsEvent('agent_preference_skipped', { listing_id: listing.id, source: 'lead_modal' })
     }

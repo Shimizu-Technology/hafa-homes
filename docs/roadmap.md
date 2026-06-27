@@ -1,6 +1,6 @@
 # Roadmap
 
-_Last updated: 2026-06-20 after PR #16 agent selection/lead routing merged and Mike/John next-build plan was documented._
+_Last updated: 2026-06-27 after PR #18 progressive prompt follow-up planning._
 
 ## Current product direction
 
@@ -18,6 +18,12 @@ Current canonical next-build plan from the Mike/John meeting:
 
 ```text
 docs/product/mike-john-next-build-plan.md
+```
+
+Android Play Store release plan:
+
+```text
+docs/android-play-store-release-plan.md
 ```
 
 ## Completed phases
@@ -167,35 +173,89 @@ See:
 
 ### Phase 8 — Qualified lead capture
 
-Recommended branch:
+Status: complete.
 
-```bash
-feature/qualified-lead-capture
-```
+Completed in PR #17:
 
-Goal:
-
-> Filter out weak leads and give agents enough context to have a productive first call.
-
-Recommended scope:
-
-- prequalified status;
-- lender/bank;
-- timeline;
-- budget/price range;
-- desired villages;
-- desired beds/baths;
-- buyer/renter/relocation status;
-- already-working-with-agent flag;
-- qualification notes;
-- admin qualification summary / call-prep summary;
-- optional derived lead quality score after raw fields are captured.
+- public-safe buyer/renter readiness fields on leads;
+- server-derived `quality_score` and Hot/Warm/Early/Unqualified labels;
+- web/mobile showing request qualification prompts;
+- web/mobile price alert readiness prompts;
+- admin qualification cards on lead list/detail;
+- consumer-safe readiness summaries without internal CRM notes.
 
 See `docs/product/mike-john-next-build-plan.md`.
 
 ## Upcoming phases
 
-### Phase 9 — Domain-first broker-branded website/app foundation
+### Phase 9 — Progressive lead prompts and first-party intent tracking
+
+Recommended branch:
+
+```bash
+feature/progressive-lead-prompts
+```
+
+Goal:
+
+> Turn browsing behavior into a qualified search-assist lead without relying on third-party analytics or blocking public browsing.
+
+Recommended scope:
+
+- first-party lead intent sessions/events;
+- listing view, saved home, search/filter, agent selection, form-open, and form-abandon tracking;
+- server-side prompt eligibility policy with brokerage-level settings;
+- web/mobile progressive search-assist prompts;
+- link converted prompt leads to the intent session;
+- admin CRM intent snapshot showing viewed listings, saved homes, top villages, price range, and trigger context;
+- staff-only search intent dashboard for active/unconverted sessions with signed-in identity when available and anonymous sessions kept anonymous.
+
+### Phase 10 — Buyer/search profile settings and prompt personalization
+
+Recommended branch:
+
+```bash
+feature/buyer-search-profile-prompts
+```
+
+Goal:
+
+> Let signed-in shoppers manage the same search/readiness details that prompts collect, then use that profile to prefill forms and avoid repeating the long qualification prompt.
+
+Recommended scope:
+
+- signed-in `BuyerSearchProfile` API;
+- web `/account` search profile card;
+- mobile account/search profile screen;
+- prefill showing, price, and search-assist forms from saved profile;
+- prompt behavior split:
+  - anonymous/no profile -> current qualification prompt;
+  - signed-in incomplete profile -> finish profile prompt;
+  - signed-in complete profile -> suppress long prompt;
+  - behavior divergence -> lightweight update-profile prompt;
+- lead snapshots so CRM history reflects answers at submission time;
+- privacy guardrail: anonymous intent sessions never transfer into signed-in profiles.
+
+See `docs/product/buyer-search-profile-prompt-plan.md`.
+
+### Phase 11 — Android Play Store release
+
+Goal:
+
+> Ship Hafa Homes on Google Play after PR #18 and buyer/search profile prompt work are stable.
+
+Recommended scope:
+
+- Google Play Developer/Console setup;
+- Android production EAS build;
+- internal testing track;
+- Data Safety and account deletion declarations;
+- physical Android smoke testing;
+- staged production rollout.
+
+See `docs/android-play-store-release-plan.md`.
+
+### Phase 12 — Domain-first broker-branded website/app foundation
 
 Recommended branch:
 
@@ -223,7 +283,7 @@ Recommended scope:
 
 See `docs/product/broker-branded-layer-plan.md`.
 
-### Phase 10 — Lead quality / CRM automation
+### Phase 13 — Lead quality / CRM automation
 
 Goal: improve broker confidence in lead quality and follow-up accountability.
 
@@ -237,7 +297,7 @@ Potential scope:
 - CSV export
 - agent follow-up reporting
 
-### Phase 11 — Property management preview
+### Phase 14 — Property management preview
 
 Goal: demo premium-tier rental/property-management value for Guam brokerages/property managers.
 
@@ -250,7 +310,7 @@ Potential scope:
 - maintenance request preview
 - owner/tenant portal concept
 
-### Phase 12 — Production deployment and demo hardening
+### Phase 15 — Production deployment and demo hardening
 
 Goal: make the latest platform safe and smooth to demo from production URLs/devices.
 
@@ -265,7 +325,7 @@ Potential scope:
 - notification gates/config verification
 - App Store/TestFlight notes update
 
-### Phase 13 — MLS/Flexmls integration path
+### Phase 16 — MLS/Flexmls integration path
 
 Start only after authorization/compliance is clear.
 

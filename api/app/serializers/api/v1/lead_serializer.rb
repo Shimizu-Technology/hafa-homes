@@ -57,8 +57,14 @@ module Api
           }
         end
 
-        def detail(lead)
+        def staff_summary(lead)
           summary(lead).merge(
+            intent_summary: intent_summary_json(lead.lead_intent_session)
+          )
+        end
+
+        def detail(lead)
+          staff_summary(lead).merge(
             showing_appointments: showing_appointments_for(lead).map { |showing| showing_json(showing) },
             notification_deliveries: notification_deliveries_for(lead).map { |delivery| Api::V1::NotificationDeliverySerializer.summary(delivery) },
             lead_notes: lead_notes_for(lead).map { |note| Api::V1::LeadNoteSerializer.summary(note) },
@@ -74,6 +80,7 @@ module Api
             :quality_score,
             :quality_label,
             :qualification_notes,
+            :intent_summary,
             :lead_source,
             :source_campaign,
             :source_url,
@@ -140,6 +147,10 @@ module Api
           return nil unless showing
 
           Api::V1::ShowingAppointmentSerializer.summary(showing)
+        end
+
+        def intent_summary_json(session)
+          Api::V1::LeadIntentSessionSerializer.summary(session)
         end
 
         def latest_showing(lead)
