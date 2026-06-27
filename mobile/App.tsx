@@ -1280,6 +1280,7 @@ function ProgressiveLeadPromptSheet({ prompt, auth, selectedAgent, onDismiss, on
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [followUpError, setFollowUpError] = useState<string | null>(null)
   const editedPromptFieldsRef = useRef<Set<string>>(new Set())
 
   function markPromptFieldEdited(field: string) {
@@ -1298,6 +1299,7 @@ function ProgressiveLeadPromptSheet({ prompt, auth, selectedAgent, onDismiss, on
 
     setSubmitted(false)
     setError(null)
+    setFollowUpError(null)
     setName(auth.userName || '')
     setEmail(auth.userEmail || '')
     setPhone('+1671')
@@ -1367,6 +1369,8 @@ function ProgressiveLeadPromptSheet({ prompt, auth, selectedAgent, onDismiss, on
 
     setSubmitting(true)
     setError(null)
+    setFollowUpError(null)
+    let profileSaved = false
     try {
       const token = await currentLeadIntentSessionToken()
       const profilePayload: SearchProfilePayload = {
@@ -1385,32 +1389,44 @@ function ProgressiveLeadPromptSheet({ prompt, auth, selectedAgent, onDismiss, on
         notes: notes.trim(),
       }
       const createLeadRequested = !activePrompt.profile_prompt || agentHelpRequested
-      if (activePrompt.profile_prompt && auth.getToken) await updateSearchProfile(profilePayload, auth.getToken)
+      if (activePrompt.profile_prompt && auth.getToken) {
+        await updateSearchProfile(profilePayload, auth.getToken)
+        profileSaved = true
+      }
       if (createLeadRequested) {
-        await createLead({
-          listing_id: activePrompt.suggested?.listing_id,
-          lead_type: 'search_assist',
-          name: name.trim() || 'Hafa Homes searcher',
-          email: email.trim(),
-          phone: phone.trim(),
-          preferred_contact_method: preferredContact,
-          source_campaign: `progressive_prompt:${activePrompt.trigger || 'search_intent'}`,
-          source_url: 'hafahomes:///search',
-          requested_agent_id: auth.isSignedIn ? selectedAgent?.id : undefined,
-          prequalified_status: prequalifiedStatus,
-          lender_name: lenderName.trim(),
-          purchase_timeline: purchaseTimeline,
-          budget_min: budgetMin.trim(),
-          budget_max: budgetMax.trim(),
-          desired_villages: desiredVillages.trim(),
-          desired_beds: desiredBeds.trim(),
-          desired_baths: desiredBaths.trim(),
-          buyer_status: buyerStatus,
-          already_working_with_agent: alreadyWorkingWithAgent,
-          qualification_notes: notes.trim(),
-          intent_session_token: token,
-          message: `Progressive search assist prompt: ${activePrompt.trigger || 'search_intent'}`,
-        }, auth.isSignedIn ? auth.getToken : undefined)
+        try {
+          await createLead({
+            listing_id: activePrompt.suggested?.listing_id,
+            lead_type: 'search_assist',
+            name: name.trim() || 'Hafa Homes searcher',
+            email: email.trim(),
+            phone: phone.trim(),
+            preferred_contact_method: preferredContact,
+            source_campaign: `progressive_prompt:${activePrompt.trigger || 'search_intent'}`,
+            source_url: 'hafahomes:///search',
+            requested_agent_id: auth.isSignedIn ? selectedAgent?.id : undefined,
+            prequalified_status: prequalifiedStatus,
+            lender_name: lenderName.trim(),
+            purchase_timeline: purchaseTimeline,
+            budget_min: budgetMin.trim(),
+            budget_max: budgetMax.trim(),
+            desired_villages: desiredVillages.trim(),
+            desired_beds: desiredBeds.trim(),
+            desired_baths: desiredBaths.trim(),
+            buyer_status: buyerStatus,
+            already_working_with_agent: alreadyWorkingWithAgent,
+            qualification_notes: notes.trim(),
+            intent_session_token: token,
+            message: `Progressive search assist prompt: ${activePrompt.trigger || 'search_intent'}`,
+          }, auth.isSignedIn ? auth.getToken : undefined)
+        } catch (leadError) {
+          if (!profileSaved) throw leadError
+
+          setFollowUpError(leadError instanceof Error ? leadError.message : 'The agent follow-up request did not send.')
+          setSubmitted(true)
+          onSubmitted()
+          return
+        }
       }
       setSubmitted(true)
       onSubmitted()
@@ -1429,9 +1445,10 @@ function ProgressiveLeadPromptSheet({ prompt, auth, selectedAgent, onDismiss, on
         <View style={styles.requestSheet}>
           {submitted ? (
             <View style={styles.requestSuccess}>
-              <Text style={styles.kicker}>{prompt.profile_prompt && !agentHelpRequested ? 'Search profile saved' : 'Search assist sent'}</Text>
-              <Text style={styles.requestTitle}>{prompt.profile_prompt && !agentHelpRequested ? 'Your saved preferences are ready.' : 'The brokerage team has your search context.'}</Text>
-              <Text style={styles.requestCopy}>{prompt.profile_prompt && !agentHelpRequested ? 'Hafa Homes can prefill future requests from this profile and avoid asking the long prompt again.' : 'An agent can use these details to follow up with better Guam listing matches.'}</Text>
+              <Text style={styles.kicker}>{followUpError || (prompt.profile_prompt && !agentHelpRequested) ? 'Search profile saved' : 'Search assist sent'}</Text>
+              <Text style={styles.requestTitle}>{followUpError ? 'Your saved preferences are ready.' : prompt.profile_prompt && !agentHelpRequested ? 'Your saved preferences are ready.' : 'The brokerage team has your search context.'}</Text>
+              <Text style={styles.requestCopy}>{followUpError ? 'Hafa Homes can prefill future requests from this profile. The optional agent follow-up did not send, so request a showing or price alert from a listing if you still want the team to reach out.' : prompt.profile_prompt && !agentHelpRequested ? 'Hafa Homes can prefill future requests from this profile and avoid asking the long prompt again.' : 'An agent can use these details to follow up with better Guam listing matches.'}</Text>
+              {followUpError && <Text style={styles.requestWarning}>Agent follow-up was not sent: {followUpError}</Text>}
               <Pressable style={styles.primaryCta} onPress={onClose}><Text style={styles.primaryCtaText}>Done</Text></Pressable>
             </View>
           ) : (
@@ -3650,6 +3667,7 @@ const styles = StyleSheet.create({
   profilePromptToggleText: { color: colors.muted, fontSize: 13, fontWeight: '800', lineHeight: 18 },
   profilePromptToggleTextActive: { color: colors.green },
   requestError: { color: '#a33b2f', fontSize: 13, fontWeight: '800', lineHeight: 19, marginTop: 12 },
+  requestWarning: { backgroundColor: '#fff7ed', borderColor: '#fed7aa', borderRadius: 16, borderWidth: 1, color: '#9a3412', fontSize: 13, fontWeight: '800', lineHeight: 19, marginTop: 12, padding: 12 },
   requestSuccess: { paddingVertical: 20 },
   requestHistoryCard: { backgroundColor: 'white', borderRadius: 26, marginTop: 12, overflow: 'hidden', shadowColor: colors.green, shadowOpacity: 0.08, shadowRadius: 18, shadowOffset: { width: 0, height: 8 } },
   requestHistoryImage: { backgroundColor: '#dbe8df', height: 170, width: '100%' },

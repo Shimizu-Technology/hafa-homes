@@ -1387,8 +1387,24 @@ function ProgressiveLeadPrompt() {
   const mutation = useMutation({
     mutationFn: async (variables: { profilePayload?: SearchProfilePayload; leadPayload?: LeadPayload; createLeadRequested: boolean; profilePrompt: boolean }) => {
       const profileResponse = variables.profilePrompt && variables.profilePayload ? await updateSearchProfile(variables.profilePayload) : null
-      const leadResponse = variables.createLeadRequested && variables.leadPayload ? await createLead(variables.leadPayload) : null
-      return { search_profile: profileResponse?.search_profile, lead: leadResponse?.lead, profile_only: !leadResponse }
+      if (variables.createLeadRequested && variables.leadPayload) {
+        try {
+          const leadResponse = await createLead(variables.leadPayload)
+          return { search_profile: profileResponse?.search_profile, lead: leadResponse.lead, profile_only: false, follow_up_failed: false }
+        } catch (leadError) {
+          if (!profileResponse) throw leadError
+
+          return {
+            search_profile: profileResponse.search_profile,
+            lead: undefined,
+            profile_only: true,
+            follow_up_failed: true,
+            follow_up_error: displayErrorMessage(leadError, 'The agent follow-up request did not send.'),
+          }
+        }
+      }
+
+      return { search_profile: profileResponse?.search_profile, lead: undefined, profile_only: true, follow_up_failed: false }
     },
   })
   const { isClerkEnabled, isSignedIn, userId } = useAuthContext()
@@ -1480,8 +1496,15 @@ function ProgressiveLeadPrompt() {
       {mutation.isSuccess ? (
         <div className="text-center">
           <CheckCircle2 className="mx-auto text-[#0f705e]" size={36} />
-          <h2 className="mt-3 text-2xl font-semibold tracking-[-0.05em]">{mutation.data?.profile_only ? 'Search profile saved' : 'Search details sent'}</h2>
-          <p className="mt-2 text-sm leading-6 text-[#66746f]">{mutation.data?.profile_only ? 'Your saved preferences can now prefill future requests across Hafa Homes.' : 'The brokerage team can use your search context to follow up with better matches.'}</p>
+          <h2 className="mt-3 text-2xl font-semibold tracking-[-0.05em]">{mutation.data?.follow_up_failed || mutation.data?.profile_only ? 'Search profile saved' : 'Search details sent'}</h2>
+          <p className="mt-2 text-sm leading-6 text-[#66746f]">
+            {mutation.data?.follow_up_failed
+              ? 'Your saved preferences can now prefill future requests. The optional agent follow-up did not send, so please request a showing or price alert from a listing if you still want the team to reach out.'
+              : mutation.data?.profile_only
+                ? 'Your saved preferences can now prefill future requests across Hafa Homes.'
+                : 'The brokerage team can use your search context to follow up with better matches.'}
+          </p>
+          {mutation.data?.follow_up_failed && <p className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm font-semibold leading-6 text-amber-900">Agent follow-up was not sent: {mutation.data.follow_up_error}</p>}
           <button onClick={() => setPrompt(null)} className="mt-4 min-h-11 w-full rounded-2xl bg-[#0f3d35] px-4 text-sm font-bold text-white">Done</button>
         </div>
       ) : (
