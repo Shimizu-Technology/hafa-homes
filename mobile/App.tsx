@@ -1272,11 +1272,21 @@ function ProgressiveLeadPromptSheet({ prompt, auth, selectedAgent, onDismiss, on
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const editedPromptFieldsRef = useRef<Set<string>>(new Set())
+
+  function markPromptFieldEdited(field: string) {
+    editedPromptFieldsRef.current.add(field)
+  }
+
+  function prefillPromptField(field: string, setter: (value: string) => void, value: string) {
+    if (!editedPromptFieldsRef.current.has(field)) setter(value)
+  }
 
   useEffect(() => {
     if (!prompt) return undefined
 
     let cancelled = false
+    editedPromptFieldsRef.current = new Set()
 
     setSubmitted(false)
     setError(null)
@@ -1302,19 +1312,19 @@ function ProgressiveLeadPromptSheet({ prompt, auth, selectedAgent, onDismiss, on
         .then((result) => {
           if (cancelled) return
           const merged = mergedPromptProfile(prompt, result.search_profile)
-          setPhone(profileValue(merged, 'phone', '+1671'))
-          setPreferredContact((profileValue(merged, 'preferred_contact_method', 'email') || 'email') as 'phone' | 'text' | 'email')
-          setPrequalifiedStatus(profileValue(merged, 'prequalified_status'))
-          setPurchaseTimeline(profileValue(merged, 'purchase_timeline'))
-          setDesiredVillages(profileValue(merged, 'desired_villages'))
-          setBudgetMin(profileValue(merged, 'budget_min'))
-          setBudgetMax(profileValue(merged, 'budget_max'))
-          setDesiredBeds(profileValue(merged, 'desired_beds'))
-          setDesiredBaths(profileValue(merged, 'desired_baths'))
-          setBuyerStatus(profileValue(merged, 'buyer_status'))
-          setAlreadyWorkingWithAgent(profileValue(merged, 'already_working_with_agent'))
-          setLenderName(profileValue(merged, 'lender_name'))
-          setNotes(profileValue(merged, 'notes'))
+          prefillPromptField('phone', setPhone, profileValue(merged, 'phone', '+1671'))
+          prefillPromptField('preferredContact', (value) => setPreferredContact((value || 'email') as 'phone' | 'text' | 'email'), profileValue(merged, 'preferred_contact_method', 'email'))
+          prefillPromptField('prequalifiedStatus', setPrequalifiedStatus, profileValue(merged, 'prequalified_status'))
+          prefillPromptField('purchaseTimeline', setPurchaseTimeline, profileValue(merged, 'purchase_timeline'))
+          prefillPromptField('desiredVillages', setDesiredVillages, profileValue(merged, 'desired_villages'))
+          prefillPromptField('budgetMin', setBudgetMin, profileValue(merged, 'budget_min'))
+          prefillPromptField('budgetMax', setBudgetMax, profileValue(merged, 'budget_max'))
+          prefillPromptField('desiredBeds', setDesiredBeds, profileValue(merged, 'desired_beds'))
+          prefillPromptField('desiredBaths', setDesiredBaths, profileValue(merged, 'desired_baths'))
+          prefillPromptField('buyerStatus', setBuyerStatus, profileValue(merged, 'buyer_status'))
+          prefillPromptField('alreadyWorkingWithAgent', setAlreadyWorkingWithAgent, profileValue(merged, 'already_working_with_agent'))
+          prefillPromptField('lenderName', setLenderName, profileValue(merged, 'lender_name'))
+          prefillPromptField('notes', setNotes, profileValue(merged, 'notes'))
         })
         .catch((profileError) => {
           if (!cancelled) console.warn('Unable to prefill search profile prompt', profileError)
@@ -1423,27 +1433,27 @@ function ProgressiveLeadPromptSheet({ prompt, auth, selectedAgent, onDismiss, on
               <View style={styles.requestFieldGroup}>
                 <RequestInput label="Email" value={email} onChangeText={setEmail} placeholder="you@example.com" keyboardType="email-address" autoCapitalize="none" />
                 <RequestInput label="Name" value={name} onChangeText={setName} placeholder="Your name" />
-                <RequestInput label="Phone optional" value={phone} onChangeText={setPhone} placeholder="+1671" keyboardType="phone-pad" />
+                <RequestInput label="Phone optional" value={phone} onChangeText={(value) => { markPromptFieldEdited('phone'); setPhone(value) }} placeholder="+1671" keyboardType="phone-pad" />
                 <Text style={styles.requestLabel}>Preferred contact</Text>
                 <View style={styles.contactSegmentRow}>
                   {preferredContactOptions.map((option) => (
-                    <Pressable key={option.value} onPress={() => setPreferredContact(option.value as 'phone' | 'text' | 'email')} style={[styles.contactSegment, preferredContact === option.value && styles.contactSegmentActive]}>
+                    <Pressable key={option.value} onPress={() => { markPromptFieldEdited('preferredContact'); setPreferredContact(option.value as 'phone' | 'text' | 'email') }} style={[styles.contactSegment, preferredContact === option.value && styles.contactSegmentActive]}>
                       <Text style={[styles.contactSegmentText, preferredContact === option.value && styles.contactSegmentTextActive]}>{option.label}</Text>
                     </Pressable>
                   ))}
                 </View>
-                <QualificationChoiceGroup label="Timeline" options={purchaseTimelineOptions} value={purchaseTimeline} onChange={setPurchaseTimeline} />
-                <RequestInput label="Desired villages" value={desiredVillages} onChangeText={setDesiredVillages} placeholder="Dededo, Yigo, Tamuning" />
-                <QualificationChoiceGroup label="Prequalified?" options={prequalifiedOptions} value={prequalifiedStatus} onChange={setPrequalifiedStatus} />
-                <RequestInput label="Lender / bank optional" value={lenderName} onChangeText={setLenderName} placeholder="Bank of Guam, Coast360..." />
-                <RequestInput label="Budget min optional" value={budgetMin} onChangeText={setBudgetMin} placeholder="450000" keyboardType="number-pad" />
-                <RequestInput label="Budget max optional" value={budgetMax} onChangeText={setBudgetMax} placeholder="650000" keyboardType="number-pad" />
-                <RequestInput label="Beds optional" value={desiredBeds} onChangeText={setDesiredBeds} placeholder="3" keyboardType="number-pad" />
-                <RequestInput label="Baths optional" value={desiredBaths} onChangeText={setDesiredBaths} placeholder="2" keyboardType="number-pad" />
-                <QualificationChoiceGroup label="Buyer type" options={buyerStatusOptions} value={buyerStatus} onChange={setBuyerStatus} />
-                <QualificationChoiceGroup label="Working with an agent?" options={agentRelationshipOptions} value={alreadyWorkingWithAgent} onChange={setAlreadyWorkingWithAgent} />
+                <QualificationChoiceGroup label="Timeline" options={purchaseTimelineOptions} value={purchaseTimeline} onChange={(value) => { markPromptFieldEdited('purchaseTimeline'); setPurchaseTimeline(value) }} />
+                <RequestInput label="Desired villages" value={desiredVillages} onChangeText={(value) => { markPromptFieldEdited('desiredVillages'); setDesiredVillages(value) }} placeholder="Dededo, Yigo, Tamuning" />
+                <QualificationChoiceGroup label="Prequalified?" options={prequalifiedOptions} value={prequalifiedStatus} onChange={(value) => { markPromptFieldEdited('prequalifiedStatus'); setPrequalifiedStatus(value) }} />
+                <RequestInput label="Lender / bank optional" value={lenderName} onChangeText={(value) => { markPromptFieldEdited('lenderName'); setLenderName(value) }} placeholder="Bank of Guam, Coast360..." />
+                <RequestInput label="Budget min optional" value={budgetMin} onChangeText={(value) => { markPromptFieldEdited('budgetMin'); setBudgetMin(value) }} placeholder="450000" keyboardType="number-pad" />
+                <RequestInput label="Budget max optional" value={budgetMax} onChangeText={(value) => { markPromptFieldEdited('budgetMax'); setBudgetMax(value) }} placeholder="650000" keyboardType="number-pad" />
+                <RequestInput label="Beds optional" value={desiredBeds} onChangeText={(value) => { markPromptFieldEdited('desiredBeds'); setDesiredBeds(value) }} placeholder="3" keyboardType="number-pad" />
+                <RequestInput label="Baths optional" value={desiredBaths} onChangeText={(value) => { markPromptFieldEdited('desiredBaths'); setDesiredBaths(value) }} placeholder="2" keyboardType="number-pad" />
+                <QualificationChoiceGroup label="Buyer type" options={buyerStatusOptions} value={buyerStatus} onChange={(value) => { markPromptFieldEdited('buyerStatus'); setBuyerStatus(value) }} />
+                <QualificationChoiceGroup label="Working with an agent?" options={agentRelationshipOptions} value={alreadyWorkingWithAgent} onChange={(value) => { markPromptFieldEdited('alreadyWorkingWithAgent'); setAlreadyWorkingWithAgent(value) }} />
                 <Text style={styles.requestLabel}>Search notes</Text>
-                <TextInput value={notes} onChangeText={setNotes} multiline style={[styles.requestInput, styles.requestMessageInput]} placeholder="Relocating soon, commute needs, pet-friendly, must-haves..." placeholderTextColor="#7b8a84" />
+                <TextInput value={notes} onChangeText={(value) => { markPromptFieldEdited('notes'); setNotes(value) }} multiline style={[styles.requestInput, styles.requestMessageInput]} placeholder="Relocating soon, commute needs, pet-friendly, must-haves..." placeholderTextColor="#7b8a84" />
                 {prompt.profile_prompt && (
                   <Pressable onPress={() => setAgentHelpRequested((current) => !current)} style={[styles.profilePromptToggle, agentHelpRequested && styles.profilePromptToggleActive]}>
                     <Text style={[styles.profilePromptToggleText, agentHelpRequested && styles.profilePromptToggleTextActive]}>Also ask an agent to follow up using this search context</Text>
@@ -2903,7 +2913,16 @@ function ShowingRequestSheet({ listing, auth, requestedAgent, open, onOpenAuth, 
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const editedShowingFieldsRef = useRef<Set<string>>(new Set())
   const wasOpenRef = useRef(false)
+
+  function markShowingFieldEdited(field: string) {
+    editedShowingFieldsRef.current.add(field)
+  }
+
+  function prefillShowingField(field: string, setter: (value: string) => void, value: string) {
+    if (!editedShowingFieldsRef.current.has(field)) setter(value)
+  }
 
   useEffect(() => {
     if (open) {
@@ -2921,6 +2940,7 @@ function ShowingRequestSheet({ listing, auth, requestedAgent, open, onOpenAuth, 
     if (!open) return undefined
 
     let cancelled = false
+    editedShowingFieldsRef.current = new Set()
 
     async function loadPrefill() {
       setMessage(`I'm interested in ${listing.title}.`)
@@ -2942,10 +2962,10 @@ function ShowingRequestSheet({ listing, auth, requestedAgent, open, onOpenAuth, 
         const result = await fetchMe(auth.getToken)
         loadedUser = result.user
         if (!cancelled) {
-          setName(result.user.full_name || auth.userName || '')
-          setEmail(result.user.email || auth.userEmail || '')
-          setPhone(result.user.phone || '+1671')
-          setPreferredContact(result.user.preferred_contact_method || 'phone')
+          prefillShowingField('name', setName, result.user.full_name || auth.userName || '')
+          prefillShowingField('email', setEmail, result.user.email || auth.userEmail || '')
+          prefillShowingField('phone', setPhone, result.user.phone || '+1671')
+          prefillShowingField('preferredContact', setPreferredContact, result.user.preferred_contact_method || 'phone')
         }
       } catch (profileError) {
         console.warn('Unable to prefill showing request contact profile', profileError)
@@ -2955,19 +2975,19 @@ function ShowingRequestSheet({ listing, auth, requestedAgent, open, onOpenAuth, 
         const searchResult = await fetchSearchProfile(auth.getToken)
         const saved = searchResult.search_profile
         if (!cancelled) {
-          setPhone(saved.phone || loadedUser?.phone || '+1671')
-          setPreferredContact(saved.preferred_contact_method || loadedUser?.preferred_contact_method || 'phone')
-          setPrequalifiedStatus(saved.prequalified_status || '')
-          setPurchaseTimeline(saved.purchase_timeline || '')
-          setLenderName(saved.lender_name || '')
-          setBudgetMin(profileValue(saved, 'budget_min'))
-          setBudgetMax(profileValue(saved, 'budget_max', String(Math.round(listing.price))))
-          setDesiredVillages(saved.desired_villages || listing.village.name || '')
-          setDesiredBeds(profileValue(saved, 'desired_beds', listing.beds ? String(listing.beds) : ''))
-          setDesiredBaths(profileValue(saved, 'desired_baths', listing.baths ? String(listing.baths) : ''))
-          setBuyerStatus(saved.buyer_status || '')
-          setAlreadyWorkingWithAgent(saved.already_working_with_agent || '')
-          setQualificationNotes(saved.notes || '')
+          prefillShowingField('phone', setPhone, saved.phone || loadedUser?.phone || '+1671')
+          prefillShowingField('preferredContact', setPreferredContact, saved.preferred_contact_method || loadedUser?.preferred_contact_method || 'phone')
+          prefillShowingField('prequalifiedStatus', setPrequalifiedStatus, saved.prequalified_status || '')
+          prefillShowingField('purchaseTimeline', setPurchaseTimeline, saved.purchase_timeline || '')
+          prefillShowingField('lenderName', setLenderName, saved.lender_name || '')
+          prefillShowingField('budgetMin', setBudgetMin, profileValue(saved, 'budget_min'))
+          prefillShowingField('budgetMax', setBudgetMax, profileValue(saved, 'budget_max', String(Math.round(listing.price))))
+          prefillShowingField('desiredVillages', setDesiredVillages, saved.desired_villages || listing.village.name || '')
+          prefillShowingField('desiredBeds', setDesiredBeds, profileValue(saved, 'desired_beds', listing.beds ? String(listing.beds) : ''))
+          prefillShowingField('desiredBaths', setDesiredBaths, profileValue(saved, 'desired_baths', listing.baths ? String(listing.baths) : ''))
+          prefillShowingField('buyerStatus', setBuyerStatus, saved.buyer_status || '')
+          prefillShowingField('alreadyWorkingWithAgent', setAlreadyWorkingWithAgent, saved.already_working_with_agent || '')
+          prefillShowingField('qualificationNotes', setQualificationNotes, saved.notes || '')
         }
       } catch (profileError) {
         console.warn('Unable to prefill showing request search profile', profileError)
@@ -3057,13 +3077,13 @@ function ShowingRequestSheet({ listing, auth, requestedAgent, open, onOpenAuth, 
                 <Text numberOfLines={1} style={styles.cardMeta}>Preferred agent: {requestedAgent?.name || 'Brokerage team'}</Text>
               </View>
               <View style={styles.requestFieldGroup}>
-                <RequestInput label="Name" value={name} onChangeText={setName} placeholder="Your name" />
-                <RequestInput label="Email" value={email} onChangeText={setEmail} placeholder="you@example.com" keyboardType="email-address" autoCapitalize="none" />
-                <RequestInput label="Phone" value={phone} onChangeText={setPhone} placeholder="+1671" keyboardType="phone-pad" />
+                <RequestInput label="Name" value={name} onChangeText={(value) => { markShowingFieldEdited('name'); setName(value) }} placeholder="Your name" />
+                <RequestInput label="Email" value={email} onChangeText={(value) => { markShowingFieldEdited('email'); setEmail(value) }} placeholder="you@example.com" keyboardType="email-address" autoCapitalize="none" />
+                <RequestInput label="Phone" value={phone} onChangeText={(value) => { markShowingFieldEdited('phone'); setPhone(value) }} placeholder="+1671" keyboardType="phone-pad" />
                 <Text style={styles.requestLabel}>Preferred contact</Text>
                 <View style={styles.contactSegmentRow}>
                   {preferredContactOptions.map((option) => (
-                    <Pressable key={option.value} onPress={() => setPreferredContact(option.value)} style={[styles.contactSegment, preferredContact === option.value && styles.contactSegmentActive]}>
+                    <Pressable key={option.value} onPress={() => { markShowingFieldEdited('preferredContact'); setPreferredContact(option.value) }} style={[styles.contactSegment, preferredContact === option.value && styles.contactSegmentActive]}>
                       <Text style={[styles.contactSegmentText, preferredContact === option.value && styles.contactSegmentTextActive]}>{option.label}</Text>
                     </Pressable>
                   ))}
@@ -3086,18 +3106,18 @@ function ShowingRequestSheet({ listing, auth, requestedAgent, open, onOpenAuth, 
                 </View>
                 <Text style={styles.requestLabel}>Buyer readiness</Text>
                 <Text style={styles.requestCopy}>These optional details help the agent follow up with useful matches instead of starting from scratch.</Text>
-                <QualificationChoiceGroup label="Prequalified?" options={prequalifiedOptions} value={prequalifiedStatus} onChange={setPrequalifiedStatus} />
-                <QualificationChoiceGroup label="Timeline" options={purchaseTimelineOptions} value={purchaseTimeline} onChange={setPurchaseTimeline} />
-                <QualificationChoiceGroup label="Buyer type" options={buyerStatusOptions} value={buyerStatus} onChange={setBuyerStatus} />
-                <QualificationChoiceGroup label="Working with an agent?" options={agentRelationshipOptions} value={alreadyWorkingWithAgent} onChange={setAlreadyWorkingWithAgent} />
-                <RequestInput label="Lender / bank optional" value={lenderName} onChangeText={setLenderName} placeholder="Bank of Guam, Coast360..." />
-                <RequestInput label="Budget min" value={budgetMin} onChangeText={setBudgetMin} placeholder="450000" keyboardType="number-pad" />
-                <RequestInput label="Budget max" value={budgetMax} onChangeText={setBudgetMax} placeholder="650000" keyboardType="number-pad" />
-                <RequestInput label="Desired villages" value={desiredVillages} onChangeText={setDesiredVillages} placeholder="Dededo, Yigo, Tamuning" />
-                <RequestInput label="Desired beds" value={desiredBeds} onChangeText={setDesiredBeds} placeholder="3" keyboardType="number-pad" />
-                <RequestInput label="Desired baths" value={desiredBaths} onChangeText={setDesiredBaths} placeholder="2" keyboardType="number-pad" />
+                <QualificationChoiceGroup label="Prequalified?" options={prequalifiedOptions} value={prequalifiedStatus} onChange={(value) => { markShowingFieldEdited('prequalifiedStatus'); setPrequalifiedStatus(value) }} />
+                <QualificationChoiceGroup label="Timeline" options={purchaseTimelineOptions} value={purchaseTimeline} onChange={(value) => { markShowingFieldEdited('purchaseTimeline'); setPurchaseTimeline(value) }} />
+                <QualificationChoiceGroup label="Buyer type" options={buyerStatusOptions} value={buyerStatus} onChange={(value) => { markShowingFieldEdited('buyerStatus'); setBuyerStatus(value) }} />
+                <QualificationChoiceGroup label="Working with an agent?" options={agentRelationshipOptions} value={alreadyWorkingWithAgent} onChange={(value) => { markShowingFieldEdited('alreadyWorkingWithAgent'); setAlreadyWorkingWithAgent(value) }} />
+                <RequestInput label="Lender / bank optional" value={lenderName} onChangeText={(value) => { markShowingFieldEdited('lenderName'); setLenderName(value) }} placeholder="Bank of Guam, Coast360..." />
+                <RequestInput label="Budget min" value={budgetMin} onChangeText={(value) => { markShowingFieldEdited('budgetMin'); setBudgetMin(value) }} placeholder="450000" keyboardType="number-pad" />
+                <RequestInput label="Budget max" value={budgetMax} onChangeText={(value) => { markShowingFieldEdited('budgetMax'); setBudgetMax(value) }} placeholder="650000" keyboardType="number-pad" />
+                <RequestInput label="Desired villages" value={desiredVillages} onChangeText={(value) => { markShowingFieldEdited('desiredVillages'); setDesiredVillages(value) }} placeholder="Dededo, Yigo, Tamuning" />
+                <RequestInput label="Desired beds" value={desiredBeds} onChangeText={(value) => { markShowingFieldEdited('desiredBeds'); setDesiredBeds(value) }} placeholder="3" keyboardType="number-pad" />
+                <RequestInput label="Desired baths" value={desiredBaths} onChangeText={(value) => { markShowingFieldEdited('desiredBaths'); setDesiredBaths(value) }} placeholder="2" keyboardType="number-pad" />
                 <Text style={styles.requestLabel}>Qualification notes</Text>
-                <TextInput value={qualificationNotes} onChangeText={setQualificationNotes} multiline style={[styles.requestInput, styles.requestMessageInput]} placeholder="Relocating soon, needs pet-friendly, prefers central Guam..." placeholderTextColor="#7b8a84" />
+                <TextInput value={qualificationNotes} onChangeText={(value) => { markShowingFieldEdited('qualificationNotes'); setQualificationNotes(value) }} multiline style={[styles.requestInput, styles.requestMessageInput]} placeholder="Relocating soon, needs pet-friendly, prefers central Guam..." placeholderTextColor="#7b8a84" />
                 <Text style={styles.requestLabel}>Message</Text>
                 <TextInput value={message} onChangeText={setMessage} multiline style={[styles.requestInput, styles.requestMessageInput]} />
               </View>
@@ -3128,7 +3148,16 @@ function PriceAlertSheet({ listing, auth, requestedAgent, open, onClose }: { lis
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const editedPriceFieldsRef = useRef<Set<string>>(new Set())
   const wasOpenRef = useRef(false)
+
+  function markPriceFieldEdited(field: string) {
+    editedPriceFieldsRef.current.add(field)
+  }
+
+  function prefillPriceField(field: string, setter: (value: string) => void, value: string) {
+    if (!editedPriceFieldsRef.current.has(field)) setter(value)
+  }
 
   useEffect(() => {
     if (open) {
@@ -3146,6 +3175,7 @@ function PriceAlertSheet({ listing, auth, requestedAgent, open, onClose }: { lis
     if (!open) return undefined
 
     let cancelled = false
+    editedPriceFieldsRef.current = new Set()
 
     async function loadPrefill() {
       setSubmitted(false)
@@ -3164,9 +3194,9 @@ function PriceAlertSheet({ listing, auth, requestedAgent, open, onClose }: { lis
         const result = await fetchMe(auth.getToken)
         loadedUser = result.user
         if (!cancelled) {
-          setName(result.user.full_name || auth.userName || '')
-          setEmail(result.user.email || auth.userEmail || '')
-          setPhone(result.user.phone || '+1671')
+          prefillPriceField('name', setName, result.user.full_name || auth.userName || '')
+          prefillPriceField('email', setEmail, result.user.email || auth.userEmail || '')
+          prefillPriceField('phone', setPhone, result.user.phone || '+1671')
         }
       } catch (profileError) {
         console.warn('Unable to prefill price alert contact profile', profileError)
@@ -3176,14 +3206,14 @@ function PriceAlertSheet({ listing, auth, requestedAgent, open, onClose }: { lis
         const searchResult = await fetchSearchProfile(auth.getToken)
         const saved = searchResult.search_profile
         if (!cancelled) {
-          setPhone(saved.phone || loadedUser?.phone || '+1671')
-          setPrequalifiedStatus(saved.prequalified_status || '')
-          setPurchaseTimeline(saved.purchase_timeline || '')
-          setLenderName(saved.lender_name || '')
-          setBudgetMin(profileValue(saved, 'budget_min'))
-          setBudgetMax(profileValue(saved, 'budget_max'))
-          setBuyerStatus(saved.buyer_status || '')
-          setAlreadyWorkingWithAgent(saved.already_working_with_agent || '')
+          prefillPriceField('phone', setPhone, saved.phone || loadedUser?.phone || '+1671')
+          prefillPriceField('prequalifiedStatus', setPrequalifiedStatus, saved.prequalified_status || '')
+          prefillPriceField('purchaseTimeline', setPurchaseTimeline, saved.purchase_timeline || '')
+          prefillPriceField('lenderName', setLenderName, saved.lender_name || '')
+          prefillPriceField('budgetMin', setBudgetMin, profileValue(saved, 'budget_min'))
+          prefillPriceField('budgetMax', setBudgetMax, profileValue(saved, 'budget_max'))
+          prefillPriceField('buyerStatus', setBuyerStatus, saved.buyer_status || '')
+          prefillPriceField('alreadyWorkingWithAgent', setAlreadyWorkingWithAgent, saved.already_working_with_agent || '')
         }
       } catch (profileError) {
         console.warn('Unable to prefill price alert search profile', profileError)
@@ -3263,19 +3293,19 @@ function PriceAlertSheet({ listing, auth, requestedAgent, open, onClose }: { lis
                 <Text numberOfLines={1} style={styles.cardMeta}>Preferred agent: {requestedAgent?.name || 'Brokerage team'}</Text>
               </View>
               <View style={styles.requestFieldGroup}>
-                <RequestInput label="Target price" value={targetPrice} onChangeText={setTargetPrice} placeholder="750000" keyboardType="number-pad" />
-                <RequestInput label="Email" value={email} onChangeText={setEmail} placeholder="you@example.com" keyboardType="email-address" autoCapitalize="none" />
-                <RequestInput label="Name" value={name} onChangeText={setName} placeholder="Your name" />
-                <RequestInput label="Phone optional" value={phone} onChangeText={setPhone} placeholder="+1671" keyboardType="phone-pad" />
+                <RequestInput label="Target price" value={targetPrice} onChangeText={(value) => { markPriceFieldEdited('targetPrice'); setTargetPrice(value) }} placeholder="750000" keyboardType="number-pad" />
+                <RequestInput label="Email" value={email} onChangeText={(value) => { markPriceFieldEdited('email'); setEmail(value) }} placeholder="you@example.com" keyboardType="email-address" autoCapitalize="none" />
+                <RequestInput label="Name" value={name} onChangeText={(value) => { markPriceFieldEdited('name'); setName(value) }} placeholder="Your name" />
+                <RequestInput label="Phone optional" value={phone} onChangeText={(value) => { markPriceFieldEdited('phone'); setPhone(value) }} placeholder="+1671" keyboardType="phone-pad" />
                 <Text style={styles.requestLabel}>Buyer readiness</Text>
                 <Text style={styles.requestCopy}>Optional details help the team understand how serious and soon your search is.</Text>
-                <QualificationChoiceGroup label="Prequalified?" options={prequalifiedOptions} value={prequalifiedStatus} onChange={setPrequalifiedStatus} />
-                <QualificationChoiceGroup label="Timeline" options={purchaseTimelineOptions} value={purchaseTimeline} onChange={setPurchaseTimeline} />
-                <QualificationChoiceGroup label="Buyer type" options={buyerStatusOptions} value={buyerStatus} onChange={setBuyerStatus} />
-                <QualificationChoiceGroup label="Working with an agent?" options={agentRelationshipOptions} value={alreadyWorkingWithAgent} onChange={setAlreadyWorkingWithAgent} />
-                <RequestInput label="Lender / bank optional" value={lenderName} onChangeText={setLenderName} placeholder="Bank of Guam, Coast360..." />
-                <RequestInput label="Budget min" value={budgetMin} onChangeText={setBudgetMin} placeholder="450000" keyboardType="number-pad" />
-                <RequestInput label="Budget max optional" value={budgetMax} onChangeText={setBudgetMax} placeholder={targetPrice || '650000'} keyboardType="number-pad" />
+                <QualificationChoiceGroup label="Prequalified?" options={prequalifiedOptions} value={prequalifiedStatus} onChange={(value) => { markPriceFieldEdited('prequalifiedStatus'); setPrequalifiedStatus(value) }} />
+                <QualificationChoiceGroup label="Timeline" options={purchaseTimelineOptions} value={purchaseTimeline} onChange={(value) => { markPriceFieldEdited('purchaseTimeline'); setPurchaseTimeline(value) }} />
+                <QualificationChoiceGroup label="Buyer type" options={buyerStatusOptions} value={buyerStatus} onChange={(value) => { markPriceFieldEdited('buyerStatus'); setBuyerStatus(value) }} />
+                <QualificationChoiceGroup label="Working with an agent?" options={agentRelationshipOptions} value={alreadyWorkingWithAgent} onChange={(value) => { markPriceFieldEdited('alreadyWorkingWithAgent'); setAlreadyWorkingWithAgent(value) }} />
+                <RequestInput label="Lender / bank optional" value={lenderName} onChangeText={(value) => { markPriceFieldEdited('lenderName'); setLenderName(value) }} placeholder="Bank of Guam, Coast360..." />
+                <RequestInput label="Budget min" value={budgetMin} onChangeText={(value) => { markPriceFieldEdited('budgetMin'); setBudgetMin(value) }} placeholder="450000" keyboardType="number-pad" />
+                <RequestInput label="Budget max optional" value={budgetMax} onChangeText={(value) => { markPriceFieldEdited('budgetMax'); setBudgetMax(value) }} placeholder={targetPrice || '650000'} keyboardType="number-pad" />
               </View>
               {error && <Text style={styles.requestError}>{error}</Text>}
               <Pressable disabled={submitting} style={[styles.primaryCta, submitting && styles.ctaDisabled]} onPress={handleSubmit}>
