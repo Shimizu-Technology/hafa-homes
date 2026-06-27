@@ -106,10 +106,33 @@ function resetLeadIntentSessionToken() {
   return leadIntentSessionToken()
 }
 
+type LeadIntentContextGuard = { token?: string; eventCount: number; startedAt: number }
+
 function markLeadIntentCurrentContextRequired() {
   if (typeof window === 'undefined') return
 
-  window.localStorage.setItem(LEAD_INTENT_CONTEXT_REQUIRED_KEY, 'true')
+  window.localStorage.setItem(LEAD_INTENT_CONTEXT_REQUIRED_KEY, JSON.stringify({ eventCount: 0, startedAt: Date.now() }))
+}
+
+function leadIntentCurrentContextGuard(): LeadIntentContextGuard | null {
+  if (typeof window === 'undefined') return null
+
+  const raw = window.localStorage.getItem(LEAD_INTENT_CONTEXT_REQUIRED_KEY)
+  if (!raw) return null
+  if (raw === 'true') return { eventCount: 0, startedAt: Date.now() }
+
+  try {
+    const parsed = JSON.parse(raw) as Partial<LeadIntentContextGuard>
+    return { token: parsed.token, eventCount: Number(parsed.eventCount || 0), startedAt: Number(parsed.startedAt || Date.now()) }
+  } catch {
+    return { eventCount: 0, startedAt: Date.now() }
+  }
+}
+
+function saveLeadIntentCurrentContextGuard(guard: LeadIntentContextGuard) {
+  if (typeof window === 'undefined') return
+
+  window.localStorage.setItem(LEAD_INTENT_CONTEXT_REQUIRED_KEY, JSON.stringify(guard))
 }
 
 function clearLeadIntentCurrentContextRequired() {
@@ -119,9 +142,25 @@ function clearLeadIntentCurrentContextRequired() {
 }
 
 function leadIntentCurrentContextRequired() {
-  if (typeof window === 'undefined') return false
+  return leadIntentCurrentContextGuard() !== null
+}
 
-  return window.localStorage.getItem(LEAD_INTENT_CONTEXT_REQUIRED_KEY) === 'true'
+function noteLeadIntentCurrentContextEvent(sessionToken: string) {
+  const guard = leadIntentCurrentContextGuard()
+  if (!guard) return
+
+  const sameToken = !guard.token || guard.token === sessionToken
+  const nextGuard = {
+    token: sessionToken,
+    eventCount: sameToken ? guard.eventCount + 1 : 1,
+    startedAt: guard.startedAt || Date.now(),
+  }
+
+  if (nextGuard.eventCount >= 2) {
+    clearLeadIntentCurrentContextRequired()
+  } else {
+    saveLeadIntentCurrentContextGuard(nextGuard)
+  }
 }
 
 function leadIntentClientEventId(eventName: string) {
@@ -161,7 +200,7 @@ async function recordLeadIntentEvent(eventName: string, payload: { listing_id?: 
     }
     if (!response.ok) return null
 
-    clearLeadIntentCurrentContextRequired()
+    noteLeadIntentCurrentContextEvent(sessionToken)
     const result = await response.json() as LeadIntentEventResponse
     if (result.prompt?.eligible && typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('hafaHomes:leadIntentPrompt', { detail: { prompt: result.prompt, sessionToken } }))
@@ -958,7 +997,7 @@ async function submitLead(payload: LeadPayload, retryAfterIntentReset: boolean):
   }
 
   if (!payload.intent_session_token && leadIntentCurrentContextRequired()) {
-    throw new ApiFetchError('Your search session refreshed after sign-in. Please reopen this form or view this home again before submitting.', 409)
+    throw new ApiFetchError('Your search session refreshed after sign-in. Please view the home again and reopen this form before submitting.', 409)
   }
 
   const response = await fetch(`${API_URL}/api/v1/leads`, {
@@ -972,7 +1011,7 @@ async function submitLead(payload: LeadPayload, retryAfterIntentReset: boolean):
     if (conflictPayload?.reset_session) {
       clearLeadIntentSessionToken()
       markLeadIntentCurrentContextRequired()
-      throw new ApiFetchError('Your search session refreshed after sign-in. Please reopen this form or view this home again before submitting.', response.status)
+      throw new ApiFetchError('Your search session refreshed after sign-in. Please view the home again and reopen this form before submitting.', response.status)
     }
   }
 

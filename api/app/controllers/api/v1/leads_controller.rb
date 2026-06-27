@@ -4,6 +4,8 @@ module Api
       include ClerkAuthenticatable
       include StaffLeadScoping
 
+      MINIMUM_INTENT_EVENTS_FOR_LEAD_LINK = 2
+
       before_action :authenticate_user!, only: [:index, :show, :update, :send_notification]
       before_action :require_staff!, only: [:index, :show, :update, :send_notification]
       before_action :authenticate_user_optional, only: [:create]
@@ -292,7 +294,7 @@ module Api
 
         brokerage = current_routing_brokerage
         session = LeadIntentSession.find_scoped_by_token(token, user: current_user, brokerage: brokerage)
-        return nil unless session&.lead_intent_events&.exists?
+        return nil unless session && session.lead_intent_events.count >= MINIMUM_INTENT_EVENTS_FOR_LEAD_LINK
 
         session
       rescue ArgumentError

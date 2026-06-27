@@ -407,8 +407,27 @@ async function resetLeadIntentSessionToken() {
   return leadIntentSessionToken()
 }
 
+type LeadIntentContextGuard = { token?: string; eventCount: number; startedAt: number }
+
 async function markLeadIntentCurrentContextRequired() {
-  await AsyncStorage.setItem(LEAD_INTENT_CONTEXT_REQUIRED_KEY, 'true')
+  await AsyncStorage.setItem(LEAD_INTENT_CONTEXT_REQUIRED_KEY, JSON.stringify({ eventCount: 0, startedAt: Date.now() }))
+}
+
+async function leadIntentCurrentContextGuard(): Promise<LeadIntentContextGuard | null> {
+  const raw = await AsyncStorage.getItem(LEAD_INTENT_CONTEXT_REQUIRED_KEY)
+  if (!raw) return null
+  if (raw === 'true') return { eventCount: 0, startedAt: Date.now() }
+
+  try {
+    const parsed = JSON.parse(raw) as Partial<LeadIntentContextGuard>
+    return { token: parsed.token, eventCount: Number(parsed.eventCount || 0), startedAt: Number(parsed.startedAt || Date.now()) }
+  } catch {
+    return { eventCount: 0, startedAt: Date.now() }
+  }
+}
+
+async function saveLeadIntentCurrentContextGuard(guard: LeadIntentContextGuard) {
+  await AsyncStorage.setItem(LEAD_INTENT_CONTEXT_REQUIRED_KEY, JSON.stringify(guard))
 }
 
 async function clearLeadIntentCurrentContextRequired() {
@@ -416,7 +435,25 @@ async function clearLeadIntentCurrentContextRequired() {
 }
 
 async function leadIntentCurrentContextRequired() {
-  return (await AsyncStorage.getItem(LEAD_INTENT_CONTEXT_REQUIRED_KEY)) === 'true'
+  return (await leadIntentCurrentContextGuard()) !== null
+}
+
+async function noteLeadIntentCurrentContextEvent(sessionToken: string) {
+  const guard = await leadIntentCurrentContextGuard()
+  if (!guard) return
+
+  const sameToken = !guard.token || guard.token === sessionToken
+  const nextGuard = {
+    token: sessionToken,
+    eventCount: sameToken ? guard.eventCount + 1 : 1,
+    startedAt: guard.startedAt || Date.now(),
+  }
+
+  if (nextGuard.eventCount >= 2) {
+    await clearLeadIntentCurrentContextRequired()
+  } else {
+    await saveLeadIntentCurrentContextGuard(nextGuard)
+  }
 }
 
 function leadIntentClientEventId(eventName: string) {
@@ -454,7 +491,7 @@ async function recordLeadIntentEvent(eventName: string, payload: { listing_id?: 
     }
     if (!response.ok) return null
 
-    await clearLeadIntentCurrentContextRequired()
+    await noteLeadIntentCurrentContextEvent(sessionToken)
     return response.json() as Promise<{ prompt: LeadIntentPrompt; lead_intent_session: LeadIntentSummary }>
   } catch (intentError) {
     console.warn('Unable to record Hafa Homes lead intent', intentError)
@@ -538,7 +575,7 @@ async function createLead(payload: CreateLeadPayload, getToken?: GetAuthToken, r
   }
 
   if (!payload.intent_session_token && await leadIntentCurrentContextRequired()) {
-    throw new ApiRequestError('Your search session refreshed after sign-in. Please reopen this form or view this home again before submitting.', 409)
+    throw new ApiRequestError('Your search session refreshed after sign-in. Please view the home again and reopen this form before submitting.', 409)
   }
 
   const response = await fetch(`${API_URL}/api/v1/leads`, {
@@ -552,7 +589,7 @@ async function createLead(payload: CreateLeadPayload, getToken?: GetAuthToken, r
     if (conflictPayload?.reset_session) {
       await clearLeadIntentSessionToken()
       await markLeadIntentCurrentContextRequired()
-      throw new ApiRequestError('Your search session refreshed after sign-in. Please reopen this form or view this home again before submitting.', response.status)
+      throw new ApiRequestError('Your search session refreshed after sign-in. Please view the home again and reopen this form before submitting.', response.status)
     }
   }
 
