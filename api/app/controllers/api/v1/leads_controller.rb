@@ -47,6 +47,7 @@ module Api
         lead.queue_request_received_notification = true
 
         if lead.save
+          record_submission_context_for_empty_intent_session(lead, intent_session)
           mark_intent_session_converted(lead, intent_session)
           record_audit_event(action: "lead_created", target: lead, lead: lead, metadata: { lead_type: lead.lead_type, source: lead.lead_source, lead_intent_session_id: intent_session&.id })
           render json: { lead: serialized_created_lead(lead) }, status: :created
@@ -305,6 +306,29 @@ module Api
           reset_session: true,
           prompt: { eligible: false, reason: "session_scope_mismatch" }
         }, status: :conflict
+      end
+
+      def record_submission_context_for_empty_intent_session(lead, intent_session)
+        return unless intent_session && lead.listing
+        return if intent_session.lead_intent_events.exists?
+
+        event_name = case lead.lead_type
+                     when "showing_request"
+                       "showing_form_opened"
+                     when "price_tracker"
+                       "price_tracker_opened"
+                     end
+        return unless event_name
+
+        intent_session.record_event!(
+          event_name: event_name,
+          user: lead.user,
+          brokerage: lead.brokerage,
+          listing: lead.listing,
+          source: "lead_submission",
+          metadata: { surface: "lead_submission_recovery", source: lead.lead_type },
+          occurred_at: Time.current
+        )
       end
 
       def mark_intent_session_converted(lead, intent_session)

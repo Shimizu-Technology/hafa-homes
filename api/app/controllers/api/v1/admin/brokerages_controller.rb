@@ -14,7 +14,9 @@ module Api
 
         def update
           brokerage = brokerage_scope.find(params[:id])
-          brokerage.settings = brokerage.settings.to_h.merge(prompt_settings_params.to_h.compact)
+          next_settings = brokerage.settings.to_h.merge(prompt_settings_params)
+          next_settings.delete_if { |_key, value| value.nil? }
+          brokerage.settings = next_settings
 
           if brokerage.save
             render json: { brokerage: admin_brokerage_json(brokerage) }
@@ -66,6 +68,8 @@ module Api
         end
 
         def positive_integer_setting(value, name, min:, max:)
+          return nil if value.blank?
+
           integer = value.to_i
           raise ActionController::BadRequest, "#{name} is invalid" unless integer.between?(min, max)
 

@@ -18,6 +18,7 @@ import {
   DatabaseZap,
   Heart,
   Home,
+  Info,
   Map,
   MapPin,
   Maximize2,
@@ -260,6 +261,7 @@ type SyncRunsResponse = { data_sync_runs: SyncRun[] }
 
 type LeadStatus = 'new' | 'contacted' | 'showing_scheduled' | 'nurturing' | 'closed' | 'lost' | 'spam' | 'archived'
 type ShowingStatus = 'proposed' | 'confirmed' | 'completed' | 'cancelled' | 'no_show'
+type PromptMode = 'growth' | 'balanced' | 'selective'
 
 type NotificationDelivery = {
   id: number
@@ -920,6 +922,26 @@ async function createLead(payload: LeadPayload): Promise<{ lead: Lead }> {
   return submitLead(payload, true)
 }
 
+async function recoverLeadIntentSessionForSubmission(payload: LeadPayload) {
+  const refreshedToken = resetLeadIntentSessionToken()
+  const recoveryEvent = leadSubmissionRecoveryEventName(payload.lead_type)
+  if (refreshedToken && recoveryEvent && payload.listing_id) {
+    await recordLeadIntentEvent(recoveryEvent, {
+      listing_id: payload.listing_id,
+      source: 'web',
+      metadata: { surface: 'lead_submission_recovery', source: payload.lead_type },
+    })
+  }
+
+  return refreshedToken || leadIntentSessionToken()
+}
+
+function leadSubmissionRecoveryEventName(leadType: string) {
+  if (leadType === 'showing_request') return 'showing_form_opened'
+  if (leadType === 'price_tracker') return 'price_tracker_opened'
+  return null
+}
+
 async function submitLead(payload: LeadPayload, retryAfterIntentReset: boolean): Promise<{ lead: Lead }> {
   const response = await fetch(`${API_URL}/api/v1/leads`, {
     method: 'POST',
@@ -930,12 +952,13 @@ async function submitLead(payload: LeadPayload, retryAfterIntentReset: boolean):
   if (response.status === 409 && retryAfterIntentReset && payload.intent_session_token) {
     const conflictPayload = await response.clone().json().catch(() => null) as { reset_session?: boolean } | null
     if (conflictPayload?.reset_session) {
-      resetLeadIntentSessionToken()
       if (payload.lead_type === 'search_assist') {
+        resetLeadIntentSessionToken()
         throw new ApiFetchError('Your search session refreshed after sign-in. Please keep browsing or reopen the prompt so we can attach the right search context.', response.status)
       }
 
-      return submitLead({ ...payload, intent_session_token: undefined }, false)
+      const refreshedToken = await recoverLeadIntentSessionForSubmission(payload)
+      return submitLead({ ...payload, intent_session_token: refreshedToken }, false)
     }
   }
 
@@ -3210,6 +3233,7 @@ function AdminIntentPage() {
   const [searchInput, setSearchInput] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   const [page, setPage] = useState(1)
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   useEffect(() => {
     setPage(1)
@@ -3227,10 +3251,25 @@ function AdminIntentPage() {
   const sessions = data?.lead_intent_sessions ?? []
   const metrics = data?.metrics
   const pagination = data?.pagination
+  const brokerages = brokeragesData?.brokerages ?? []
+  const primaryBrokerage = brokerages[0]
 
   return (
     <AdminShell kicker="Search intent" title="Live buyer intent" description="First-party browsing signals from Hafa Homes search, saves, form opens, and progressive prompts. Signed-in shoppers are identified; anonymous visitors stay anonymous until they submit a lead.">
       <section className="mx-auto max-w-7xl px-4 pb-12 sm:px-5">
+        <div className="mb-5 flex flex-col gap-4 rounded-[1.75rem] border border-[#dfe8e2] bg-white/85 p-4 shadow-sm backdrop-blur sm:rounded-[2rem] sm:p-5 lg:flex-row lg:items-center lg:justify-between">
+          <div className="max-w-3xl">
+            <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.2em] text-[#0f705e]"><SlidersHorizontal size={15} /> Progressive prompt rules</div>
+            <h2 className="mt-2 text-2xl font-semibold tracking-[-0.05em] text-[#17211f]">Control how often buyers see the lead prompt.</h2>
+            <p className="mt-2 text-sm font-semibold leading-6 text-[#66746f]">
+              {primaryBrokerage ? promptModeSummary(promptModeFromSettings(primaryBrokerage.settings), primaryBrokerage.settings) : 'Balanced mode prompts after a few clear buying signals, then waits before asking again.'}
+            </p>
+          </div>
+          <button type="button" onClick={() => setSettingsOpen(true)} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl bg-[#0f3d35] px-5 text-sm font-bold text-white shadow-xl shadow-[#0f3d35]/15 transition hover:-translate-y-0.5 hover:bg-[#0c312b] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#bdebdc]">
+            <SlidersHorizontal size={17} /> Prompt settings
+          </button>
+        </div>
+        <PromptSettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} brokerages={brokerages} mutation={promptSettingsMutation} />
         {metrics && (
           <div className="grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-4">
             <AdminMetric label="Active sessions" value={metrics.active_sessions} tone="dark" />
@@ -3314,9 +3353,6 @@ function AdminIntentPage() {
                 {data?.top_listings?.length === 0 && <p className="text-sm font-semibold leading-6 text-[#66746f]">Listing-level view counts will appear after shoppers open property detail pages.</p>}
               </div>
             </div>
-            {(brokeragesData?.brokerages ?? []).map((brokerage) => (
-              <PromptSettingsCard key={brokerage.id} brokerage={brokerage} mutation={promptSettingsMutation} />
-            ))}
             <div className="rounded-[1.75rem] border border-[#dfe8e2] bg-white p-5 shadow-sm sm:rounded-[2rem]">
               <ShieldCheck className="text-[#0f705e]" />
               <h2 className="mt-4 text-xl font-semibold tracking-[-0.04em]">Privacy guardrails</h2>
@@ -3329,76 +3365,190 @@ function AdminIntentPage() {
   )
 }
 
-function PromptSettingsCard({ brokerage, mutation }: { brokerage: Brokerage; mutation: { mutate: (variables: { id: number; payload: Record<string, unknown> }) => void; isPending: boolean; isError: boolean; error: unknown } }) {
+type PromptSettingsMutation = { mutate: (variables: { id: number; payload: Record<string, unknown> }) => void; isPending: boolean; isError: boolean; error: unknown }
+
+function PromptSettingsModal({ open, onClose, brokerages, mutation }: { open: boolean; onClose: () => void; brokerages: Brokerage[]; mutation: PromptSettingsMutation }) {
+  useEffect(() => {
+    if (!open) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [open, onClose])
+
+  if (!open) return null
+
+  return (
+    <div className="fixed inset-0 z-[80] overflow-y-auto bg-[#0b1f1b]/55 px-4 py-6 backdrop-blur-sm sm:py-10" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
+      <div role="dialog" aria-modal="true" aria-labelledby="prompt-settings-title" className="mx-auto max-w-5xl rounded-[2rem] bg-[#fbfaf6] p-4 shadow-2xl shadow-black/25 sm:rounded-[2.5rem] sm:p-6">
+        <div className="flex flex-col gap-4 border-b border-[#dfe8e2] pb-5 sm:flex-row sm:items-start sm:justify-between">
+          <div className="max-w-3xl">
+            <div className="inline-flex items-center gap-2 rounded-full bg-[#e9f5ef] px-3 py-1 text-xs font-black uppercase tracking-[0.18em] text-[#0f705e]"><SlidersHorizontal size={14} /> Prompt intensity</div>
+            <h2 id="prompt-settings-title" className="mt-3 text-3xl font-semibold tracking-[-0.06em] text-[#17211f]">Set the right level of follow-up.</h2>
+            <p className="mt-2 text-sm font-semibold leading-6 text-[#66746f]">These rules control when the progressive lead prompt appears while shoppers browse. Use Growth for lead-hungry teams, Balanced for the default experience, and Selective when you only want stronger intent.</p>
+          </div>
+          <button type="button" onClick={onClose} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-[#d7ded9] bg-white px-4 text-sm font-bold text-[#304942] transition hover:bg-[#f6f1e8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0f705e]"><X size={17} /> Close</button>
+        </div>
+
+        <div className="mt-5 grid gap-3 md:grid-cols-3">
+          {(['growth', 'balanced', 'selective'] as PromptMode[]).map((mode) => (
+            <div key={mode} className="rounded-[1.5rem] border border-[#dfe8e2] bg-white p-4 shadow-sm">
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-[#0f705e]">{promptModeTitle(mode)}</p>
+              <h3 className="mt-2 text-xl font-semibold tracking-[-0.05em] text-[#17211f]">{promptModeHeadline(mode)}</h3>
+              <p className="mt-2 text-sm font-semibold leading-6 text-[#66746f]">{promptModeDescription(mode)}</p>
+              <div className="mt-3 grid gap-1 text-xs font-black uppercase tracking-[0.12em] text-[#53645f]">
+                <span>{defaultPromptThreshold(mode)} listing views</span>
+                <span>{promptModeDefaults(mode).searchFilters} filter changes</span>
+                <span>{defaultPromptSnooze(mode)}h dismissal snooze</span>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-5 grid gap-4">
+          {brokerages.map((brokerage) => <PromptSettingsCard key={`${brokerage.id}-${JSON.stringify(brokerage.settings || {})}`} brokerage={brokerage} mutation={mutation} />)}
+          {brokerages.length === 0 && <StateCard>No brokerages are available for prompt settings.</StateCard>}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function PromptSettingsCard({ brokerage, mutation }: { brokerage: Brokerage; mutation: PromptSettingsMutation }) {
   const settings = brokerage.settings || {}
-  const mode = String(settings.lead_prompt_mode || 'balanced')
-  const enabled = settings.progressive_prompts_enabled === false ? 'false' : 'true'
-  const listingThreshold = String(settings.listing_views_threshold || '')
-  const snoozeHours = String(settings.prompt_snooze_hours || '')
+  const mode = promptModeFromSettings(settings)
+  const enabled = settings.progressive_prompts_enabled === false || settings.progressive_prompts_enabled === 'false' ? 'false' : 'true'
+  const listingThreshold = promptSettingString(settings, 'listing_views_threshold')
+  const snoozeHours = promptSettingString(settings, 'prompt_snooze_hours')
+  const defaults = promptModeDefaults(mode)
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const form = new FormData(event.currentTarget)
+    const nextMode = promptModeFromValue(String(form.get('lead_prompt_mode') || 'balanced'))
+    const listingViews = String(form.get('listing_views_threshold') || '').trim()
+    const snooze = String(form.get('prompt_snooze_hours') || '').trim()
     mutation.mutate({
       id: brokerage.id,
       payload: {
-        lead_prompt_mode: String(form.get('lead_prompt_mode') || 'balanced'),
+        lead_prompt_mode: nextMode,
         progressive_prompts_enabled: String(form.get('progressive_prompts_enabled') || 'true'),
-        listing_views_threshold: String(form.get('listing_views_threshold') || '').trim() || defaultPromptThreshold(String(form.get('lead_prompt_mode') || 'balanced')),
-        prompt_snooze_hours: String(form.get('prompt_snooze_hours') || '').trim() || defaultPromptSnooze(String(form.get('lead_prompt_mode') || 'balanced')),
+        listing_views_threshold: listingViews || null,
+        prompt_snooze_hours: snooze || null,
       },
     })
   }
 
   return (
-    <form onSubmit={handleSubmit} className="rounded-[1.75rem] border border-[#dfe8e2] bg-white p-5 shadow-sm sm:rounded-[2rem]">
-      <SlidersHorizontal className="text-[#0f705e]" />
-      <p className="mt-5 text-xs font-bold uppercase tracking-[0.2em] text-[#7b8a84]">Prompt intensity</p>
-      <h2 className="mt-2 text-xl font-semibold tracking-[-0.04em]">{brokerage.name}</h2>
-      <p className="mt-2 text-sm font-semibold leading-6 text-[#66746f]">Tune lead capture by broker appetite: growth for newer brokers, selective for established teams.</p>
-      <div className="mt-4 grid gap-3">
+    <form onSubmit={handleSubmit} className="rounded-[1.75rem] border border-[#dfe8e2] bg-white p-4 shadow-sm sm:rounded-[2rem] sm:p-5">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="max-w-2xl">
+          <p className="text-xs font-black uppercase tracking-[0.2em] text-[#7b8a84]">Brokerage</p>
+          <h3 className="mt-1 text-2xl font-semibold tracking-[-0.05em] text-[#17211f]">{brokerage.name}</h3>
+          <p className="mt-2 text-sm font-semibold leading-6 text-[#66746f]">{promptModeSummary(mode, settings)}</p>
+        </div>
+        <button disabled={mutation.isPending} className="min-h-11 rounded-2xl bg-[#0f3d35] px-5 text-sm font-bold text-white shadow-xl shadow-[#0f3d35]/15 transition hover:-translate-y-0.5 disabled:translate-y-0 disabled:opacity-55">{mutation.isPending ? 'Saving...' : 'Save settings'}</button>
+      </div>
+
+      <div className="mt-5 grid gap-4 lg:grid-cols-[1.2fr_0.8fr_0.8fr_0.8fr]">
         <label className="grid gap-2 text-sm font-bold text-[#304942]">
-          Mode
-          <select name="lead_prompt_mode" defaultValue={mode} className="min-h-11 rounded-2xl border border-[#dce5df] bg-white px-3">
-            <option value="growth">Growth · prompt sooner</option>
-            <option value="balanced">Balanced</option>
-            <option value="selective">Selective · prompt less</option>
+          <PromptSettingLabel label="Mode" help="The mode sets the default trigger level: Growth prompts sooner, Balanced waits for a few clear signals, Selective waits for stronger repeated behavior." />
+          <select name="lead_prompt_mode" defaultValue={mode} className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0f705e]">
+            <option value="growth">Growth · sooner prompts</option>
+            <option value="balanced">Balanced · default</option>
+            <option value="selective">Selective · fewer prompts</option>
           </select>
         </label>
         <label className="grid gap-2 text-sm font-bold text-[#304942]">
-          Prompts enabled
-          <select name="progressive_prompts_enabled" defaultValue={enabled} className="min-h-11 rounded-2xl border border-[#dce5df] bg-white px-3">
+          <PromptSettingLabel label="Prompts" help="Turn this off to keep tracking search intent for admins while hiding the progressive lead prompt from public shoppers." />
+          <select name="progressive_prompts_enabled" defaultValue={enabled} className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0f705e]">
             <option value="true">Enabled</option>
             <option value="false">Disabled</option>
           </select>
         </label>
-        <div className="grid grid-cols-2 gap-2">
-          <label className="grid gap-2 text-sm font-bold text-[#304942]">
-            Listing views
-            <input name="listing_views_threshold" type="number" min="1" max="20" defaultValue={listingThreshold} placeholder="Auto" className="min-h-11 rounded-2xl border border-[#dce5df] bg-white px-3" />
-          </label>
-          <label className="grid gap-2 text-sm font-bold text-[#304942]">
-            Snooze hrs
-            <input name="prompt_snooze_hours" type="number" min="1" max="168" defaultValue={snoozeHours} placeholder="Auto" className="min-h-11 rounded-2xl border border-[#dce5df] bg-white px-3" />
-          </label>
-        </div>
+        <label className="grid gap-2 text-sm font-bold text-[#304942]">
+          <PromptSettingLabel label="Listing views" help="How many unique property detail pages someone can open before the multiple-listing prompt is allowed. Leave blank to use the mode default." />
+          <input name="listing_views_threshold" type="number" min="1" max="20" defaultValue={listingThreshold} placeholder={`Auto · ${defaults.listingViews}`} className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0f705e]" />
+          <span className="text-xs font-semibold leading-5 text-[#7b8a84]">Auto uses {defaults.listingViews} for {promptModeTitle(mode)}.</span>
+        </label>
+        <label className="grid gap-2 text-sm font-bold text-[#304942]">
+          <PromptSettingLabel label="Snooze hours" help="How long to stay quiet after a shopper dismisses a prompt. Stronger new intent can still unlock a respectful re-prompt; repeated dismissals hard-snooze." />
+          <input name="prompt_snooze_hours" type="number" min="1" max="168" defaultValue={snoozeHours} placeholder={`Auto · ${defaults.snoozeHours}`} className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0f705e]" />
+          <span className="text-xs font-semibold leading-5 text-[#7b8a84]">Auto uses {defaults.snoozeHours} hours.</span>
+        </label>
       </div>
       {mutation.isError && <p className="mt-3 text-sm font-semibold text-[#b42318]">{displayErrorMessage(mutation.error, 'Unable to save prompt settings.')}</p>}
-      <button disabled={mutation.isPending} className="mt-4 min-h-11 w-full rounded-2xl bg-[#0f3d35] px-4 text-sm font-bold text-white disabled:opacity-55">{mutation.isPending ? 'Saving...' : 'Save prompt settings'}</button>
     </form>
   )
 }
 
-function defaultPromptThreshold(mode: string) {
-  if (mode === 'growth') return '2'
-  if (mode === 'selective') return '5'
-  return '3'
+function PromptSettingLabel({ label, help }: { label: string; help: string }) {
+  return (
+    <span className="flex items-center gap-2">
+      <span>{label}</span>
+      <span className="group relative inline-flex">
+        <button type="button" aria-label={help} className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-[#cbd8d1] bg-[#fbfaf6] text-[#0f705e] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0f705e]"><Info size={12} /></button>
+        <span className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 hidden w-64 -translate-x-1/2 rounded-2xl bg-[#17211f] p-3 text-xs font-semibold leading-5 text-white shadow-2xl group-hover:block group-focus-within:block">{help}</span>
+      </span>
+    </span>
+  )
 }
 
-function defaultPromptSnooze(mode: string) {
-  if (mode === 'growth') return '8'
-  if (mode === 'selective') return '72'
-  return '24'
+function promptModeFromSettings(settings?: Record<string, unknown>): PromptMode {
+  return promptModeFromValue(String(settings?.lead_prompt_mode || 'balanced'))
+}
+
+function promptModeFromValue(value: string): PromptMode {
+  if (value === 'growth' || value === 'low_friction') return 'growth'
+  if (value === 'selective' || value === 'strict') return 'selective'
+  return 'balanced'
+}
+
+function promptSettingString(settings: Record<string, unknown>, key: string) {
+  const value = settings[key]
+  return value === undefined || value === null || value === '' ? '' : String(value)
+}
+
+function promptModeDefaults(mode: PromptMode) {
+  if (mode === 'growth') return { listingViews: 2, sameVillage: 2, searchFilters: 2, snoozeHours: 8, dismissals: 3 }
+  if (mode === 'selective') return { listingViews: 5, sameVillage: 3, searchFilters: 5, snoozeHours: 72, dismissals: 1 }
+  return { listingViews: 3, sameVillage: 2, searchFilters: 3, snoozeHours: 24, dismissals: 2 }
+}
+
+function promptModeTitle(mode: PromptMode) {
+  if (mode === 'growth') return 'Growth'
+  if (mode === 'selective') return 'Selective'
+  return 'Balanced'
+}
+
+function promptModeHeadline(mode: PromptMode) {
+  if (mode === 'growth') return 'For teams that want more at-bats.'
+  if (mode === 'selective') return 'For established teams that want fewer interruptions.'
+  return 'For a respectful default cadence.'
+}
+
+function promptModeDescription(mode: PromptMode) {
+  if (mode === 'growth') return 'Prompt after lighter intent signals and allow more re-prompts when behavior keeps getting stronger.'
+  if (mode === 'selective') return 'Wait for more property views or repeated searches, then stay quiet longer after a dismissal.'
+  return 'Prompt after a few meaningful actions, then cap repeated asks so browsing still feels open.'
+}
+
+function promptModeSummary(mode: PromptMode, settings?: Record<string, unknown>) {
+  const defaults = promptModeDefaults(mode)
+  const listingViews = promptSettingString(settings || {}, 'listing_views_threshold') || String(defaults.listingViews)
+  const snoozeHours = promptSettingString(settings || {}, 'prompt_snooze_hours') || String(defaults.snoozeHours)
+  const disabled = settings?.progressive_prompts_enabled === false || settings?.progressive_prompts_enabled === 'false'
+  const prefix = disabled ? 'Prompts are currently disabled. If enabled, ' : `${promptModeTitle(mode)} mode: `
+  return `${prefix}first prompt can appear after about ${listingViews} unique listing views, ${defaults.sameVillage} repeated same-area views, or ${defaults.searchFilters} search filter changes. Dismissed prompts stay quiet for about ${snoozeHours} hours, with respectful re-prompts only after stronger new intent.`
+}
+
+function defaultPromptThreshold(mode: PromptMode) {
+  return String(promptModeDefaults(mode).listingViews)
+}
+
+function defaultPromptSnooze(mode: PromptMode) {
+  return String(promptModeDefaults(mode).snoozeHours)
 }
 
 function AdminIntentSessionCard({ session }: { session: AdminLeadIntentSession }) {
