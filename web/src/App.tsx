@@ -225,7 +225,10 @@ async function dismissLeadIntentPrompt(promptKey?: string, reason = 'dismissed')
       headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
       body: JSON.stringify({ lead_intent: { session_token: sessionToken, prompt_key: promptKey, reason } }),
     })
-    if (response.status === 409) clearLeadIntentSessionToken()
+    if (response.status === 409) {
+      clearLeadIntentSessionToken()
+      markLeadIntentCurrentContextRequired()
+    }
   } catch (intentError) {
     console.warn('Unable to dismiss Hafa Homes lead intent prompt', intentError)
   }
