@@ -397,12 +397,12 @@ class LeadIntentSession < ApplicationRecord
   end
 
   def divergent_viewed_village_name(profile)
-    saved_villages = profile.desired_villages.to_s.downcase.split(/[,;]+/).map(&:squish).reject(&:blank?)
+    saved_villages = split_village_names(profile.desired_villages)
     return nil if saved_villages.empty?
 
     divergent_village = summary.fetch("top_villages", []).find do |village|
-      name = village["name"].to_s.downcase.squish
-      village["count"].to_i >= 2 && name.present? && saved_villages.none? { |saved| saved.include?(name) || name.include?(saved) }
+      name = village["name"].to_s.squish
+      village["count"].to_i >= 2 && name.present? && saved_villages.none? { |saved| village_names_match?(saved, name) }
     end
     divergent_village&.fetch("name", nil)
   end
@@ -437,9 +437,9 @@ class LeadIntentSession < ApplicationRecord
       prequalified_status: profile&.prequalified_status,
       lender_name: profile&.lender_name,
       purchase_timeline: profile&.purchase_timeline,
-      desired_villages: top_villages.join(", ").presence || profile&.desired_villages,
-      budget_min: summary["viewed_price_min"] || profile&.budget_min,
-      budget_max: summary["viewed_price_max"] || profile&.budget_max,
+      desired_villages: suggested_desired_villages(profile, top_villages),
+      budget_min: suggested_budget_min(profile),
+      budget_max: suggested_budget_max(profile),
       desired_beds: profile&.desired_beds,
       desired_baths: profile&.desired_baths,
       buyer_status: profile&.buyer_status,
@@ -447,6 +447,53 @@ class LeadIntentSession < ApplicationRecord
       notes: profile&.notes,
       listing_id: summary["latest_listing_id"]
     }.compact
+  end
+
+  def suggested_desired_villages(profile, top_villages)
+    village_names = split_village_names(profile&.desired_villages)
+    top_villages.each do |village|
+      normalized = village.to_s.squish
+      next if normalized.blank?
+      next if village_names.any? { |saved| village_names_match?(saved, normalized) }
+
+      village_names << normalized
+    end
+    village_names.join(", ").presence
+  end
+
+  def split_village_names(value)
+    value.to_s.split(/[,;]+/).map(&:squish).reject(&:blank?)
+  end
+
+  def village_names_match?(first, second)
+    normalized_first = first.to_s.downcase.squish
+    normalized_second = second.to_s.downcase.squish
+    normalized_first == normalized_second ||
+      normalized_first.include?(normalized_second) ||
+      normalized_second.include?(normalized_first)
+  end
+
+  def suggested_budget_min(profile)
+    combined_budget_bound(profile&.budget_min, summary["viewed_price_min"], :min)
+  end
+
+  def suggested_budget_max(profile)
+    combined_budget_bound(profile&.budget_max, summary["viewed_price_max"], :max)
+  end
+
+  def combined_budget_bound(saved_value, viewed_value, direction)
+    values = [saved_value, viewed_value].filter_map { |value| decimal_value(value) }
+    return nil if values.empty?
+
+    (direction == :min ? values.min : values.max).to_f
+  end
+
+  def decimal_value(value)
+    return nil if value.blank?
+
+    BigDecimal(value.to_s)
+  rescue ArgumentError
+    nil
   end
 
   def ineligible_prompt(reason)
