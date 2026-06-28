@@ -2133,9 +2133,9 @@ function ListingCard({ listing }: { listing: Listing }) {
   )
 
   return (
-    <article className="group overflow-hidden rounded-[1.7rem] border border-black/5 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[#0f3d35]/10 md:grid md:grid-cols-[240px_1fr]">
+    <article className="group overflow-hidden rounded-[1.7rem] border border-black/5 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[#0f3d35]/10 md:grid md:min-h-[260px] md:grid-cols-[260px_1fr]">
       <Link to={`/listings/${listing.id}`} onClick={() => captureAnalyticsEvent('listing_opened', { listing_id: listing.id, source: 'listing_image' })} className="block overflow-hidden">
-        <img src={listing.primary_photo_url} onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = FALLBACK_LISTING_IMAGE }} alt="" className="h-56 w-full object-cover transition duration-500 group-hover:scale-105 md:h-full" />
+        <img src={listing.primary_photo_url} onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = FALLBACK_LISTING_IMAGE }} alt="" className="h-56 w-full object-cover transition duration-500 group-hover:scale-105 md:h-[260px]" />
       </Link>
       <div className="p-5">
         <div className="flex items-start justify-between gap-4">
@@ -2309,7 +2309,7 @@ function ListingDetailPage() {
                 <div className="rounded-[2rem] border border-black/5 bg-white p-6 shadow-xl shadow-[#0f3d35]/10">
                   <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#7b8a84]">Request info</p>
                   <h2 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">Ask about this property</h2>
-                  <p className="mt-3 text-sm leading-6 text-[#66746f]">Schedule a tour, track price changes, or save this listing for later.</p>
+                  <p className="mt-3 text-sm leading-6 text-[#66746f]">Schedule a tour, ask about price changes, or save this listing for later.</p>
                   <button onClick={() => {
                     setLeadOpen(true)
                     captureAnalyticsEvent('lead_modal_opened', { listing_id: listing.id, source: 'desktop_aside' })
@@ -2319,7 +2319,7 @@ function ListingDetailPage() {
                     setPriceTrackerOpen(true)
                     captureAnalyticsEvent('price_tracker_opened', { listing_id: listing.id, source: 'desktop_aside' })
                     recordLeadIntentEvent('price_tracker_opened', { listing_id: listing.id, source: 'web', metadata: { surface: 'desktop_aside', listing_kind: listing.listing_kind } })
-                  }} className="mt-3 w-full rounded-2xl border border-[#d7ded9] px-4 py-3 text-sm font-bold text-[#0f3d35]">Add price alert</button>
+                  }} className="mt-3 w-full rounded-2xl border border-[#d7ded9] px-4 py-3 text-sm font-bold text-[#0f3d35]">Ask about price changes</button>
                   {isSignedIn ? (
                     <button onClick={() => saveMutation.mutate()} className="mt-3 w-full rounded-2xl border border-[#d7ded9] px-4 py-3 text-sm font-bold text-[#0f3d35]">{saved ? 'Remove saved home' : 'Save home'}</button>
                   ) : (
@@ -2342,7 +2342,7 @@ function ListingDetailPage() {
               setPriceTrackerOpen(true)
               captureAnalyticsEvent('price_tracker_opened', { listing_id: listing.id, source: 'mobile_action_bar' })
               recordLeadIntentEvent('price_tracker_opened', { listing_id: listing.id, source: 'web', metadata: { surface: 'mobile_action_bar', listing_kind: listing.listing_kind } })
-            }} className="flex min-h-16 flex-col items-center justify-center gap-1"><TrendingUp size={23} /> Price alert</button>
+            }} className="flex min-h-16 flex-col items-center justify-center gap-1"><TrendingUp size={23} /> Price</button>
             {isSignedIn ? (
               <button onClick={() => {
                 captureAnalyticsEvent('listing_saved_toggled', { listing_id: listing.id, saved: !saved })
@@ -2837,7 +2837,7 @@ function AccountPage() {
           </div>
         </form>
 
-        <SearchProfileCard key={searchProfileData?.search_profile?.updated_at || searchProfileData?.search_profile?.id || 'new-search-profile'} profile={searchProfileData?.search_profile} mutation={searchProfileMutation} isLoading={isSearchProfileLoading} error={isSearchProfileError ? searchProfileError : null} />
+        <SearchProfileCard key={searchProfileData?.search_profile?.updated_at || searchProfileData?.search_profile?.id || 'new-search-profile'} profile={searchProfileData?.search_profile} user={user} mutation={searchProfileMutation} isLoading={isSearchProfileLoading} error={isSearchProfileError ? searchProfileError : null} />
 
         <div className="rounded-[2rem] border border-red-200 bg-[#fff8f6] p-6 shadow-sm">
           <p className="text-sm font-semibold uppercase tracking-[0.2em] text-red-700">Delete account</p>
@@ -2873,10 +2873,14 @@ function AccountPage() {
 
 type SearchProfileMutation = { mutate: (payload: SearchProfilePayload) => void; isPending: boolean; isError: boolean; isSuccess: boolean; error: unknown }
 
-function SearchProfileCard({ profile, mutation, isLoading = false, error = null }: { profile?: SearchProfile; mutation: SearchProfileMutation; isLoading?: boolean; error?: unknown }) {
+function SearchProfileCard({ profile, user, mutation, isLoading = false, error = null }: { profile?: SearchProfile; user?: CurrentUser; mutation: SearchProfileMutation; isLoading?: boolean; error?: unknown }) {
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    mutation.mutate(searchProfilePayloadFromForm(new FormData(event.currentTarget)))
+    mutation.mutate({
+      ...searchProfilePayloadFromForm(new FormData(event.currentTarget)),
+      preferred_contact_method: user?.preferred_contact_method || profileDefault(profile, 'preferred_contact_method', 'email'),
+      phone: user?.phone || profileDefault(profile, 'phone'),
+    })
   }
 
   if (isLoading) {
@@ -2895,7 +2899,7 @@ function SearchProfileCard({ profile, mutation, isLoading = false, error = null 
         <div>
           <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#bdebdc]">Search profile</p>
           <h2 className="mt-3 text-3xl font-semibold tracking-[-0.05em]">Save what you are looking for once.</h2>
-          <p className="mt-3 text-sm leading-6 text-white/70">These preferences prefill showing requests, price alerts, and future prompts. Complete profiles avoid the longer qualification popup.</p>
+          <p className="mt-3 text-sm leading-6 text-white/70">Your contact details above handle phone and preferred contact. These search preferences prefill showing requests, price watch requests, and future prompts.</p>
           {Boolean(error) && <p className="mt-3 rounded-2xl bg-[#fff8f6] p-3 text-xs font-bold leading-5 text-red-700">{displayErrorMessage(error, 'Unable to load your saved search profile. You can still edit contact details above and retry this section later.')}</p>}
           <div className="mt-5 rounded-3xl bg-white/10 p-4">
             <div className="flex items-center justify-between gap-3">
@@ -2905,18 +2909,11 @@ function SearchProfileCard({ profile, mutation, isLoading = false, error = null 
             <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/15">
               <div className="h-full rounded-full bg-[#f5c16c]" style={{ width: `${profile?.completion_percentage ?? 0}%` }} />
             </div>
-            <p className="mt-3 text-xs font-semibold leading-5 text-white/62">{profile?.qualification_summary || 'Add contact preference, timeline, search criteria, and readiness.'}</p>
+            <p className="mt-3 text-xs font-semibold leading-5 text-white/62">{profile?.qualification_summary || 'Add timeline, search criteria, and readiness. Contact preference comes from your profile above.'}</p>
           </div>
         </div>
 
         <div className="grid gap-3 md:grid-cols-2">
-          <label className="grid gap-2 text-sm font-semibold text-white/86">
-            Preferred contact
-            <select name="preferred_contact_method" defaultValue={profileDefault(profile, 'preferred_contact_method', 'email')} className="min-h-12 rounded-2xl border border-white/10 bg-white px-4 text-[#17211f]">
-              {preferredContactOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-            </select>
-          </label>
-          <Input name="phone" label="Phone" defaultValue={profileDefault(profile, 'phone')} inputMode="tel" labelClassName="!text-white/86" className="border-white/10 bg-white text-[#17211f]" />
           <label className="grid gap-2 text-sm font-semibold text-white/86">
             Timeline
             <select name="purchase_timeline" defaultValue={profileDefault(profile, 'purchase_timeline')} className="min-h-12 rounded-2xl border border-white/10 bg-white px-4 text-[#17211f]">
@@ -5849,30 +5846,30 @@ function PriceTrackerModal({ listing, open, onClose }: { listing: Listing; open:
         {mutation.isSuccess ? (
           <div className="py-8 text-center">
             <CheckCircle2 className="mx-auto text-[#0f705e]" size={44} />
-            <h2 className="mt-4 text-3xl font-semibold tracking-[-0.05em]">Price tracker saved</h2>
-            <p className="mt-3 text-sm leading-6 text-[#66746f]">Your price alert is saved. We will watch this listing for changes.</p>
+            <h2 className="mt-4 text-3xl font-semibold tracking-[-0.05em]">Price watch request sent</h2>
+            <p className="mt-3 text-sm leading-6 text-[#66746f]">The brokerage team has your target price and can follow up when price activity matters.</p>
             <button onClick={onClose} className="mt-6 w-full rounded-2xl bg-[#0f3d35] px-4 py-3 text-sm font-bold text-white">Close</button>
           </div>
         ) : (
           <form onSubmit={handleSubmit}>
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#0f705e]">Price Watch</p>
+                <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#0f705e]">Price watch request</p>
                 <h2 className="mt-2 text-3xl font-semibold tracking-[-0.05em]">Set your target price</h2>
               </div>
               <button type="button" onClick={onClose} className="grid h-11 w-11 place-items-center rounded-full border border-[#d7ded9]"><X size={20} /></button>
             </div>
-            <p className="mt-3 text-sm leading-6 text-[#66746f]">Current price: <strong>{currency(listing.price, listing.listing_kind)}</strong></p>
+            <p className="mt-3 text-sm leading-6 text-[#66746f]">Current price: <strong>{currency(listing.price, listing.listing_kind)}</strong>. This creates a brokerage follow-up request; automated price-change notifications are a future enhancement.</p>
             <div className="mt-5 grid gap-3">
               <Input name="target_price" label="Target price" inputMode="numeric" placeholder="450000" required />
-              <Input name="email" label="Email for alerts" type="email" defaultValue={profile?.email || ''} required />
+              <Input name="email" label="Email" type="email" defaultValue={profile?.email || ''} required />
               <Input name="name" label="Name" defaultValue={profile?.full_name || 'Hafa Homes user'} />
               <Input name="phone" label="Phone optional" defaultValue={searchProfile?.phone || profile?.phone || '+1671'} inputMode="tel" />
               <QualificationFields compact searchProfile={searchProfile} />
             </div>
             {mutation.isError && <p className="mt-3 text-sm font-semibold text-red-700">Unable to save tracker right now.</p>}
             <div className="mt-5 grid grid-cols-2 gap-3">
-              <button disabled={submitting || mutation.isPending} className="rounded-2xl bg-[#0f3d35] px-4 py-3 text-sm font-bold text-white disabled:opacity-60">{submitting || mutation.isPending ? 'Saving...' : 'Add'}</button>
+              <button disabled={submitting || mutation.isPending} className="rounded-2xl bg-[#0f3d35] px-4 py-3 text-sm font-bold text-white disabled:opacity-60">{submitting || mutation.isPending ? 'Sending...' : 'Send request'}</button>
               <button type="button" onClick={onClose} className="rounded-2xl bg-[#edf0ec] px-4 py-3 text-sm font-bold text-[#17211f]">Cancel</button>
             </div>
           </form>
@@ -5982,8 +5979,8 @@ function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean
   }
 
   return (
-    <div className="fixed inset-0 z-[70] grid place-items-end bg-black/45 p-2 backdrop-blur-sm md:place-items-center md:p-3">
-      <div className="safe-bottom max-h-[calc(100svh-1rem)] w-full max-w-lg overflow-y-auto overscroll-contain rounded-[1.5rem] bg-white p-4 shadow-2xl md:max-h-[calc(100vh-2rem)] md:rounded-[2rem] md:p-6">
+    <div className="fixed inset-0 z-[70] grid place-items-end bg-black/45 p-2 backdrop-blur-sm md:place-items-center md:p-4">
+      <div className="safe-bottom max-h-[calc(100svh-1rem)] w-full max-w-4xl overflow-y-auto overscroll-contain rounded-[1.5rem] bg-white p-4 shadow-2xl md:max-h-[calc(100vh-2rem)] md:rounded-[2rem] md:p-8">
         {mutation.isSuccess ? (
           <div className="py-8 text-center">
             <CheckCircle2 className="mx-auto text-[#0f705e]" size={44} />
@@ -6045,7 +6042,7 @@ function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean
                 </label>
               ))}
             </div>
-            <div className="mt-4 grid gap-3 md:mt-5">
+            <div className="mt-4 grid gap-3 md:mt-5 md:grid-cols-2">
               <Input name="name" label="Name" defaultValue={profile?.full_name || ''} required />
               <Input name="email" label="Email" type="email" defaultValue={profile?.email || ''} required />
               <Input name="phone" label="Phone" defaultValue={searchProfile?.phone || profile?.phone || '+1671'} inputMode="tel" />
@@ -6062,7 +6059,7 @@ function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean
                 </select>
               </label>
               <QualificationFields defaultBudgetMax={String(Math.round(listing.price))} searchProfile={searchProfile} />
-              <label className="grid gap-2 text-sm font-semibold text-[#304942]">
+              <label className="grid gap-2 text-sm font-semibold text-[#304942] md:col-span-2">
                 Message
                 <textarea name="message" rows={4} className="rounded-2xl border border-[#dce5df] px-4 py-3" defaultValue={`I'm interested in ${listing.title}.`} />
               </label>

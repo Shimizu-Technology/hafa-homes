@@ -2248,8 +2248,8 @@ function AccountCard({ auth, onOpenAuth }: { auth: AppAuth; onOpenAuth: (prompt?
     setSearchProfileError(null)
     try {
       const result = await updateSearchProfile({
-        preferred_contact_method: searchPreferredContact,
-        phone: searchPhone.trim(),
+        preferred_contact_method: preferredContact,
+        phone: phone.trim(),
         prequalified_status: searchPrequalifiedStatus,
         lender_name: searchLenderName.trim(),
         purchase_timeline: searchPurchaseTimeline,
@@ -2330,10 +2330,10 @@ function AccountCard({ auth, onOpenAuth }: { auth: AppAuth; onOpenAuth: (prompt?
 
         <View style={styles.profileDetailsPanel}>
           <Text style={styles.profileSectionTitle}>Search profile</Text>
-          <Text style={styles.profileSectionCopy}>Save your budget, villages, timeline, and readiness so prompts and request forms do not keep asking from scratch.</Text>
+          <Text style={styles.profileSectionCopy}>Contact details above handle phone and preferred contact. Save your budget, villages, timeline, and readiness so prompts and request forms do not keep asking from scratch.</Text>
           <View style={styles.searchProfileMeter}>
             <Text style={styles.searchProfileMeterKicker}>{searchProfile?.completion_status === 'complete' ? 'Complete profile' : `${searchProfile?.completion_percentage ?? 0}% complete`}</Text>
-            <Text style={styles.profileSectionCopy}>{searchProfile?.qualification_summary || 'Add contact preference, timeline, criteria, and readiness.'}</Text>
+            <Text style={styles.profileSectionCopy}>{searchProfile?.qualification_summary || 'Add timeline, criteria, and readiness. Contact preference comes from your profile above.'}</Text>
           </View>
           {(searchProfileLoading || (!searchProfileLoaded && !searchProfileError)) ? (
             <View style={styles.searchProfileMeter}>
@@ -2349,15 +2349,6 @@ function AccountCard({ auth, onOpenAuth }: { auth: AppAuth; onOpenAuth: (prompt?
             </View>
           ) : (
             <>
-              <Text style={styles.requestLabel}>Preferred contact</Text>
-              <View style={styles.contactSegmentRow}>
-                {preferredContactOptions.map((option) => (
-                  <Pressable key={option.value} style={[styles.contactSegment, searchPreferredContact === option.value && styles.contactSegmentActive]} onPress={() => setSearchPreferredContact(option.value as 'phone' | 'text' | 'email')}>
-                    <Text style={[styles.contactSegmentText, searchPreferredContact === option.value && styles.contactSegmentTextActive]}>{option.label}</Text>
-                  </Pressable>
-                ))}
-              </View>
-              <RequestInput label="Phone" value={searchPhone} onChangeText={setSearchPhone} keyboardType="phone-pad" placeholder="+1671" />
               <QualificationChoiceGroup label="Timeline" options={purchaseTimelineOptions} value={searchPurchaseTimeline} onChange={setSearchPurchaseTimeline} />
               <QualificationChoiceGroup label="Prequalified?" options={prequalifiedOptions} value={searchPrequalifiedStatus} onChange={setSearchPrequalifiedStatus} />
               <RequestInput label="Lender / bank optional" value={searchLenderName} onChangeText={setSearchLenderName} placeholder="Bank of Guam, Coast360..." />

@@ -35,7 +35,7 @@ function Root() {
     <ClerkProvider
       publishableKey={clerkPublishableKey}
       afterSignOutUrl="/"
-      signInFallbackRedirectUrl="/admin"
+      signInFallbackRedirectUrl="/"
       signUpFallbackRedirectUrl="/"
     >
       {app}
