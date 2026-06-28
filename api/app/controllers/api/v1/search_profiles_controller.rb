@@ -10,10 +10,9 @@ module Api
       end
 
       def update
-        profile = current_profile
-        profile.assign_attributes(search_profile_params)
+        profile = save_current_profile(search_profile_params)
 
-        if profile.save
+        if profile.persisted? && profile.errors.empty?
           changes = AuditLogger.change_details(
             profile.previous_changes,
             %w[
@@ -36,6 +35,24 @@ module Api
           phone: current_user.phone,
           preferred_contact_method: current_user.preferred_contact_method
         )
+      end
+
+      def save_current_profile(attributes)
+        attempts = 0
+
+        begin
+          current_user.with_lock do
+            profile = current_profile
+            profile.assign_attributes(attributes)
+            profile.save
+            profile
+          end
+        rescue ActiveRecord::RecordNotUnique
+          raise if (attempts += 1) > 1
+
+          current_user.association(:buyer_search_profile).reset
+          retry
+        end
       end
 
       def serialize_profile(profile)

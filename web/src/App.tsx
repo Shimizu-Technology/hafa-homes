@@ -4089,46 +4089,50 @@ function LeadsPage() {
           <div className="rounded-[1.75rem] bg-white p-5"><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#7b8a84]">Price watch</p><p className="mt-2 text-4xl font-semibold tracking-[-0.06em]">{priceWatchLeads}</p></div>
         </div>
         <div className="mb-5 rounded-[1.75rem] bg-white p-4 shadow-sm sm:p-5">
-          <div className="grid gap-3 lg:grid-cols-[minmax(220px,1.2fr)_repeat(4,minmax(160px,1fr))]">
-            <label className="grid gap-2 text-sm font-semibold text-[#304942]">
-              Search leads
-              <div className="relative">
-                <Search size={17} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[#7b8a84]" />
-                <input value={searchFilter} onChange={(event) => setSearchFilter(event.target.value)} placeholder="Name, email, phone, listing..." className="min-h-12 w-full rounded-2xl border border-[#dce5df] bg-white pl-11 pr-4" />
+          <div className="grid gap-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+              <label className="grid min-w-0 flex-1 gap-2 text-sm font-semibold text-[#304942] lg:max-w-3xl">
+                Search leads
+                <div className="relative">
+                  <Search size={17} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[#7b8a84]" />
+                  <input value={searchFilter} onChange={(event) => setSearchFilter(event.target.value)} placeholder="Name, email, phone, listing..." className="min-h-12 w-full min-w-0 rounded-2xl border border-[#dce5df] bg-white pl-11 pr-4" />
+                </div>
+              </label>
+              <div className="flex flex-wrap items-center gap-3">
+                <p className="text-sm font-semibold text-[#66746f]">Showing {leads.length} lead{leads.length === 1 ? '' : 's'}{isLoading ? '...' : ''}</p>
+                {hasActiveFilters && <button type="button" onClick={resetFilters} className="rounded-full bg-[#edf0ec] px-4 py-2 text-sm font-bold text-[#304942]">Reset filters</button>}
               </div>
-            </label>
-            <label className="grid gap-2 text-sm font-semibold text-[#304942]">
-              Type
-              <select value={leadTypeFilter} onChange={(event) => setLeadTypeFilter(event.target.value)} className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
-                <option value="">All lead types</option>
-                {leadTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-              </select>
-            </label>
-            <label className="grid gap-2 text-sm font-semibold text-[#304942]">
-              Status
-              <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
-                <option value="">All statuses</option>
-                {leadStatuses.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
-              </select>
-            </label>
-            <label className="grid gap-2 text-sm font-semibold text-[#304942]">
-              Assigned agent
-              <select value={agentFilter} onChange={(event) => setAgentFilter(event.target.value)} className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
-                <option value="">All agents</option>
-                <option value="unassigned">Unassigned leads</option>
-                {assignableAgents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name} · {agent.brokerage?.name}</option>)}
-              </select>
-            </label>
-            <label className="grid gap-2 text-sm font-semibold text-[#304942]">
-              Sort
-              <select value={sortFilter} onChange={(event) => setSortFilter(event.target.value)} className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
-                {leadSortOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-              </select>
-            </label>
-          </div>
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[#edf0ec] pt-4">
-            <p className="text-sm font-semibold text-[#66746f]">Showing {leads.length} lead{leads.length === 1 ? '' : 's'}{isLoading ? '...' : ''}</p>
-            {hasActiveFilters && <button type="button" onClick={resetFilters} className="rounded-full bg-[#edf0ec] px-4 py-2 text-sm font-bold text-[#304942]">Reset filters</button>}
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(150px,0.9fr)_minmax(150px,0.9fr)_minmax(220px,1.2fr)_minmax(160px,0.9fr)]">
+              <label className="grid min-w-0 gap-2 text-sm font-semibold text-[#304942]">
+                Type
+                <select value={leadTypeFilter} onChange={(event) => setLeadTypeFilter(event.target.value)} className="min-h-12 w-full min-w-0 rounded-2xl border border-[#dce5df] bg-white px-4">
+                  <option value="">All lead types</option>
+                  {leadTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </select>
+              </label>
+              <label className="grid min-w-0 gap-2 text-sm font-semibold text-[#304942]">
+                Status
+                <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="min-h-12 w-full min-w-0 rounded-2xl border border-[#dce5df] bg-white px-4">
+                  <option value="">All statuses</option>
+                  {leadStatuses.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
+                </select>
+              </label>
+              <label className="grid min-w-0 gap-2 text-sm font-semibold text-[#304942]">
+                Assigned agent
+                <select value={agentFilter} onChange={(event) => setAgentFilter(event.target.value)} className="min-h-12 w-full min-w-0 rounded-2xl border border-[#dce5df] bg-white px-4">
+                  <option value="">All agents</option>
+                  <option value="unassigned">Unassigned leads</option>
+                  {assignableAgents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name} · {agent.brokerage?.name}</option>)}
+                </select>
+              </label>
+              <label className="grid min-w-0 gap-2 text-sm font-semibold text-[#304942]">
+                Sort
+                <select value={sortFilter} onChange={(event) => setSortFilter(event.target.value)} className="min-h-12 w-full min-w-0 rounded-2xl border border-[#dce5df] bg-white px-4">
+                  {leadSortOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </select>
+              </label>
+            </div>
           </div>
         </div>
         {isLoading && <StateCard>Loading leads...</StateCard>}
@@ -5782,26 +5786,26 @@ function MobileMenuDrawer({ open, onClose }: { open: boolean; onClose: () => voi
 
 function QualificationFields({ compact = false, defaultBudgetMax, searchProfile }: { compact?: boolean; defaultBudgetMax?: string; searchProfile?: SearchProfile | null }) {
   return (
-    <div className="rounded-[1.5rem] border border-[#dce5df] bg-[#fbfaf6] p-4 md:col-span-2">
+    <div className="min-w-0 rounded-[1.5rem] border border-[#dce5df] bg-[#fbfaf6] p-4 md:col-span-2">
       <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#0f705e]">Buyer readiness</p>
       <p className="mt-2 text-sm leading-6 text-[#66746f]">A few optional details help the right agent follow up with useful matches instead of a cold call.</p>
-      <div className="mt-4 grid gap-3 md:grid-cols-2">
-        <label className="grid gap-2 text-sm font-semibold text-[#304942]">
+      <div className="mt-4 grid min-w-0 gap-3 md:grid-cols-2">
+        <label className="grid min-w-0 gap-2 text-sm font-semibold text-[#304942]">
           Prequalified?
-          <select name="prequalified_status" defaultValue={profileDefault(searchProfile, 'prequalified_status')} className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
+          <select name="prequalified_status" defaultValue={profileDefault(searchProfile, 'prequalified_status')} className="min-h-12 w-full min-w-0 rounded-2xl border border-[#dce5df] bg-white px-4">
             {prequalifiedOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
         </label>
-        <label className="grid gap-2 text-sm font-semibold text-[#304942]">
+        <label className="grid min-w-0 gap-2 text-sm font-semibold text-[#304942]">
           Timeline
-          <select name="purchase_timeline" defaultValue={profileDefault(searchProfile, 'purchase_timeline')} className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
+          <select name="purchase_timeline" defaultValue={profileDefault(searchProfile, 'purchase_timeline')} className="min-h-12 w-full min-w-0 rounded-2xl border border-[#dce5df] bg-white px-4">
             {purchaseTimelineOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
         </label>
         <Input name="lender_name" label="Lender / bank optional" defaultValue={profileDefault(searchProfile, 'lender_name')} placeholder="Bank of Guam, Coast360..." />
-        <label className="grid gap-2 text-sm font-semibold text-[#304942]">
+        <label className="grid min-w-0 gap-2 text-sm font-semibold text-[#304942]">
           Buyer type
-          <select name="buyer_status" defaultValue={profileDefault(searchProfile, 'buyer_status')} className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
+          <select name="buyer_status" defaultValue={profileDefault(searchProfile, 'buyer_status')} className="min-h-12 w-full min-w-0 rounded-2xl border border-[#dce5df] bg-white px-4">
             {buyerStatusOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
         </label>
@@ -5810,9 +5814,9 @@ function QualificationFields({ compact = false, defaultBudgetMax, searchProfile 
         {!compact && <Input name="desired_villages" label="Desired villages" defaultValue={profileDefault(searchProfile, 'desired_villages')} placeholder="Dededo, Yigo, Tamuning" />}
         {!compact && <Input name="desired_beds" label="Desired beds" type="number" min="0" step="1" defaultValue={profileDefault(searchProfile, 'desired_beds')} placeholder="3" />}
         {!compact && <Input name="desired_baths" label="Desired baths" type="number" min="0" step="0.5" defaultValue={profileDefault(searchProfile, 'desired_baths')} placeholder="2" />}
-        <label className="grid gap-2 text-sm font-semibold text-[#304942]">
+        <label className="grid min-w-0 gap-2 text-sm font-semibold text-[#304942]">
           Already working with an agent?
-          <select name="already_working_with_agent" defaultValue={profileDefault(searchProfile, 'already_working_with_agent')} className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
+          <select name="already_working_with_agent" defaultValue={profileDefault(searchProfile, 'already_working_with_agent')} className="min-h-12 w-full min-w-0 rounded-2xl border border-[#dce5df] bg-white px-4">
             {agentRelationshipOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
         </label>
