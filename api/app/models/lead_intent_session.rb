@@ -156,7 +156,11 @@ class LeadIntentSession < ApplicationRecord
     trigger = prompt_trigger(latest_event)
     return ineligible_prompt("not_enough_intent") unless trigger
 
+    profile_context = search_profile_prompt_context(trigger)
+    return ineligible_prompt(profile_context[:ineligible_reason]) if profile_context&.key?(:ineligible_reason)
+
     prompt_key = [
+      profile_context&.fetch(:kind) || "lead",
       trigger[:key],
       summary.fetch("unique_listing_view_count", 0),
       summary.fetch("saved_listing_count", 0),
@@ -166,16 +170,20 @@ class LeadIntentSession < ApplicationRecord
     return ineligible_prompt("already_prompted") if last_prompt_key == prompt_key
 
     update_columns(last_prompt_key: prompt_key, updated_at: Time.current)
+    profile_context&.dig(:profile)&.update_column(:last_prompted_at, Time.current) if profile_context&.dig(:profile)&.persisted?
 
     {
       eligible: true,
       key: prompt_key,
       trigger: trigger[:key],
-      title: trigger[:title],
-      body: trigger[:body],
-      cta: "Get matched with an agent",
+      title: profile_context&.dig(:title) || trigger[:title],
+      body: profile_context&.dig(:body) || trigger[:body],
+      cta: profile_context&.dig(:cta) || "Get matched with an agent",
       snooze_hours: prompt_snooze_hours,
-      suggested: suggested_prompt_defaults,
+      profile_prompt: profile_context.present?,
+      profile_prompt_kind: profile_context&.dig(:kind),
+      create_lead_default: profile_context ? false : true,
+      suggested: suggested_prompt_defaults(profile_context&.dig(:profile)),
       summary: public_summary
     }
   end
@@ -348,14 +356,144 @@ class LeadIntentSession < ApplicationRecord
     }
   end
 
-  def suggested_prompt_defaults
+  def search_profile_prompt_context(_trigger)
+    return nil unless user
+
+    profile = user.buyer_search_profile
+    return finish_search_profile_context(profile) unless profile&.complete?
+
+    divergence = search_profile_divergence(profile)
+    return update_search_profile_context(profile, divergence) if divergence
+
+    { ineligible_reason: "complete_search_profile" }
+  end
+
+  def finish_search_profile_context(profile)
+    {
+      kind: "finish_search_profile",
+      profile: profile,
+      title: "Save your search profile once.",
+      body: "Add your budget, villages, timeline, and readiness to your account so Hafa Homes can prefill requests and route your search better.",
+      cta: "Save search profile"
+    }
+  end
+
+  def update_search_profile_context(profile, divergence)
+    {
+      kind: "update_search_profile",
+      profile: profile,
+      title: "Update your search profile?",
+      body: search_profile_divergence_message(divergence),
+      cta: "Update profile"
+    }
+  end
+
+  def search_profile_divergence(profile)
+    village_name = divergent_viewed_village_name(profile)
+    return { kind: :village, village_name: village_name } if village_name.present?
+    return { kind: :price } if viewed_prices_outside_profile?(profile)
+
+    nil
+  end
+
+  def divergent_viewed_village_name(profile)
+    saved_villages = split_village_names(profile.desired_villages)
+    return nil if saved_villages.empty?
+
+    divergent_village = summary.fetch("top_villages", []).find do |village|
+      name = village["name"].to_s.squish
+      village["count"].to_i >= 2 && name.present? && saved_villages.none? { |saved| village_names_match?(saved, name) }
+    end
+    divergent_village&.fetch("name", nil)
+  end
+
+  def viewed_prices_outside_profile?(profile)
+    viewed_min = summary["viewed_price_min"].to_f if summary["viewed_price_min"].present?
+    viewed_max = summary["viewed_price_max"].to_f if summary["viewed_price_max"].present?
+    budget_min = profile.budget_min&.to_f
+    budget_max = profile.budget_max&.to_f
+    return false unless viewed_min || viewed_max
+
+    (budget_min && viewed_max && viewed_max < budget_min * 0.9) || (budget_max && viewed_min && viewed_min > budget_max * 1.1)
+  end
+
+  def search_profile_divergence_message(divergence)
+    if divergence[:kind] == :village && divergence[:village_name].present?
+      return "You have been looking around #{divergence[:village_name]}. Add it to your saved preferences so future requests and agent follow-up match your real search."
+    end
+
+    if divergence[:kind] == :price
+      return "Your recent browsing is outside your saved budget range. Update your profile so Hafa Homes can prefill requests with the right price context."
+    end
+
+    "Your recent browsing looks different from your saved profile. Update your preferences so Hafa Homes can prefill future requests correctly."
+  end
+
+  def suggested_prompt_defaults(profile = nil)
     top_villages = summary.fetch("top_villages", []).map { |village| village["name"] }.compact.first(3)
     {
-      desired_villages: top_villages.join(", ").presence,
-      budget_min: summary["viewed_price_min"],
-      budget_max: summary["viewed_price_max"],
+      preferred_contact_method: profile&.preferred_contact_method,
+      phone: profile&.phone,
+      prequalified_status: profile&.prequalified_status,
+      lender_name: profile&.lender_name,
+      purchase_timeline: profile&.purchase_timeline,
+      desired_villages: suggested_desired_villages(profile, top_villages),
+      budget_min: suggested_budget_min(profile),
+      budget_max: suggested_budget_max(profile),
+      desired_beds: profile&.desired_beds,
+      desired_baths: profile&.desired_baths,
+      buyer_status: profile&.buyer_status,
+      already_working_with_agent: profile&.already_working_with_agent,
+      notes: profile&.notes,
       listing_id: summary["latest_listing_id"]
     }.compact
+  end
+
+  def suggested_desired_villages(profile, top_villages)
+    village_names = split_village_names(profile&.desired_villages)
+    top_villages.each do |village|
+      normalized = village.to_s.squish
+      next if normalized.blank?
+      next if village_names.any? { |saved| village_names_match?(saved, normalized) }
+
+      village_names << normalized
+    end
+    village_names.join(", ").presence
+  end
+
+  def split_village_names(value)
+    value.to_s.split(/[,;]+/).map(&:squish).reject(&:blank?)
+  end
+
+  def village_names_match?(first, second)
+    normalized_first = first.to_s.downcase.squish
+    normalized_second = second.to_s.downcase.squish
+    normalized_first == normalized_second ||
+      normalized_first.include?(normalized_second) ||
+      normalized_second.include?(normalized_first)
+  end
+
+  def suggested_budget_min(profile)
+    combined_budget_bound(profile&.budget_min, summary["viewed_price_min"], :min)
+  end
+
+  def suggested_budget_max(profile)
+    combined_budget_bound(profile&.budget_max, summary["viewed_price_max"], :max)
+  end
+
+  def combined_budget_bound(saved_value, viewed_value, direction)
+    values = [saved_value, viewed_value].filter_map { |value| decimal_value(value) }
+    return nil if values.empty?
+
+    (direction == :min ? values.min : values.max).to_f
+  end
+
+  def decimal_value(value)
+    return nil if value.blank?
+
+    BigDecimal(value.to_s)
+  rescue ArgumentError
+    nil
   end
 
   def ineligible_prompt(reason)

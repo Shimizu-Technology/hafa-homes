@@ -24,7 +24,10 @@ module Api
         leads = filtered_staff_leads
         return if performed?
 
-        leads = leads.order(created_at: :desc).limit(100)
+        leads = ordered_staff_leads(leads)
+        return if performed?
+
+        leads = leads.limit(100)
 
         render json: {
           leads: leads.map { |lead| LeadSerializer.staff_summary(lead) },
@@ -53,7 +56,10 @@ module Api
         assign_requested_agent_from_params(lead, permitted[:requested_agent_id])
         return if performed?
 
-        lead.user = current_user if current_user
+        if current_user
+          lead.user = current_user
+          apply_current_user_search_profile(lead)
+        end
         lead.lead_intent_session = intent_session if intent_session
         lead.queue_request_received_notification = true
 
@@ -127,16 +133,89 @@ module Api
 
       def filtered_staff_leads
         leads = staff_lead_scope
-        assigned_agent_id = params[:assigned_agent_id].presence
-        return leads unless assigned_agent_id
-        return leads.where(assigned_agent_id: nil) if assigned_agent_id == "unassigned"
 
-        unless assigned_agent_id.match?(/\A\d+\z/)
-          render json: { errors: ["assigned_agent_id must be a numeric id or unassigned"] }, status: :unprocessable_entity
-          return Lead.none
+        assigned_agent_id = params[:assigned_agent_id].presence
+        if assigned_agent_id
+          if assigned_agent_id == "unassigned"
+            leads = leads.where(assigned_agent_id: nil)
+          elsif assigned_agent_id.match?(/\A\d+\z/)
+            leads = leads.where(assigned_agent_id: assigned_agent_id.to_i)
+          else
+            render json: { errors: ["assigned_agent_id must be a numeric id or unassigned"] }, status: :unprocessable_entity
+            return Lead.none
+          end
         end
 
-        leads.where(assigned_agent_id: assigned_agent_id.to_i)
+        lead_type = params[:lead_type].presence
+        if lead_type
+          unless lead_type.match?(/\A[a-z_]+\z/)
+            render json: { errors: ["lead_type is invalid"] }, status: :unprocessable_entity
+            return Lead.none
+          end
+
+          leads = leads.where(lead_type: lead_type)
+        end
+
+        status = params[:status].presence
+        if status
+          unless Lead::STATUSES.include?(status)
+            render json: { errors: ["status is invalid"] }, status: :unprocessable_entity
+            return Lead.none
+          end
+
+          leads = leads.where(status: status)
+        end
+
+        search = params[:q].to_s.strip
+        leads = apply_lead_search_filter(leads, search) if search.present?
+        leads
+      end
+
+      def apply_lead_search_filter(leads, search)
+        query = "%#{ActiveRecord::Base.sanitize_sql_like(search.downcase)}%"
+        agent_ids = Agent.where("LOWER(name) LIKE :query OR LOWER(COALESCE(email, '')) LIKE :query", query: query).limit(1_000).pluck(:id)
+        clauses = [
+          "LOWER(leads.name) LIKE :query",
+          "LOWER(leads.email) LIKE :query",
+          "LOWER(COALESCE(leads.phone, '')) LIKE :query",
+          "LOWER(COALESCE(leads.message, '')) LIKE :query",
+          "LOWER(COALESCE(leads.lead_type, '')) LIKE :query",
+          "LOWER(COALESCE(listings.title, '')) LIKE :query",
+          "LOWER(COALESCE(listings.address, '')) LIKE :query",
+          "LOWER(COALESCE(brokerages.name, '')) LIKE :query"
+        ]
+        binds = { query: query }
+
+        if search.match?(/\A\d+\z/)
+          clauses << "leads.id = :lead_id"
+          binds[:lead_id] = search.to_i
+        end
+
+        if agent_ids.any?
+          clauses << "leads.assigned_agent_id IN (:agent_ids)"
+          clauses << "leads.requested_agent_id IN (:agent_ids)"
+          binds[:agent_ids] = agent_ids
+        end
+
+        leads.left_joins(:listing, :brokerage).where(clauses.join(" OR "), binds)
+      end
+
+      def ordered_staff_leads(leads)
+        case params[:sort].presence || "newest"
+        when "newest"
+          leads.order(created_at: :desc)
+        when "oldest"
+          leads.order(created_at: :asc)
+        when "updated"
+          leads.order(updated_at: :desc, created_at: :desc)
+        when "quality_desc"
+          leads.order(quality_score: :desc, created_at: :desc)
+        when "quality_asc"
+          leads.order(quality_score: :asc, created_at: :desc)
+        else
+          render json: { errors: ["sort is invalid"] }, status: :unprocessable_entity
+          Lead.none
+        end
       end
 
       def apply_lead_update_params
@@ -332,6 +411,13 @@ module Api
       def sufficient_lead_intent_context?(session)
         events = session.lead_intent_events
         events.where(event_name: MEANINGFUL_INTENT_EVENTS_FOR_LEAD_LINK).count >= MINIMUM_INTENT_EVENTS_FOR_LEAD_LINK
+      end
+
+      def apply_current_user_search_profile(lead)
+        profile = current_user&.buyer_search_profile
+        return unless profile
+
+        profile.apply_to_lead(lead)
       end
 
       def mark_intent_session_converted(lead, intent_session)

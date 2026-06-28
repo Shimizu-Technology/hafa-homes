@@ -70,6 +70,7 @@ module Api
             lead_notes: lead_notes_for(lead).map { |note| Api::V1::LeadNoteSerializer.summary(note) },
             lead_tasks: lead_tasks_for(lead).map { |task| Api::V1::LeadTaskSerializer.summary(task) },
             lead_activities: lead_activities_for(lead).map { |activity| Api::V1::LeadActivitySerializer.summary(activity) },
+            current_search_profile: buyer_search_profile_json(lead.user&.buyer_search_profile),
             crm_summary: crm_summary(lead)
           )
         end
@@ -151,6 +152,12 @@ module Api
 
         def intent_summary_json(session)
           Api::V1::LeadIntentSessionSerializer.summary(session)
+        end
+
+        def buyer_search_profile_json(profile)
+          return nil unless profile
+
+          Api::V1::BuyerSearchProfileSerializer.summary(profile)
         end
 
         def latest_showing(lead)

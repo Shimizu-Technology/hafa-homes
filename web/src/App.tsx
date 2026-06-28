@@ -470,10 +470,10 @@ type LeadIntentPrompt = {
   body?: string
   cta?: string
   snooze_hours?: number
-  suggested?: {
-    desired_villages?: string
-    budget_min?: number
-    budget_max?: number
+  profile_prompt?: boolean
+  profile_prompt_kind?: 'finish_search_profile' | 'update_search_profile'
+  create_lead_default?: boolean
+  suggested?: Partial<SearchProfile> & {
     listing_id?: number
   }
   summary?: LeadIntentSummary
@@ -573,6 +573,7 @@ type Lead = {
   lead_tasks?: LeadTask[]
   lead_activities?: LeadActivity[]
   crm_summary?: CrmSummary
+  current_search_profile?: SearchProfile | null
   listing?: { id: number; title: string; address?: string; price: number; listing_kind: 'sale' | 'rent'; property_type?: string; village: string; primary_photo_url?: string; brokerage?: Brokerage | null; agent?: Agent | null } | null
   brokerage?: Brokerage | null
   requested_agent?: Agent | null
@@ -636,6 +637,55 @@ type SavedListingsResponse = { listing_ids: number[]; listings: Listing[] }
 type SaveListingResponse = { listing: Listing; listing_id: number; saved: boolean }
 
 type MeResponse = { user: CurrentUser }
+
+type SearchProfile = {
+  id?: number
+  user_id?: number
+  brokerage_id?: number
+  preferred_contact_method?: 'phone' | 'text' | 'email'
+  phone?: string
+  prequalified_status?: string
+  prequalified_status_label?: string
+  lender_name?: string
+  purchase_timeline?: string
+  purchase_timeline_label?: string
+  budget_min?: number
+  budget_max?: number
+  budget_range_label?: string
+  desired_villages?: string
+  desired_beds?: number
+  desired_baths?: number
+  buyer_status?: string
+  buyer_status_label?: string
+  already_working_with_agent?: string
+  already_working_with_agent_label?: string
+  notes?: string
+  completed_at?: string
+  completion_status?: 'complete' | 'incomplete'
+  completion_percentage?: number
+  completion_missing_fields?: string[]
+  qualification_summary?: string
+  last_prompted_at?: string
+  created_at?: string
+  updated_at?: string
+}
+
+type SearchProfileResponse = { search_profile: SearchProfile }
+type SearchProfilePayload = Partial<{
+  preferred_contact_method: string
+  phone: string
+  prequalified_status: string
+  lender_name: string
+  purchase_timeline: string
+  budget_min: string
+  budget_max: string
+  desired_villages: string
+  desired_beds: string
+  desired_baths: string
+  buyer_status: string
+  already_working_with_agent: string
+  notes: string
+}>
 
 type LeadPayload = {
   lead_type: string
@@ -769,6 +819,22 @@ async function updateMe(payload: Partial<Pick<CurrentUser, 'first_name' | 'last_
   return response.json()
 }
 
+async function fetchSearchProfile(): Promise<SearchProfileResponse> {
+  const response = await fetch(`${API_URL}/api/v1/me/search_profile`, { headers: await authHeaders() })
+  if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to load search profile'), response.status)
+  return response.json()
+}
+
+async function updateSearchProfile(payload: SearchProfilePayload): Promise<SearchProfileResponse> {
+  const response = await fetch(`${API_URL}/api/v1/me/search_profile`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+    body: JSON.stringify({ search_profile: payload }),
+  })
+  if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to update search profile'), response.status)
+  return response.json()
+}
+
 async function deleteCurrentAccount(): Promise<{ deleted: boolean }> {
   const response = await fetch(`${API_URL}/api/v1/me`, { method: 'DELETE', headers: await authHeaders() })
   if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to delete account'), response.status)
@@ -781,7 +847,7 @@ async function fetchSyncRuns(): Promise<SyncRunsResponse> {
   return response.json()
 }
 
-async function fetchLeads(params: { assigned_agent_id?: string } = {}): Promise<LeadsResponse> {
+async function fetchLeads(params: { assigned_agent_id?: string; lead_type?: string; status?: string; q?: string; sort?: string } = {}): Promise<LeadsResponse> {
   const query = buildQuery(params)
   const response = await fetch(`${API_URL}/api/v1/leads${query ? `?${query}` : ''}`, { headers: await authHeaders() })
   if (!response.ok) throw new Error('Unable to load leads')
@@ -1026,6 +1092,49 @@ async function submitLead(payload: LeadPayload, retryAfterIntentReset: boolean):
   return response.json()
 }
 
+function searchProfilePayloadFromForm(form: FormData): SearchProfilePayload {
+  return {
+    preferred_contact_method: String(form.get('preferred_contact_method') || '').trim(),
+    phone: String(form.get('phone') || '').trim(),
+    prequalified_status: String(form.get('prequalified_status') || '').trim(),
+    lender_name: String(form.get('lender_name') || '').trim(),
+    purchase_timeline: String(form.get('purchase_timeline') || '').trim(),
+    budget_min: String(form.get('budget_min') || '').trim(),
+    budget_max: String(form.get('budget_max') || '').trim(),
+    desired_villages: String(form.get('desired_villages') || '').trim(),
+    desired_beds: String(form.get('desired_beds') || '').trim(),
+    desired_baths: String(form.get('desired_baths') || '').trim(),
+    buyer_status: String(form.get('buyer_status') || '').trim(),
+    already_working_with_agent: String(form.get('already_working_with_agent') || '').trim(),
+    notes: String(form.get('notes') || form.get('qualification_notes') || '').trim(),
+  }
+}
+
+function profileDefault(profile: SearchProfile | undefined | null, field: keyof SearchProfile, fallback = '') {
+  const value = profile?.[field]
+  return value === undefined || value === null ? fallback : String(value)
+}
+
+function mergedPromptProfile(prompt: LeadIntentPrompt, searchProfile?: SearchProfile | null): SearchProfile {
+  return { ...(searchProfile || {}), ...(prompt.suggested || {}) }
+}
+
+function leadFieldsFromSearchProfile(profile?: SearchProfile | null) {
+  return {
+    prequalified_status: profileDefault(profile, 'prequalified_status'),
+    lender_name: profileDefault(profile, 'lender_name'),
+    purchase_timeline: profileDefault(profile, 'purchase_timeline'),
+    budget_min: profileDefault(profile, 'budget_min'),
+    budget_max: profileDefault(profile, 'budget_max'),
+    desired_villages: profileDefault(profile, 'desired_villages'),
+    desired_beds: profileDefault(profile, 'desired_beds'),
+    desired_baths: profileDefault(profile, 'desired_baths'),
+    buyer_status: profileDefault(profile, 'buyer_status'),
+    already_working_with_agent: profileDefault(profile, 'already_working_with_agent'),
+    qualification_notes: profileDefault(profile, 'notes'),
+  }
+}
+
 const preferredTimeOptions = [
   { value: 'morning', label: 'Morning' },
   { value: 'afternoon', label: 'Afternoon' },
@@ -1085,6 +1194,33 @@ const leadStatuses: Array<{ value: LeadStatus; label: string }> = [
   { value: 'spam', label: 'Spam' },
   { value: 'archived', label: 'Archived' },
 ]
+
+const leadTypeOptions = [
+  { value: 'showing_request', label: 'Showing request' },
+  { value: 'price_tracker', label: 'Price watch request' },
+  { value: 'search_assist', label: 'Search assist' },
+  { value: 'general_inquiry', label: 'General inquiry' },
+]
+
+const leadSortOptions = [
+  { value: 'newest', label: 'Newest first' },
+  { value: 'oldest', label: 'Oldest first' },
+  { value: 'updated', label: 'Recently updated' },
+  { value: 'quality_desc', label: 'Highest quality' },
+  { value: 'quality_asc', label: 'Lowest quality' },
+]
+
+function leadTypeLabel(value?: string) {
+  const option = leadTypeOptions.find((item) => item.value === value)
+  return option?.label ?? (value ? value.replaceAll('_', ' ') : 'Lead')
+}
+
+function leadTypeBadgeClasses(value?: string) {
+  if (value === 'showing_request') return 'bg-[#e9f5ef] text-[#0f705e]'
+  if (value === 'price_tracker') return 'bg-[#fff3d8] text-[#7a4b00]'
+  if (value === 'search_assist') return 'bg-[#e8f1ff] text-[#164a7a]'
+  return 'bg-[#edf0ec] text-[#53645f]'
+}
 
 function formatDateTime(value?: string) {
   if (!value) return 'Not recorded'
@@ -1275,11 +1411,39 @@ function App() {
 function ProgressiveLeadPrompt() {
   const [prompt, setPrompt] = useState<LeadIntentPrompt | null>(null)
   const [dismissedKey, setDismissedKey] = useState<string | null>(null)
-  const mutation = useMutation({ mutationFn: createLead })
+  const mutation = useMutation({
+    mutationFn: async (variables: { profilePayload?: SearchProfilePayload; leadPayload?: LeadPayload; createLeadRequested: boolean; profilePrompt: boolean }) => {
+      const profileResponse = variables.profilePrompt && variables.profilePayload ? await updateSearchProfile(variables.profilePayload) : null
+      if (variables.createLeadRequested && variables.leadPayload) {
+        try {
+          const leadResponse = await createLead(variables.leadPayload)
+          return { search_profile: profileResponse?.search_profile, lead: leadResponse.lead, profile_only: false, follow_up_failed: false }
+        } catch (leadError) {
+          if (!profileResponse) throw leadError
+
+          return {
+            search_profile: profileResponse.search_profile,
+            lead: undefined,
+            profile_only: true,
+            follow_up_failed: true,
+            follow_up_error: displayErrorMessage(leadError, 'The agent follow-up request did not send.'),
+          }
+        }
+      }
+
+      return { search_profile: profileResponse?.search_profile, lead: undefined, profile_only: true, follow_up_failed: false }
+    },
+  })
   const { isClerkEnabled, isSignedIn, userId } = useAuthContext()
   const { data: meData } = useQuery({
     queryKey: ['me', userId, 'progressive-lead-prompt'],
     queryFn: fetchMe,
+    enabled: Boolean(prompt) && isClerkEnabled && isSignedIn && Boolean(userId),
+    retry: false,
+  })
+  const { data: searchProfileData, refetch: refetchSearchProfile } = useQuery({
+    queryKey: ['me', userId, 'search-profile', 'progressive-lead-prompt'],
+    queryFn: fetchSearchProfile,
     enabled: Boolean(prompt) && isClerkEnabled && isSignedIn && Boolean(userId),
     retry: false,
   })
@@ -1289,6 +1453,7 @@ function ProgressiveLeadPrompt() {
     enabled: Boolean(prompt) && isClerkEnabled && isSignedIn,
   })
   const profile = meData?.user
+  const searchProfile = searchProfileData?.search_profile
 
   useEffect(() => {
     function handlePrompt(event: Event) {
@@ -1310,6 +1475,8 @@ function ProgressiveLeadPrompt() {
   const selectedAgent = agentsData?.agents.find((agent) => agent.id === selectedAgentId)
   const promptTitle = activePrompt.title || 'Want an agent to send matching homes?'
   const promptBody = activePrompt.body || 'Share a few details and the brokerage team can follow up with useful Guam listings.'
+  const promptProfile = mergedPromptProfile(activePrompt, searchProfile)
+  const isProfilePrompt = Boolean(activePrompt.profile_prompt)
 
   function handleDismiss(reason = 'dismissed') {
     setDismissedKey(activePrompt.key || null)
@@ -1324,30 +1491,29 @@ function ProgressiveLeadPrompt() {
     const email = String(form.get('email') || profile?.email || '').trim()
     if (!email) return
 
-    mutation.mutate({
+    const profilePrompt = Boolean(activePrompt.profile_prompt)
+    const profilePayload = searchProfilePayloadFromForm(form)
+    const createLeadRequested = !profilePrompt || form.get('agent_help_requested') === 'on'
+    const leadProfileFields = leadFieldsFromSearchProfile({ ...searchProfilePayloadFromForm(form), notes: String(form.get('notes') || form.get('qualification_notes') || '') } as SearchProfile)
+    const leadPayload: LeadPayload = {
       listing_id: activePrompt.suggested?.listing_id,
       lead_type: 'search_assist',
       name: name || 'Hafa Homes searcher',
       email,
       phone: String(form.get('phone') || profile?.phone || '').trim(),
-      preferred_contact_method: 'email',
+      preferred_contact_method: String(form.get('preferred_contact_method') || profile?.preferred_contact_method || 'email'),
       source_campaign: `progressive_prompt:${activePrompt.trigger || 'search_intent'}`,
       source_url: typeof window !== 'undefined' ? window.location.href : '',
       requested_agent_id: selectedAgent?.id,
-      prequalified_status: String(form.get('prequalified_status') || ''),
-      purchase_timeline: String(form.get('purchase_timeline') || ''),
-      budget_min: String(form.get('budget_min') || ''),
-      budget_max: String(form.get('budget_max') || ''),
-      desired_villages: String(form.get('desired_villages') || ''),
-      desired_beds: String(form.get('desired_beds') || ''),
-      desired_baths: String(form.get('desired_baths') || ''),
-      buyer_status: String(form.get('buyer_status') || ''),
-      already_working_with_agent: String(form.get('already_working_with_agent') || ''),
+      ...leadProfileFields,
       intent_session_token: currentLeadIntentSessionToken(),
       message: `Progressive search assist prompt: ${activePrompt.trigger || 'search_intent'}`,
-    }, {
+    }
+
+    mutation.mutate({ profilePayload, leadPayload, createLeadRequested, profilePrompt }, {
       onSuccess: () => {
         setDismissedKey(activePrompt.key || null)
+        if (profilePrompt) void refetchSearchProfile()
       },
     })
   }
@@ -1357,8 +1523,15 @@ function ProgressiveLeadPrompt() {
       {mutation.isSuccess ? (
         <div className="text-center">
           <CheckCircle2 className="mx-auto text-[#0f705e]" size={36} />
-          <h2 className="mt-3 text-2xl font-semibold tracking-[-0.05em]">Search details sent</h2>
-          <p className="mt-2 text-sm leading-6 text-[#66746f]">The brokerage team can use your search context to follow up with better matches.</p>
+          <h2 className="mt-3 text-2xl font-semibold tracking-[-0.05em]">{mutation.data?.follow_up_failed || mutation.data?.profile_only ? 'Search profile saved' : 'Search details sent'}</h2>
+          <p className="mt-2 text-sm leading-6 text-[#66746f]">
+            {mutation.data?.follow_up_failed
+              ? 'Your saved preferences can now prefill future requests. The optional agent follow-up did not send, so please request a showing or price watch from a listing if you still want the team to reach out.'
+              : mutation.data?.profile_only
+                ? 'Your saved preferences can now prefill future requests across Hafa Homes.'
+                : 'The brokerage team can use your search context to follow up with better matches.'}
+          </p>
+          {mutation.data?.follow_up_failed && <p className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm font-semibold leading-6 text-amber-900">Agent follow-up was not sent: {mutation.data.follow_up_error}</p>}
           <button onClick={() => setPrompt(null)} className="mt-4 min-h-11 w-full rounded-2xl bg-[#0f3d35] px-4 text-sm font-bold text-white">Done</button>
         </div>
       ) : (
@@ -1377,41 +1550,60 @@ function ProgressiveLeadPrompt() {
           <div className="mt-4 grid gap-3 md:grid-cols-2">
             <Input name="email" label="Email" type="email" defaultValue={profile?.email || ''} required />
             <Input name="name" label="Name" defaultValue={profile?.full_name || ''} />
-            <Input name="phone" label="Phone optional" defaultValue={profile?.phone || '+1671'} inputMode="tel" />
+            <Input name="phone" label="Phone optional" defaultValue={profileDefault(promptProfile, 'phone', profile?.phone || '+1671')} inputMode="tel" />
+            <label className="grid gap-2 text-sm font-semibold text-[#304942]">
+              Preferred contact
+              <select name="preferred_contact_method" defaultValue={profileDefault(promptProfile, 'preferred_contact_method', profile?.preferred_contact_method || 'email')} className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
+                {preferredContactOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+            </label>
             <label className="grid gap-2 text-sm font-semibold text-[#304942]">
               Timeline
-              <select name="purchase_timeline" defaultValue="" className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
+              <select name="purchase_timeline" defaultValue={profileDefault(promptProfile, 'purchase_timeline')} className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
                 {purchaseTimelineOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
               </select>
             </label>
-            <Input name="desired_villages" label="Desired villages" defaultValue={activePrompt.suggested?.desired_villages || ''} placeholder="Dededo, Yigo, Tamuning" />
+            <Input name="desired_villages" label="Desired villages" defaultValue={profileDefault(promptProfile, 'desired_villages')} placeholder="Dededo, Yigo, Tamuning" />
             <label className="grid gap-2 text-sm font-semibold text-[#304942]">
               Prequalified?
-              <select name="prequalified_status" defaultValue="" className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
+              <select name="prequalified_status" defaultValue={profileDefault(promptProfile, 'prequalified_status')} className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
                 {prequalifiedOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
               </select>
             </label>
-            <Input name="budget_min" label="Budget min optional" type="number" min="0" step="1000" defaultValue={activePrompt.suggested?.budget_min ? String(Math.round(activePrompt.suggested.budget_min)) : ''} />
-            <Input name="budget_max" label="Budget max optional" type="number" min="0" step="1000" defaultValue={activePrompt.suggested?.budget_max ? String(Math.round(activePrompt.suggested.budget_max)) : ''} />
-            <Input name="desired_beds" label="Beds optional" type="number" min="0" step="1" />
-            <Input name="desired_baths" label="Baths optional" type="number" min="0" step="0.5" />
+            <Input name="lender_name" label="Lender / bank optional" defaultValue={profileDefault(promptProfile, 'lender_name')} placeholder="Bank of Guam, Coast360..." />
+            <Input name="budget_min" label="Budget min optional" type="number" min="0" step="1000" defaultValue={profileDefault(promptProfile, 'budget_min')} />
+            <Input name="budget_max" label="Budget max optional" type="number" min="0" step="1000" defaultValue={profileDefault(promptProfile, 'budget_max')} />
+            <Input name="desired_beds" label="Beds optional" type="number" min="0" step="1" defaultValue={profileDefault(promptProfile, 'desired_beds')} />
+            <Input name="desired_baths" label="Baths optional" type="number" min="0" step="0.5" defaultValue={profileDefault(promptProfile, 'desired_baths')} />
             <label className="grid gap-2 text-sm font-semibold text-[#304942]">
               Buyer type
-              <select name="buyer_status" defaultValue="" className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
+              <select name="buyer_status" defaultValue={profileDefault(promptProfile, 'buyer_status')} className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
                 {buyerStatusOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
               </select>
             </label>
             <label className="grid gap-2 text-sm font-semibold text-[#304942]">
               Working with an agent?
-              <select name="already_working_with_agent" defaultValue="" className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
+              <select name="already_working_with_agent" defaultValue={profileDefault(promptProfile, 'already_working_with_agent')} className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
                 {agentRelationshipOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
               </select>
             </label>
           </div>
 
-          {mutation.isError && <p className="mt-3 text-sm font-semibold text-red-700">{displayErrorMessage(mutation.error, 'Unable to send search details right now.')}</p>}
+          <label className="mt-3 grid gap-2 text-sm font-semibold text-[#304942]">
+            Notes for your search profile
+            <textarea name="notes" rows={3} defaultValue={profileDefault(promptProfile, 'notes')} className="rounded-2xl border border-[#dce5df] bg-white px-4 py-3" placeholder="Relocating this summer, needs pet-friendly, prefers central Guam..." />
+          </label>
+
+          {isProfilePrompt && (
+            <label className="mt-3 flex items-start gap-3 rounded-2xl bg-[#e9f5ef] p-3 text-sm font-semibold leading-6 text-[#304942]">
+              <input name="agent_help_requested" type="checkbox" className="mt-1 h-4 w-4 rounded border-[#0f705e] text-[#0f705e]" />
+              <span>Also ask a Hafa Homes agent to follow up using this search context.</span>
+            </label>
+          )}
+
+          {mutation.isError && <p className="mt-3 text-sm font-semibold text-red-700">{displayErrorMessage(mutation.error, 'Unable to save search details right now.')}</p>}
           <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto]">
-            <button disabled={mutation.isPending} className="min-h-12 rounded-2xl bg-[#0f3d35] px-5 text-sm font-bold text-white disabled:opacity-60">{mutation.isPending ? 'Sending...' : activePrompt.cta || 'Get matched with an agent'}</button>
+            <button disabled={mutation.isPending} className="min-h-12 rounded-2xl bg-[#0f3d35] px-5 text-sm font-bold text-white disabled:opacity-60">{mutation.isPending ? 'Saving...' : activePrompt.cta || 'Get matched with an agent'}</button>
             <button type="button" onClick={() => handleDismiss('not_now')} className="min-h-12 rounded-2xl bg-[#edf0ec] px-5 text-sm font-bold text-[#304942]">Not now</button>
           </div>
         </form>
@@ -1968,9 +2160,9 @@ function ListingCard({ listing }: { listing: Listing }) {
   )
 
   return (
-    <article className="group overflow-hidden rounded-[1.7rem] border border-black/5 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[#0f3d35]/10 md:grid md:grid-cols-[240px_1fr]">
+    <article className="group overflow-hidden rounded-[1.7rem] border border-black/5 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[#0f3d35]/10 md:grid md:min-h-[260px] md:grid-cols-[260px_1fr]">
       <Link to={`/listings/${listing.id}`} onClick={() => captureAnalyticsEvent('listing_opened', { listing_id: listing.id, source: 'listing_image' })} className="block overflow-hidden">
-        <img src={listing.primary_photo_url} onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = FALLBACK_LISTING_IMAGE }} alt="" className="h-56 w-full object-cover transition duration-500 group-hover:scale-105 md:h-full" />
+        <img src={listing.primary_photo_url} onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = FALLBACK_LISTING_IMAGE }} alt="" className="h-56 w-full object-cover transition duration-500 group-hover:scale-105 md:h-[260px]" />
       </Link>
       <div className="p-5">
         <div className="flex items-start justify-between gap-4">
@@ -2144,7 +2336,7 @@ function ListingDetailPage() {
                 <div className="rounded-[2rem] border border-black/5 bg-white p-6 shadow-xl shadow-[#0f3d35]/10">
                   <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#7b8a84]">Request info</p>
                   <h2 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">Ask about this property</h2>
-                  <p className="mt-3 text-sm leading-6 text-[#66746f]">Schedule a tour, track price changes, or save this listing for later.</p>
+                  <p className="mt-3 text-sm leading-6 text-[#66746f]">Schedule a tour, ask about price changes, or save this listing for later.</p>
                   <button onClick={() => {
                     setLeadOpen(true)
                     captureAnalyticsEvent('lead_modal_opened', { listing_id: listing.id, source: 'desktop_aside' })
@@ -2154,7 +2346,7 @@ function ListingDetailPage() {
                     setPriceTrackerOpen(true)
                     captureAnalyticsEvent('price_tracker_opened', { listing_id: listing.id, source: 'desktop_aside' })
                     recordLeadIntentEvent('price_tracker_opened', { listing_id: listing.id, source: 'web', metadata: { surface: 'desktop_aside', listing_kind: listing.listing_kind } })
-                  }} className="mt-3 w-full rounded-2xl border border-[#d7ded9] px-4 py-3 text-sm font-bold text-[#0f3d35]">Add price alert</button>
+                  }} className="mt-3 w-full rounded-2xl border border-[#d7ded9] px-4 py-3 text-sm font-bold text-[#0f3d35]">Ask about price changes</button>
                   {isSignedIn ? (
                     <button onClick={() => saveMutation.mutate()} className="mt-3 w-full rounded-2xl border border-[#d7ded9] px-4 py-3 text-sm font-bold text-[#0f3d35]">{saved ? 'Remove saved home' : 'Save home'}</button>
                   ) : (
@@ -2177,7 +2369,7 @@ function ListingDetailPage() {
               setPriceTrackerOpen(true)
               captureAnalyticsEvent('price_tracker_opened', { listing_id: listing.id, source: 'mobile_action_bar' })
               recordLeadIntentEvent('price_tracker_opened', { listing_id: listing.id, source: 'web', metadata: { surface: 'mobile_action_bar', listing_kind: listing.listing_kind } })
-            }} className="flex min-h-16 flex-col items-center justify-center gap-1"><TrendingUp size={23} /> Price alert</button>
+            }} className="flex min-h-16 flex-col items-center justify-center gap-1"><TrendingUp size={23} /> Price</button>
             {isSignedIn ? (
               <button onClick={() => {
                 captureAnalyticsEvent('listing_saved_toggled', { listing_id: listing.id, saved: !saved })
@@ -2567,7 +2759,14 @@ function AccountPage() {
     enabled: isClerkEnabled && isSignedIn && Boolean(userId),
     retry: false,
   })
+  const { data: searchProfileData, isLoading: isSearchProfileLoading, isError: isSearchProfileError, error: searchProfileError, refetch: refetchSearchProfile } = useQuery({
+    queryKey: ['me', userId, 'search-profile', 'account'],
+    queryFn: fetchSearchProfile,
+    enabled: isClerkEnabled && isSignedIn && Boolean(userId),
+    retry: false,
+  })
   const profileMutation = useMutation({ mutationFn: updateMe, onSuccess: () => refetch() })
+  const searchProfileMutation = useMutation({ mutationFn: updateSearchProfile, onSuccess: () => refetchSearchProfile() })
   const deleteMutation = useMutation({
     mutationFn: deleteCurrentAccount,
     onSuccess: async () => {
@@ -2665,10 +2864,12 @@ function AccountPage() {
           </div>
         </form>
 
+        <SearchProfileCard key={searchProfileData?.search_profile?.updated_at || searchProfileData?.search_profile?.id || 'new-search-profile'} profile={searchProfileData?.search_profile} user={user} mutation={searchProfileMutation} isLoading={isSearchProfileLoading} error={isSearchProfileError ? searchProfileError : null} />
+
         <div className="rounded-[2rem] border border-red-200 bg-[#fff8f6] p-6 shadow-sm">
           <p className="text-sm font-semibold uppercase tracking-[0.2em] text-red-700">Delete account</p>
           <h2 className="mt-3 text-3xl font-semibold tracking-[-0.05em] text-[#491d1d]">Permanently remove your account.</h2>
-          <p className="mt-3 text-sm leading-6 text-[#7c4a43]">This deletes your Clerk/Hafa Homes account and synced saved homes. Showing/contact requests are preserved for brokerage follow-up, but they will no longer be linked to your account.</p>
+          <p className="mt-3 text-sm leading-6 text-[#7c4a43]">This deletes your Clerk/Hafa Homes account, synced saved homes, and saved search profile. Showing/contact requests are preserved for brokerage follow-up, but they will no longer be linked to your account.</p>
 
           {!deletePanelOpen ? (
             <button type="button" onClick={() => setDeletePanelOpen(true)} className="mt-5 rounded-full bg-red-700 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-red-900/10">Delete account</button>
@@ -2697,6 +2898,92 @@ function AccountPage() {
   )
 }
 
+type SearchProfileMutation = { mutate: (payload: SearchProfilePayload) => void; isPending: boolean; isError: boolean; isSuccess: boolean; error: unknown }
+
+function SearchProfileCard({ profile, user, mutation, isLoading = false, error = null }: { profile?: SearchProfile; user?: CurrentUser; mutation: SearchProfileMutation; isLoading?: boolean; error?: unknown }) {
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    mutation.mutate({
+      ...searchProfilePayloadFromForm(new FormData(event.currentTarget)),
+      preferred_contact_method: user?.preferred_contact_method ?? profileDefault(profile, 'preferred_contact_method', 'email'),
+      phone: user ? (user.phone || '') : profileDefault(profile, 'phone'),
+    })
+  }
+
+  if (isLoading) {
+    return (
+      <section className="rounded-[2rem] bg-[#102f2a] p-6 text-white shadow-2xl shadow-[#0f3d35]/15 lg:col-span-2">
+        <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#bdebdc]">Search profile</p>
+        <h2 className="mt-3 text-3xl font-semibold tracking-[-0.05em]">Loading saved search preferences.</h2>
+        <p className="mt-3 text-sm leading-6 text-white/70">Your contact details are ready above. This search profile section will appear as soon as saved preferences load.</p>
+      </section>
+    )
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="rounded-[2rem] bg-[#102f2a] p-6 text-white shadow-2xl shadow-[#0f3d35]/15 lg:col-span-2">
+      <div className="grid gap-5 lg:grid-cols-[0.85fr_1.15fr]">
+        <div>
+          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#bdebdc]">Search profile</p>
+          <h2 className="mt-3 text-3xl font-semibold tracking-[-0.05em]">Save what you are looking for once.</h2>
+          <p className="mt-3 text-sm leading-6 text-white/70">Your contact details above handle phone and preferred contact. These search preferences prefill showing requests, price watch requests, and future prompts.</p>
+          {Boolean(error) && <p className="mt-3 rounded-2xl bg-[#fff8f6] p-3 text-xs font-bold leading-5 text-red-700">{displayErrorMessage(error, 'Unable to load your saved search profile. You can still edit contact details above and retry this section later.')}</p>}
+          <div className="mt-5 rounded-3xl bg-white/10 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-xs font-bold uppercase tracking-[0.16em] text-white/55">Completion</span>
+              <span className="rounded-full bg-white px-3 py-1 text-xs font-black uppercase tracking-[0.12em] text-[#0f3d35]">{profile?.completion_status === 'complete' ? 'Complete' : `${profile?.completion_percentage ?? 0}%`}</span>
+            </div>
+            <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/15">
+              <div className="h-full rounded-full bg-[#f5c16c]" style={{ width: `${profile?.completion_percentage ?? 0}%` }} />
+            </div>
+            <p className="mt-3 text-xs font-semibold leading-5 text-white/62">{profile?.qualification_summary || 'Add timeline, search criteria, and readiness. Contact preference comes from your profile above.'}</p>
+          </div>
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-2">
+          <label className="grid gap-2 text-sm font-semibold text-white/86">
+            Timeline
+            <select name="purchase_timeline" defaultValue={profileDefault(profile, 'purchase_timeline')} className="min-h-12 rounded-2xl border border-white/10 bg-white px-4 text-[#17211f]">
+              {purchaseTimelineOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+          </label>
+          <label className="grid gap-2 text-sm font-semibold text-white/86">
+            Prequalified?
+            <select name="prequalified_status" defaultValue={profileDefault(profile, 'prequalified_status')} className="min-h-12 rounded-2xl border border-white/10 bg-white px-4 text-[#17211f]">
+              {prequalifiedOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+          </label>
+          <Input name="lender_name" label="Lender / bank optional" defaultValue={profileDefault(profile, 'lender_name')} labelClassName="!text-white/86" className="border-white/10 bg-white text-[#17211f]" />
+          <Input name="desired_villages" label="Desired villages" defaultValue={profileDefault(profile, 'desired_villages')} placeholder="Dededo, Yigo, Tamuning" labelClassName="!text-white/86" className="border-white/10 bg-white text-[#17211f]" />
+          <Input name="budget_min" label="Budget min" type="number" min="0" step="1000" defaultValue={profileDefault(profile, 'budget_min')} labelClassName="!text-white/86" className="border-white/10 bg-white text-[#17211f]" />
+          <Input name="budget_max" label="Budget max" type="number" min="0" step="1000" defaultValue={profileDefault(profile, 'budget_max')} labelClassName="!text-white/86" className="border-white/10 bg-white text-[#17211f]" />
+          <Input name="desired_beds" label="Beds" type="number" min="0" step="1" defaultValue={profileDefault(profile, 'desired_beds')} labelClassName="!text-white/86" className="border-white/10 bg-white text-[#17211f]" />
+          <Input name="desired_baths" label="Baths" type="number" min="0" step="0.5" defaultValue={profileDefault(profile, 'desired_baths')} labelClassName="!text-white/86" className="border-white/10 bg-white text-[#17211f]" />
+          <label className="grid gap-2 text-sm font-semibold text-white/86">
+            Buyer type
+            <select name="buyer_status" defaultValue={profileDefault(profile, 'buyer_status')} className="min-h-12 rounded-2xl border border-white/10 bg-white px-4 text-[#17211f]">
+              {buyerStatusOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+          </label>
+          <label className="grid gap-2 text-sm font-semibold text-white/86">
+            Working with an agent?
+            <select name="already_working_with_agent" defaultValue={profileDefault(profile, 'already_working_with_agent')} className="min-h-12 rounded-2xl border border-white/10 bg-white px-4 text-[#17211f]">
+              {agentRelationshipOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+          </label>
+          <label className="grid gap-2 text-sm font-semibold text-white/86 md:col-span-2">
+            Notes
+            <textarea name="notes" rows={3} defaultValue={profileDefault(profile, 'notes')} className="rounded-2xl border border-white/10 bg-white px-4 py-3 text-[#17211f]" placeholder="Relocating, school zone, pet-friendly, commute, or must-haves..." />
+          </label>
+          {mutation.isError && <p className="text-sm font-semibold text-[#ffd6d6] md:col-span-2">{displayErrorMessage(mutation.error, 'Unable to save search profile right now.')}</p>}
+          {mutation.isSuccess && <p className="text-sm font-semibold text-[#bdebdc] md:col-span-2">Search profile saved.</p>}
+          <button disabled={mutation.isPending} className="min-h-12 rounded-2xl bg-[#f5c16c] px-5 text-sm font-black text-[#102f2a] disabled:opacity-60 md:col-span-2">{mutation.isPending ? 'Saving...' : 'Save search profile'}</button>
+        </div>
+      </div>
+    </form>
+  )
+}
+
 function RequestsPage() {
   const { isClerkEnabled, isSignedIn, isLoading, userId } = useAuthContext()
   const { data, isLoading: requestsLoading, isError } = useQuery({ queryKey: ['my-leads', userId], queryFn: fetchMyLeads, enabled: isClerkEnabled && isSignedIn })
@@ -2716,14 +3003,14 @@ function RequestsPage() {
 
   return (
     <Shell compact>
-      <ContentHeader kicker="My requests" title="Your showing requests and price alerts." description="Track what you submitted, who is assigned, and when confirmed showings are scheduled." />
+      <ContentHeader kicker="My requests" title="Your showing and price watch requests." description="Track what you submitted, who is assigned, and when confirmed showings are scheduled." />
       <section className="mx-auto max-w-6xl px-5 pb-10">
         {requestsLoading && <StateCard>Loading requests...</StateCard>}
         {isError && <StateCard tone="error">Unable to load your requests.</StateCard>}
         <div className="grid gap-4">
           {requests.map((lead) => <ConsumerRequestCard key={lead.id} lead={lead} />)}
         </div>
-        {requests.length === 0 && !requestsLoading && <StateCard>No requests yet. Request a showing or save a price alert from any listing.</StateCard>}
+        {requests.length === 0 && !requestsLoading && <StateCard>No requests yet. Request a showing or send a price watch request from any listing.</StateCard>}
       </section>
     </Shell>
   )
@@ -2737,7 +3024,7 @@ function ConsumerRequestCard({ lead }: { lead: Lead }) {
       <div className="p-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#0f705e]">{lead.lead_type.replaceAll('_', ' ')}</p>
+            <p className={`inline-flex rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.16em] ${leadTypeBadgeClasses(lead.lead_type)}`}>{leadTypeLabel(lead.lead_type)}</p>
             <h2 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">{lead.listing?.title ?? 'Hafa Homes request'}</h2>
             <p className="mt-2 text-sm font-semibold text-[#66746f]">Submitted {formatDateTime(lead.created_at)}</p>
           </div>
@@ -2777,13 +3064,13 @@ function PrivacyPage() {
       />
       <section className="mx-auto max-w-4xl px-5 pb-12">
         <div className="grid gap-5 rounded-[2rem] bg-white p-6 text-sm leading-7 text-[#3d4d48] shadow-sm md:p-8">
-          <p><strong className="text-[#17211f]">Information we collect.</strong> Hafa Homes may collect contact details you submit through showing requests, price alerts, saved searches, or similar forms, plus first-party app usage information such as listing views, saved homes, search filters, agent selections, and request-form interactions.</p>
+          <p><strong className="text-[#17211f]">Information we collect.</strong> Hafa Homes may collect contact details you submit through showing requests, price watch requests, saved searches, or similar forms, plus first-party app usage information such as listing views, saved homes, search filters, agent selections, and request-form interactions.</p>
           <p><strong className="text-[#17211f]">How we use it.</strong> We use submitted information and first-party search activity to respond to inquiries, coordinate real estate follow-up, suggest more relevant listings, improve listing search, troubleshoot the app, and understand aggregate product usage.</p>
-          <p><strong className="text-[#17211f]">Saved listings.</strong> Signed-in saved homes are stored with your Hafa Homes account so they can sync across web and mobile. The native app may also cache listing details locally on your device for performance.</p>
-          <p><strong className="text-[#17211f]">Account deletion.</strong> Signed-in users can delete their account from the Account screen in the web app or the More screen in the mobile app. Deleting an account removes synced saved homes and disconnects account links from request history while preserving submitted showing/contact requests for brokerage follow-up.</p>
+          <p><strong className="text-[#17211f]">Saved listings and search profile.</strong> Signed-in saved homes and buyer/search profile preferences are stored with your Hafa Homes account so they can sync across web and mobile and prefill future requests. The native app may also cache listing details locally on your device for performance.</p>
+          <p><strong className="text-[#17211f]">Account deletion.</strong> Signed-in users can delete their account from the Account screen in the web app or the More screen in the mobile app. Deleting an account removes synced saved homes and search profile data and disconnects account links from request history while preserving submitted showing/contact requests for brokerage follow-up.</p>
           <p><strong className="text-[#17211f]">Third-party services.</strong> The app may use services such as Clerk for authentication, Mapbox for maps, hosting providers for the API/web app, and analytics or monitoring tools when enabled.</p>
           <p><strong className="text-[#17211f]">Contact.</strong> For privacy questions or data requests, email <a className="font-bold text-[#0f705e]" href="mailto:hello@hafahomes.com">hello@hafahomes.com</a>.</p>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#7b8a84]">Last updated June 25, 2026</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#7b8a84]">Last updated June 27, 2026</p>
         </div>
       </section>
     </Shell>
@@ -3742,7 +4029,7 @@ function LeadCompactRow({ lead }: { lead: Lead }) {
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-sm font-bold text-[#17211f]">{lead.name}</p>
-          <p className="mt-1 text-xs font-semibold text-[#66746f]">{lead.listing?.title ?? lead.lead_type.replaceAll('_', ' ')}</p>
+          <p className="mt-1 text-xs font-semibold text-[#66746f]">{lead.listing?.title ?? leadTypeLabel(lead.lead_type)}</p>
         </div>
         <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-[#0f705e]">{lead.status.replaceAll('_', ' ')}</span>
       </div>
@@ -3761,7 +4048,18 @@ function ShowingCompactRow({ showing }: { showing: ShowingAppointment }) {
 
 function LeadsPage() {
   const [agentFilter, setAgentFilter] = useState('')
-  const { data, isLoading, isError, refetch } = useQuery({ queryKey: ['leads', agentFilter], queryFn: () => fetchLeads({ assigned_agent_id: agentFilter || undefined }) })
+  const [leadTypeFilter, setLeadTypeFilter] = useState('')
+  const [statusFilter, setStatusFilter] = useState('')
+  const [searchFilter, setSearchFilter] = useState('')
+  const [sortFilter, setSortFilter] = useState('newest')
+  const leadQueryParams = {
+    assigned_agent_id: agentFilter || undefined,
+    lead_type: leadTypeFilter || undefined,
+    status: statusFilter || undefined,
+    q: searchFilter.trim() || undefined,
+    sort: sortFilter,
+  }
+  const { data, isLoading, isError, refetch } = useQuery({ queryKey: ['leads', leadQueryParams], queryFn: () => fetchLeads(leadQueryParams) })
   const statusMutation = useMutation({
     mutationFn: ({ id, status }: { id: number; status: LeadStatus }) => updateLead(id, { status }),
     onSuccess: () => refetch(),
@@ -3771,24 +4069,71 @@ function LeadsPage() {
   const openLeads = leads.filter((lead) => ['new', 'contacted', 'showing_scheduled', 'nurturing'].includes(lead.status)).length
   const newLeads = leads.filter((lead) => lead.status === 'new').length
   const scheduledLeads = leads.filter((lead) => lead.status === 'showing_scheduled').length
+  const priceWatchLeads = leads.filter((lead) => lead.lead_type === 'price_tracker').length
+  const hasActiveFilters = Boolean(agentFilter || leadTypeFilter || statusFilter || searchFilter.trim() || sortFilter !== 'newest')
+  const resetFilters = () => {
+    setAgentFilter('')
+    setLeadTypeFilter('')
+    setStatusFilter('')
+    setSearchFilter('')
+    setSortFilter('newest')
+  }
 
   return (
     <AdminShell kicker="Leads" title="Lead inbox">
       <section className="mx-auto max-w-7xl px-4 pb-10 sm:px-5">
-        <div className="mb-5 grid gap-3 md:grid-cols-3">
+        <div className="mb-5 grid gap-3 md:grid-cols-4">
           <div className="rounded-[1.75rem] bg-[#0f3d35] p-5 text-white"><p className="text-xs font-bold uppercase tracking-[0.18em] text-white/55">Open leads</p><p className="mt-2 text-4xl font-semibold tracking-[-0.06em]">{openLeads}</p></div>
           <div className="rounded-[1.75rem] bg-white p-5"><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#7b8a84]">New</p><p className="mt-2 text-4xl font-semibold tracking-[-0.06em]">{newLeads}</p></div>
           <div className="rounded-[1.75rem] bg-white p-5"><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#7b8a84]">Showings</p><p className="mt-2 text-4xl font-semibold tracking-[-0.06em]">{scheduledLeads}</p></div>
+          <div className="rounded-[1.75rem] bg-white p-5"><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#7b8a84]">Price watch</p><p className="mt-2 text-4xl font-semibold tracking-[-0.06em]">{priceWatchLeads}</p></div>
         </div>
         <div className="mb-5 rounded-[1.75rem] bg-white p-4 shadow-sm sm:p-5">
-          <label className="grid gap-2 text-sm font-semibold text-[#304942] md:max-w-md">
-            Filter by assigned agent
-            <select value={agentFilter} onChange={(event) => setAgentFilter(event.target.value)} className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
-              <option value="">All assigned agents</option>
-              <option value="unassigned">Unassigned leads</option>
-              {assignableAgents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name} · {agent.brokerage?.name}</option>)}
-            </select>
-          </label>
+          <div className="grid gap-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+              <label className="grid min-w-0 flex-1 gap-2 text-sm font-semibold text-[#304942] lg:max-w-3xl">
+                Search leads
+                <div className="relative">
+                  <Search size={17} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[#7b8a84]" />
+                  <input value={searchFilter} onChange={(event) => setSearchFilter(event.target.value)} placeholder="Name, email, phone, listing..." className="min-h-12 w-full min-w-0 rounded-2xl border border-[#dce5df] bg-white pl-11 pr-4" />
+                </div>
+              </label>
+              <div className="flex flex-wrap items-center gap-3">
+                <p className="text-sm font-semibold text-[#66746f]">Showing {leads.length} lead{leads.length === 1 ? '' : 's'}{isLoading ? '...' : ''}</p>
+                {hasActiveFilters && <button type="button" onClick={resetFilters} className="rounded-full bg-[#edf0ec] px-4 py-2 text-sm font-bold text-[#304942]">Reset filters</button>}
+              </div>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(150px,0.9fr)_minmax(150px,0.9fr)_minmax(220px,1.2fr)_minmax(160px,0.9fr)]">
+              <label className="grid min-w-0 gap-2 text-sm font-semibold text-[#304942]">
+                Type
+                <select value={leadTypeFilter} onChange={(event) => setLeadTypeFilter(event.target.value)} className="min-h-12 w-full min-w-0 rounded-2xl border border-[#dce5df] bg-white px-4">
+                  <option value="">All lead types</option>
+                  {leadTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </select>
+              </label>
+              <label className="grid min-w-0 gap-2 text-sm font-semibold text-[#304942]">
+                Status
+                <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="min-h-12 w-full min-w-0 rounded-2xl border border-[#dce5df] bg-white px-4">
+                  <option value="">All statuses</option>
+                  {leadStatuses.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
+                </select>
+              </label>
+              <label className="grid min-w-0 gap-2 text-sm font-semibold text-[#304942]">
+                Assigned agent
+                <select value={agentFilter} onChange={(event) => setAgentFilter(event.target.value)} className="min-h-12 w-full min-w-0 rounded-2xl border border-[#dce5df] bg-white px-4">
+                  <option value="">All agents</option>
+                  <option value="unassigned">Unassigned leads</option>
+                  {assignableAgents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name} · {agent.brokerage?.name}</option>)}
+                </select>
+              </label>
+              <label className="grid min-w-0 gap-2 text-sm font-semibold text-[#304942]">
+                Sort
+                <select value={sortFilter} onChange={(event) => setSortFilter(event.target.value)} className="min-h-12 w-full min-w-0 rounded-2xl border border-[#dce5df] bg-white px-4">
+                  {leadSortOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </select>
+              </label>
+            </div>
+          </div>
         </div>
         {isLoading && <StateCard>Loading leads...</StateCard>}
         {isError && <StateCard tone="error">Unable to load leads.</StateCard>}
@@ -3798,8 +4143,8 @@ function LeadsPage() {
             <article key={lead.id} className="rounded-[1.75rem] bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[#0f3d35]/10 sm:rounded-[2rem] sm:p-5">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
-                  <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#0f705e]">{lead.lead_type.replaceAll('_', ' ')}</p>
-                  <Link to={`/admin/leads/${lead.id}`} className="mt-2 block text-2xl font-semibold tracking-[-0.04em] hover:text-[#0f705e]">{lead.name}</Link>
+                  <p className={`inline-flex rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.16em] ${leadTypeBadgeClasses(lead.lead_type)}`}>{leadTypeLabel(lead.lead_type)}</p>
+                  <Link to={`/admin/leads/${lead.id}`} className="mt-3 block text-2xl font-semibold tracking-[-0.04em] hover:text-[#0f705e]">{lead.name}</Link>
                   <div className="mt-2 flex flex-wrap gap-3 text-sm font-semibold text-[#53645f]">
                     <span className="inline-flex items-center gap-1"><Mail size={15} /> {lead.email}</span>
                     {lead.phone && <span className="inline-flex items-center gap-1"><Phone size={15} /> {lead.phone}</span>}
@@ -3825,7 +4170,7 @@ function LeadsPage() {
               <div className="mt-4 flex justify-end"><Link to={`/admin/leads/${lead.id}`} className="inline-flex items-center gap-2 rounded-full bg-[#0f3d35] px-4 py-2 text-sm font-bold text-white">Open lead <ChevronRight size={16} /></Link></div>
             </article>
           ))}
-          {leads.length === 0 && !isLoading && <StateCard>No leads yet. New tour requests and price alerts will appear here.</StateCard>}
+          {leads.length === 0 && !isLoading && <StateCard>No matching leads. New tour requests and price watch requests will appear here.</StateCard>}
         </div>
       </section>
     </AdminShell>
@@ -3891,6 +4236,8 @@ function LeadDetailPage() {
               </article>
 
               <LeadQualificationCard lead={lead} />
+
+              <LeadSearchProfileSnapshot profile={lead.current_search_profile} />
 
               <LeadIntentCard intent={lead.intent_summary} />
 
@@ -3988,6 +4335,40 @@ function LeadQualificationCard({ lead, compact = false }: { lead: Lead; compact?
       {!compact && lead.qualification_notes && (
         <p className="mt-3 rounded-2xl bg-white p-3 text-sm font-semibold leading-6 text-[#53645f]">{lead.qualification_notes}</p>
       )}
+    </section>
+  )
+}
+
+function LeadSearchProfileSnapshot({ profile }: { profile?: SearchProfile | null }) {
+  if (!profile) return null
+
+  const items = [
+    ['Completion', profile.completion_status === 'complete' ? 'Complete' : `${profile.completion_percentage ?? 0}%`],
+    ['Timeline', profile.purchase_timeline_label || 'Not provided'],
+    ['Budget', profile.budget_range_label || 'Not provided'],
+    ['Villages', profile.desired_villages || 'Not provided'],
+    ['Beds / baths', `${profile.desired_beds ? `${profile.desired_beds}+ beds` : 'Beds not set'} · ${profile.desired_baths ? `${profile.desired_baths}+ baths` : 'Baths not set'}`],
+    ['Prequalification', profile.prequalified_status_label || 'Not provided'],
+  ]
+
+  return (
+    <section className="rounded-[1.5rem] border border-[#dfe8e2] bg-white p-4 shadow-sm sm:p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#0f705e]">Current search profile</p>
+          <p className="mt-2 text-sm font-semibold leading-6 text-[#304942]">{profile.qualification_summary || 'Signed-in shopper profile is still incomplete.'}</p>
+        </div>
+        <span className="rounded-full bg-[#f6f1e8] px-3 py-1 text-xs font-black uppercase tracking-[0.12em] text-[#0f3d35]">Live profile</span>
+      </div>
+      <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        {items.map(([label, value]) => (
+          <div key={label} className="rounded-2xl bg-[#fbfaf6] px-3 py-2">
+            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#7b8a84]">{label}</p>
+            <p className="mt-1 text-sm font-bold text-[#17211f]">{value}</p>
+          </div>
+        ))}
+      </div>
+      {profile.notes && <p className="mt-3 rounded-2xl bg-[#fbfaf6] p-3 text-sm font-semibold leading-6 text-[#53645f]">{profile.notes}</p>}
     </section>
   )
 }
@@ -4091,10 +4472,8 @@ function LeadEditForm({ lead, mutation }: { lead: Lead; mutation: LeadMutation }
         <label className="grid gap-2 text-sm font-semibold text-[#304942]">
           Request type
           <select name="lead_type" defaultValue={lead.lead_type} className="min-h-12 w-full min-w-0 rounded-2xl border border-[#dce5df] bg-white px-4">
-            {!['showing_request', 'price_tracker', 'general_inquiry'].includes(lead.lead_type) && <option value={lead.lead_type}>{lead.lead_type.replaceAll('_', ' ')}</option>}
-            <option value="showing_request">Showing request</option>
-            <option value="price_tracker">Price tracker</option>
-            <option value="general_inquiry">General inquiry</option>
+            {!leadTypeOptions.some((option) => option.value === lead.lead_type) && <option value={lead.lead_type}>{leadTypeLabel(lead.lead_type)}</option>}
+            {leadTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
         </label>
         <label className="grid gap-2 text-sm font-semibold text-[#304942]">
@@ -5405,39 +5784,39 @@ function MobileMenuDrawer({ open, onClose }: { open: boolean; onClose: () => voi
   )
 }
 
-function QualificationFields({ compact = false, defaultBudgetMax }: { compact?: boolean; defaultBudgetMax?: string }) {
+function QualificationFields({ compact = false, defaultBudgetMax, searchProfile }: { compact?: boolean; defaultBudgetMax?: string; searchProfile?: SearchProfile | null }) {
   return (
-    <div className="rounded-[1.5rem] border border-[#dce5df] bg-[#fbfaf6] p-4 md:col-span-2">
+    <div className="min-w-0 rounded-[1.5rem] border border-[#dce5df] bg-[#fbfaf6] p-4 md:col-span-2">
       <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#0f705e]">Buyer readiness</p>
       <p className="mt-2 text-sm leading-6 text-[#66746f]">A few optional details help the right agent follow up with useful matches instead of a cold call.</p>
-      <div className="mt-4 grid gap-3 md:grid-cols-2">
-        <label className="grid gap-2 text-sm font-semibold text-[#304942]">
+      <div className="mt-4 grid min-w-0 gap-3 md:grid-cols-2">
+        <label className="grid min-w-0 gap-2 text-sm font-semibold text-[#304942]">
           Prequalified?
-          <select name="prequalified_status" defaultValue="" className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
+          <select name="prequalified_status" defaultValue={profileDefault(searchProfile, 'prequalified_status')} className="min-h-12 w-full min-w-0 rounded-2xl border border-[#dce5df] bg-white px-4">
             {prequalifiedOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
         </label>
-        <label className="grid gap-2 text-sm font-semibold text-[#304942]">
+        <label className="grid min-w-0 gap-2 text-sm font-semibold text-[#304942]">
           Timeline
-          <select name="purchase_timeline" defaultValue="" className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
+          <select name="purchase_timeline" defaultValue={profileDefault(searchProfile, 'purchase_timeline')} className="min-h-12 w-full min-w-0 rounded-2xl border border-[#dce5df] bg-white px-4">
             {purchaseTimelineOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
         </label>
-        <Input name="lender_name" label="Lender / bank optional" placeholder="Bank of Guam, Coast360..." />
-        <label className="grid gap-2 text-sm font-semibold text-[#304942]">
+        <Input name="lender_name" label="Lender / bank optional" defaultValue={profileDefault(searchProfile, 'lender_name')} placeholder="Bank of Guam, Coast360..." />
+        <label className="grid min-w-0 gap-2 text-sm font-semibold text-[#304942]">
           Buyer type
-          <select name="buyer_status" defaultValue="" className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
+          <select name="buyer_status" defaultValue={profileDefault(searchProfile, 'buyer_status')} className="min-h-12 w-full min-w-0 rounded-2xl border border-[#dce5df] bg-white px-4">
             {buyerStatusOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
         </label>
-        <Input name="budget_min" label="Budget min" type="number" min="0" step="1000" placeholder="450000" />
-        <Input name="budget_max" label="Budget max" type="number" min="0" step="1000" defaultValue={defaultBudgetMax} placeholder="650000" />
-        {!compact && <Input name="desired_villages" label="Desired villages" placeholder="Dededo, Yigo, Tamuning" />}
-        {!compact && <Input name="desired_beds" label="Desired beds" type="number" min="0" step="1" placeholder="3" />}
-        {!compact && <Input name="desired_baths" label="Desired baths" type="number" min="0" step="0.5" placeholder="2" />}
-        <label className="grid gap-2 text-sm font-semibold text-[#304942]">
+        <Input name="budget_min" label="Budget min" type="number" min="0" step="1000" defaultValue={profileDefault(searchProfile, 'budget_min')} placeholder="450000" />
+        <Input name="budget_max" label="Budget max" type="number" min="0" step="1000" defaultValue={profileDefault(searchProfile, 'budget_max', defaultBudgetMax || '')} placeholder="650000" />
+        {!compact && <Input name="desired_villages" label="Desired villages" defaultValue={profileDefault(searchProfile, 'desired_villages')} placeholder="Dededo, Yigo, Tamuning" />}
+        {!compact && <Input name="desired_beds" label="Desired beds" type="number" min="0" step="1" defaultValue={profileDefault(searchProfile, 'desired_beds')} placeholder="3" />}
+        {!compact && <Input name="desired_baths" label="Desired baths" type="number" min="0" step="0.5" defaultValue={profileDefault(searchProfile, 'desired_baths')} placeholder="2" />}
+        <label className="grid min-w-0 gap-2 text-sm font-semibold text-[#304942]">
           Already working with an agent?
-          <select name="already_working_with_agent" defaultValue="" className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
+          <select name="already_working_with_agent" defaultValue={profileDefault(searchProfile, 'already_working_with_agent')} className="min-h-12 w-full min-w-0 rounded-2xl border border-[#dce5df] bg-white px-4">
             {agentRelationshipOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
         </label>
@@ -5445,7 +5824,7 @@ function QualificationFields({ compact = false, defaultBudgetMax }: { compact?: 
       {!compact && (
         <label className="mt-3 grid gap-2 text-sm font-semibold text-[#304942]">
           Anything else the agent should know?
-          <textarea name="qualification_notes" rows={3} className="rounded-2xl border border-[#dce5df] bg-white px-4 py-3" placeholder="Relocating next month, needs pet-friendly, prefers central Guam..." />
+          <textarea name="qualification_notes" rows={3} defaultValue={profileDefault(searchProfile, 'notes')} className="rounded-2xl border border-[#dce5df] bg-white px-4 py-3" placeholder="Relocating next month, needs pet-friendly, prefers central Guam..." />
         </label>
       )}
     </div>
@@ -5464,12 +5843,19 @@ function PriceTrackerModal({ listing, open, onClose }: { listing: Listing; open:
     enabled: open && isClerkEnabled && isSignedIn && Boolean(userId),
     retry: false,
   })
+  const { data: searchProfileData } = useQuery({
+    queryKey: ['me', userId, 'search-profile', 'price-tracker-prefill'],
+    queryFn: fetchSearchProfile,
+    enabled: open && isClerkEnabled && isSignedIn && Boolean(userId),
+    retry: false,
+  })
   const { data: agentsData } = useQuery({
     queryKey: ['agents', 'routing', 'price-tracker'],
     queryFn: () => fetchAgents(),
     enabled: open && canSelectAgent,
   })
   const profile = meData?.user
+  const searchProfile = searchProfileData?.search_profile
   const wasOpenRef = useRef(false)
 
   useEffect(() => {
@@ -5511,7 +5897,7 @@ function PriceTrackerModal({ listing, open, onClose }: { listing: Listing; open:
       await mutation.mutateAsync({
         listing_id: listing.id,
         lead_type: 'price_tracker',
-        name: String(form.get('name') || 'Price tracker user'),
+        name: String(form.get('name') || 'Price watch user'),
         email: String(form.get('email') || ''),
         phone: String(form.get('phone') || ''),
         preferred_contact_method: 'email',
@@ -5538,35 +5924,46 @@ function PriceTrackerModal({ listing, open, onClose }: { listing: Listing; open:
   }
 
   return (
-    <div className="fixed inset-0 z-[75] grid place-items-center bg-black/50 p-5 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-[2rem] bg-white/95 p-6 shadow-2xl">
+    <div className="fixed inset-0 z-[75] grid place-items-end bg-black/50 p-2 backdrop-blur-sm md:place-items-center md:p-5">
+      <div className="safe-bottom max-h-[calc(100svh-1rem)] w-full max-w-4xl overflow-y-auto overscroll-contain rounded-[1.75rem] bg-white/95 p-4 shadow-2xl md:max-h-[calc(100vh-2rem)] md:rounded-[2rem] md:p-8">
         {mutation.isSuccess ? (
-          <div className="py-8 text-center">
+          <div className="mx-auto max-w-lg py-8 text-center">
             <CheckCircle2 className="mx-auto text-[#0f705e]" size={44} />
-            <h2 className="mt-4 text-3xl font-semibold tracking-[-0.05em]">Price tracker saved</h2>
-            <p className="mt-3 text-sm leading-6 text-[#66746f]">Your price alert is saved. We will watch this listing for changes.</p>
+            <h2 className="mt-4 text-3xl font-semibold tracking-[-0.05em]">Price watch request sent</h2>
+            <p className="mt-3 text-sm leading-6 text-[#66746f]">The brokerage team has your target price and can follow up when price activity matters.</p>
             <button onClick={onClose} className="mt-6 w-full rounded-2xl bg-[#0f3d35] px-4 py-3 text-sm font-bold text-white">Close</button>
           </div>
         ) : (
           <form onSubmit={handleSubmit}>
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#0f705e]">Price Watch</p>
-                <h2 className="mt-2 text-3xl font-semibold tracking-[-0.05em]">Set your target price</h2>
+                <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#0f705e]">Price watch request</p>
+                <h2 className="mt-2 text-3xl font-semibold tracking-[-0.05em] md:text-4xl">Set your target price</h2>
+                <p className="mt-3 max-w-2xl text-sm leading-6 text-[#66746f]">This is saved as a price watch lead for the brokerage team. Automated price-change notifications are a future enhancement.</p>
               </div>
-              <button type="button" onClick={onClose} className="grid h-11 w-11 place-items-center rounded-full border border-[#d7ded9]"><X size={20} /></button>
+              <button type="button" onClick={onClose} className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-[#d7ded9]"><X size={20} /></button>
             </div>
-            <p className="mt-3 text-sm leading-6 text-[#66746f]">Current price: <strong>{currency(listing.price, listing.listing_kind)}</strong></p>
-            <div className="mt-5 grid gap-3">
-              <Input name="target_price" label="Target price" inputMode="numeric" placeholder="450000" required />
-              <Input name="email" label="Email for alerts" type="email" defaultValue={profile?.email || ''} required />
-              <Input name="name" label="Name" defaultValue={profile?.full_name || 'Hafa Homes user'} />
-              <Input name="phone" label="Phone optional" defaultValue={profile?.phone || '+1671'} inputMode="tel" />
-              <QualificationFields compact />
+            <div className="mt-6 grid gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(280px,0.85fr)]">
+              <div className="grid gap-3 md:grid-cols-2">
+                <Input name="target_price" label="Target price" inputMode="numeric" placeholder="450000" required />
+                <Input name="email" label="Email" type="email" defaultValue={profile?.email || ''} required />
+                <Input name="name" label="Name" defaultValue={profile?.full_name || 'Hafa Homes user'} />
+                <Input name="phone" label="Phone optional" defaultValue={searchProfile?.phone || profile?.phone || '+1671'} inputMode="tel" />
+                <QualificationFields compact searchProfile={searchProfile} />
+              </div>
+              <aside className="rounded-[1.5rem] bg-[#f6f1e8] p-5">
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-[#0f705e]">Listing context</p>
+                <h3 className="mt-3 text-xl font-semibold tracking-[-0.04em] text-[#17211f]">{listing.title}</h3>
+                <dl className="mt-5 grid gap-3 text-sm">
+                  <div className="rounded-2xl bg-white/70 p-4"><dt className="text-xs font-bold uppercase tracking-[0.16em] text-[#7b8a84]">Current price</dt><dd className="mt-1 text-lg font-black text-[#17211f]">{currency(listing.price, listing.listing_kind)}</dd></div>
+                  <div className="rounded-2xl bg-white/70 p-4"><dt className="text-xs font-bold uppercase tracking-[0.16em] text-[#7b8a84]">Property</dt><dd className="mt-1 font-semibold text-[#304942]">{listing.village.name} · {listing.property_type}</dd></div>
+                </dl>
+                <p className="mt-4 text-sm leading-6 text-[#66746f]">Admins can filter these separately from showing requests in the lead inbox.</p>
+              </aside>
             </div>
-            {mutation.isError && <p className="mt-3 text-sm font-semibold text-red-700">Unable to save tracker right now.</p>}
-            <div className="mt-5 grid grid-cols-2 gap-3">
-              <button disabled={submitting || mutation.isPending} className="rounded-2xl bg-[#0f3d35] px-4 py-3 text-sm font-bold text-white disabled:opacity-60">{submitting || mutation.isPending ? 'Saving...' : 'Add'}</button>
+            {mutation.isError && <p className="mt-3 text-sm font-semibold text-red-700">Unable to send price watch request right now.</p>}
+            <div className="mt-5 grid gap-3 sm:grid-cols-[1fr_180px]">
+              <button disabled={submitting || mutation.isPending} className="rounded-2xl bg-[#0f3d35] px-4 py-3 text-sm font-bold text-white disabled:opacity-60">{submitting || mutation.isPending ? 'Sending...' : 'Send request'}</button>
               <button type="button" onClick={onClose} className="rounded-2xl bg-[#edf0ec] px-4 py-3 text-sm font-bold text-[#17211f]">Cancel</button>
             </div>
           </form>
@@ -5586,12 +5983,19 @@ function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean
     enabled: open && isClerkEnabled && isSignedIn && Boolean(userId),
     retry: false,
   })
+  const { data: searchProfileData } = useQuery({
+    queryKey: ['me', userId, 'search-profile', 'lead-prefill'],
+    queryFn: fetchSearchProfile,
+    enabled: open && isClerkEnabled && isSignedIn && Boolean(userId),
+    retry: false,
+  })
   const { data: agentsData } = useQuery({
     queryKey: ['agents', 'routing', 'lead-modal'],
     queryFn: () => fetchAgents(),
     enabled: open && canSelectAgent,
   })
   const profile = meData?.user
+  const searchProfile = searchProfileData?.search_profile
   const routingAgents = canSelectAgent ? agentsData?.agents ?? [] : []
   const defaultAgentId = (() => {
     if (!canSelectAgent) return null
@@ -5669,8 +6073,8 @@ function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean
   }
 
   return (
-    <div className="fixed inset-0 z-[70] grid place-items-end bg-black/45 p-2 backdrop-blur-sm md:place-items-center md:p-3">
-      <div className="safe-bottom max-h-[calc(100svh-1rem)] w-full max-w-lg overflow-y-auto overscroll-contain rounded-[1.5rem] bg-white p-4 shadow-2xl md:max-h-[calc(100vh-2rem)] md:rounded-[2rem] md:p-6">
+    <div className="fixed inset-0 z-[70] grid place-items-end bg-black/45 p-2 backdrop-blur-sm md:place-items-center md:p-4">
+      <div className="safe-bottom max-h-[calc(100svh-1rem)] w-full max-w-4xl overflow-y-auto overscroll-contain rounded-[1.5rem] bg-white p-4 shadow-2xl md:max-h-[calc(100vh-2rem)] md:rounded-[2rem] md:p-8">
         {mutation.isSuccess ? (
           <div className="py-8 text-center">
             <CheckCircle2 className="mx-auto text-[#0f705e]" size={44} />
@@ -5732,13 +6136,13 @@ function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean
                 </label>
               ))}
             </div>
-            <div className="mt-4 grid gap-3 md:mt-5">
+            <div className="mt-4 grid gap-3 md:mt-5 md:grid-cols-2">
               <Input name="name" label="Name" defaultValue={profile?.full_name || ''} required />
               <Input name="email" label="Email" type="email" defaultValue={profile?.email || ''} required />
-              <Input name="phone" label="Phone" defaultValue={profile?.phone || '+1671'} inputMode="tel" />
+              <Input name="phone" label="Phone" defaultValue={searchProfile?.phone || profile?.phone || '+1671'} inputMode="tel" />
               <label className="grid gap-2 text-sm font-semibold text-[#304942]">
                 Preferred contact
-                <select name="preferred_contact_method" defaultValue={profile?.preferred_contact_method || 'phone'} className="min-h-12 rounded-2xl border border-[#dce5df] px-4">
+                <select name="preferred_contact_method" defaultValue={searchProfile?.preferred_contact_method || profile?.preferred_contact_method || 'phone'} className="min-h-12 rounded-2xl border border-[#dce5df] px-4">
                   {preferredContactOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                 </select>
               </label>
@@ -5748,8 +6152,8 @@ function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean
                   {preferredTimeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                 </select>
               </label>
-              <QualificationFields defaultBudgetMax={String(Math.round(listing.price))} />
-              <label className="grid gap-2 text-sm font-semibold text-[#304942]">
+              <QualificationFields defaultBudgetMax={String(Math.round(listing.price))} searchProfile={searchProfile} />
+              <label className="grid gap-2 text-sm font-semibold text-[#304942] md:col-span-2">
                 Message
                 <textarea name="message" rows={4} className="rounded-2xl border border-[#dce5df] px-4 py-3" defaultValue={`I'm interested in ${listing.title}.`} />
               </label>
@@ -5904,8 +6308,8 @@ function Metric({ label, value }: { label: string; value: number }) {
   return <div className="rounded-2xl bg-white/10 p-4"><p className="text-xs font-bold uppercase tracking-[0.16em] text-white/50">{label}</p><p className="mt-1 text-3xl font-bold tracking-[-0.05em]">{value}</p></div>
 }
 
-function Input({ label, ...props }: React.InputHTMLAttributes<HTMLInputElement> & { label: string }) {
-  return <label className="grid min-w-0 gap-2 text-sm font-semibold text-[#304942]">{label}<input {...props} className="min-h-12 w-full min-w-0 rounded-2xl border border-[#dce5df] px-4" /></label>
+function Input({ label, labelClassName = '', className = '', ...props }: React.InputHTMLAttributes<HTMLInputElement> & { label: string; labelClassName?: string }) {
+  return <label className={`grid min-w-0 gap-2 text-sm font-semibold text-[#304942] ${labelClassName}`}>{label}<input {...props} className={`min-h-12 w-full min-w-0 rounded-2xl border border-[#dce5df] px-4 ${className}`} /></label>
 }
 
 export default App

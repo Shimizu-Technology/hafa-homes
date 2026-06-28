@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_25_120000) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_27_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -88,6 +88,31 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_25_120000) do
     t.string "website_url"
     t.index ["slug"], name: "index_brokerages_on_slug", unique: true
     t.index ["status"], name: "index_brokerages_on_status"
+  end
+
+  create_table "buyer_search_profiles", force: :cascade do |t|
+    t.string "already_working_with_agent"
+    t.bigint "brokerage_id"
+    t.decimal "budget_max", precision: 12, scale: 2
+    t.decimal "budget_min", precision: 12, scale: 2
+    t.string "buyer_status"
+    t.datetime "completed_at"
+    t.datetime "created_at", null: false
+    t.decimal "desired_baths", precision: 4, scale: 1
+    t.integer "desired_beds"
+    t.text "desired_villages"
+    t.datetime "last_prompted_at"
+    t.string "lender_name"
+    t.text "notes"
+    t.string "phone"
+    t.string "preferred_contact_method"
+    t.string "prequalified_status"
+    t.string "purchase_timeline"
+    t.datetime "updated_at", null: false
+    t.bigint "user_id", null: false
+    t.index ["brokerage_id", "completed_at"], name: "index_buyer_search_profiles_on_brokerage_id_and_completed_at"
+    t.index ["brokerage_id"], name: "index_buyer_search_profiles_on_brokerage_id"
+    t.index ["user_id"], name: "index_buyer_search_profiles_on_user_id", unique: true
   end
 
   create_table "data_sync_runs", force: :cascade do |t|
@@ -456,6 +481,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_25_120000) do
   add_foreign_key "audit_events", "users", column: "actor_id"
   add_foreign_key "brokerage_memberships", "brokerages"
   add_foreign_key "brokerage_memberships", "users"
+  add_foreign_key "buyer_search_profiles", "brokerages"
+  add_foreign_key "buyer_search_profiles", "users"
   add_foreign_key "lead_activities", "leads"
   add_foreign_key "lead_activities", "users", column: "actor_id"
   add_foreign_key "lead_intent_events", "agents"

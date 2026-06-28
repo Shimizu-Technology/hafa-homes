@@ -9,6 +9,7 @@ class User < ApplicationRecord
   has_many :archived_users, class_name: "User", foreign_key: :archived_by_id, dependent: :nullify, inverse_of: :archived_by
   has_many :saved_listing_records, class_name: "SavedListing", dependent: :destroy
   has_many :saved_listings, through: :saved_listing_records, source: :listing
+  has_one :buyer_search_profile, dependent: :destroy
   has_many :leads, dependent: :nullify
   has_many :lead_intent_sessions, dependent: :nullify
   has_many :lead_intent_events, dependent: :nullify

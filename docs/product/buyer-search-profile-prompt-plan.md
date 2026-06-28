@@ -1,6 +1,6 @@
 # Buyer/Search Profile + Prompt Personalization Plan
 
-_Last updated: 2026-06-27. Planned follow-up after PR #18 progressive lead prompts._
+_Last updated: 2026-06-27. Implemented in `feature/buyer-search-profile-prompts` after PR #18 progressive lead prompts._
 
 ## Why this exists
 
@@ -194,27 +194,28 @@ This should update the search profile first. Only create a lead if the user asks
 
 ## Implementation order
 
-1. Add `BuyerSearchProfile` migration/model and consumer API.
-2. Add web `/account` Search profile card.
-3. Add mobile account Search profile screen/card.
-4. Prefill showing, price, and progressive prompt forms from the search profile.
+1. Add `BuyerSearchProfile` migration/model and consumer API. **Done in follow-up branch.**
+2. Add web `/account` Search profile card. **Done in follow-up branch.**
+3. Add mobile account Search profile screen/card. **Done in follow-up branch.**
+4. Prefill showing, price, and progressive prompt forms from the search profile. **Done in follow-up branch.**
 5. Update prompt eligibility/copy:
    - no profile -> current prompt;
    - incomplete profile -> finish profile;
    - complete profile -> suppress long prompt;
    - behavior divergence -> update profile prompt.
-6. Update lead scoring/serialization/admin lead detail to show profile-backed context safely.
-7. Add tests/smokes for profile privacy, account deletion, prompt suppression, and profile-update prompts.
+   **Done in follow-up branch.**
+6. Update lead scoring/serialization/admin lead detail to show profile-backed context safely. **Done via lead snapshots plus staff-only current profile card.**
+7. Add tests/smokes for profile privacy, account deletion, prompt suppression, and profile-update prompts. **Smoke covered locally; deeper controller tests can be added with the broader API test suite.**
 
 ## Definition of done
 
-- [ ] Signed-in shoppers can create/update search profile on web.
-- [ ] Signed-in shoppers can create/update search profile on mobile.
-- [ ] Showing/price/search-assist forms prefill from profile.
-- [ ] Progressive prompt does not show the full qualification form to shoppers with complete profiles.
-- [ ] Incomplete-profile prompt saves profile without always creating a CRM lead.
-- [ ] Behavior-divergence prompt updates profile rather than asking the same questions again.
-- [ ] Lead records snapshot profile answers at submission time.
-- [ ] Admin CRM can see lead snapshot and current search profile without exposing data to public serializers.
-- [ ] Account deletion deletes the search profile.
-- [ ] Anonymous intent sessions remain anonymous and are never transferred into profiles.
+- [x] Signed-in shoppers can create/update search profile on web.
+- [x] Signed-in shoppers can create/update search profile on mobile.
+- [x] Showing/price/search-assist forms prefill from profile.
+- [x] Progressive prompt does not show the full qualification form to shoppers with complete profiles.
+- [x] Incomplete-profile prompt saves profile without always creating a CRM lead.
+- [x] Behavior-divergence prompt updates profile rather than asking the same questions again.
+- [x] Lead records snapshot profile answers at submission time.
+- [x] Admin CRM can see lead snapshot and current search profile without exposing data to public serializers.
+- [x] Account deletion deletes the search profile.
+- [x] Anonymous intent sessions remain anonymous and are never transferred into profiles.
