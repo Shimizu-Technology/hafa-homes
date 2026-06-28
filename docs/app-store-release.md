@@ -1,6 +1,6 @@
 # App Store / TestFlight Release Notes
 
-_Last updated: 2026-06-12 after App Review rejected iOS build `1.0.1 (10)` for Sign in with Apple loading indefinitely and the native Apple/Clerk fix was started._
+_Last updated: 2026-06-28 after preparing `1.0.2` and attempting the next iOS production build._
 
 ## Current status
 
@@ -8,11 +8,11 @@ _Last updated: 2026-06-12 after App Review rejected iOS build `1.0.1 (10)` for S
 - EAS project ID: `d1d219fa-fb79-47c5-9dc2-339645c6b00a`
 - iOS bundle ID: `com.shimizutechnology.hafahomes`
 - App Store Connect app ID: `6773042903`
-- First iOS production build previously uploaded to TestFlight.
-- Build previously tested on Leon's phone through TestFlight.
-- App Store version `1.0.0` is already approved/ready for distribution, so new TestFlight/App Store builds must use a higher marketing version such as `1.0.1`.
-- iOS build `1.0.1 (10)` was built from `main` commit `5a8781b` and submitted to App Store Connect.
-- Current App Store Connect status: `1.0.1 Rejected` for Guideline 2.1(a) because Apple reported the app loaded indefinitely after Sign in with Apple.
+- iOS `1.0.1 (11)` is approved/live in App Store Connect.
+- `main` is prepared for the next App Store/TestFlight build at `1.0.2` from commit `81f1afd`.
+- EAS remote iOS build number is currently `14`; the next successful EAS cloud build should auto-increment to `15`.
+- A new iOS cloud build was attempted on 2026-06-28 but was blocked by the EAS free-plan iOS monthly build quota. The quota resets on 2026-07-01, or an EAS plan upgrade can unblock it sooner.
+- A local iOS build was also attempted, but local Xcode `16.4` / Swift `6.1` cannot build Expo SDK 56's `ExpoModulesJSI` Swift package because it declares Swift tools `6.2`. Use EAS cloud for the next production build unless local Xcode is upgraded.
 - Production API env is configured in EAS: `EXPO_PUBLIC_API_URL=https://hafa-homes.onrender.com`
 - Production Mapbox token is configured in EAS as a sensitive variable.
 
@@ -45,6 +45,8 @@ At minimum, production API should include:
 - server-backed saved listing endpoints.
 - `POST /api/v1/leads`.
 - `GET /api/v1/me/leads` for request history.
+- `GET /api/v1/me/search_profile` and `PATCH /api/v1/me/search_profile`.
+- lead intent endpoints such as `POST /api/v1/lead_intent/events`.
 - current listing detail/listing search endpoints.
 
 If the mobile app points at `https://hafa-homes.onrender.com`, then Render production migrations must run before the mobile build is reviewed seriously.
@@ -60,17 +62,26 @@ Apple closes a pre-release train once that app version has been approved/release
 
 then bump `expo.version` in `mobile/app.json`, for example from `1.0.0` to `1.0.1`, commit it, rebuild, and submit again. EAS `autoIncrement` handles the internal iOS build number; it does not replace the need to bump the public app version after Apple closes the previous train.
 
-## Current submitted build
+## Current live build
 
 ```text
 Version: 1.0.1
-Build number: 10
-EAS build ID: 519dcec0-a96e-4167-8d4a-e918908181d8
-Submission ID: 76a7aa1e-a2a0-46e8-8eaa-4e33add16c5e
-Status: Rejected in App Store Connect
+Build number: 11
+EAS build ID: 24a33127-0dae-46e0-8bb1-727918e643c2
+Status: Approved/live in App Store Connect
 ```
 
-This is the build with account deletion plus PR #12 account/admin/audit hardening. Apple rejected it because Sign in with Apple did not complete during review. If Apple asks for an account-deletion path, build `10` still has the in-app deletion flow; the next build should fix the Apple auth path before resubmission.
+Build `11` replaced rejected build `10` and is the current public iOS release.
+
+## Next prepared build
+
+```text
+Version: 1.0.2
+Prepared commit: 81f1afd
+EAS remote build number after failed attempts: 14
+Expected next successful cloud build number: 15
+Status: Not uploaded yet; blocked by EAS free-plan iOS build quota until 2026-07-01 unless the account is upgraded.
+```
 
 ## Native Apple/Clerk setup for the next build
 
@@ -142,10 +153,10 @@ Test on a physical phone or simulator:
 
 ### 3. Build iOS production/TestFlight build
 
-From `/mobile`:
+From `/mobile` after the EAS iOS quota resets or the EAS plan is upgraded:
 
 ```bash
-eas build -p ios --profile production
+eas build -p ios --profile production --auto-submit-with-profile production --what-to-test "Please test listing search, map browsing, saved homes after sign-in, showing/contact requests, request history, and the Account search profile. Listings are demo data while MLS/Flexmls access is validated."
 ```
 
 Standard/exempt encryption answer:
@@ -158,8 +169,10 @@ Reason: the app only uses standard platform HTTPS/TLS.
 
 ### 4. Submit latest build to App Store Connect
 
+If the build was not auto-submitted:
+
 ```bash
-eas submit -p ios --latest
+eas submit -p ios --latest --profile production
 ```
 
 ### 5. TestFlight distribution
@@ -187,11 +200,12 @@ From `/mobile`:
 npm run typecheck
 npm run doctor
 
-# Create an iOS production build
-eas build -p ios --profile production
+# Create and auto-submit an iOS production build
+# Run after EAS iOS quota resets or after upgrading the EAS plan.
+eas build -p ios --profile production --auto-submit-with-profile production --what-to-test "Please test listing search, map browsing, saved homes after sign-in, showing/contact requests, request history, and the Account search profile. Listings are demo data while MLS/Flexmls access is validated."
 
-# Submit the latest build to App Store Connect/TestFlight
-eas submit -p ios --latest
+# Or submit the latest successful EAS build manually
+eas submit -p ios --latest --profile production
 ```
 
 If `eas` is missing after changing Node versions:
