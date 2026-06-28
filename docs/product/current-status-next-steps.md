@@ -1,334 +1,336 @@
 # Hafa Homes Current Status and Next Steps
 
-_Last updated: 2026-06-10 after PR #11 account deletion merged, iOS build `1.0.1 (9)` submitted, and post-submission QA findings were reviewed._
+_Last updated: 2026-06-28 after PR #19 buyer/search profile prompt personalization merged to `main`._
 
 ## Source context
 
-Product direction comes from the repo docs plus Leon/Mike/John notes:
+Product direction comes from repo docs plus Leon/Mike/John notes:
 
 - `docs/product/product-brief.md`
 - `docs/product/platform-strategy.md`
-- `docs/product/brokerage-platform-plan.md`
-- `docs/product/white-label-brokerage-platform-plan.md`
+- `docs/product/mike-john-next-build-plan.md`
+- `docs/product/broker-branded-layer-plan.md`
+- `docs/product/buyer-search-profile-prompt-plan.md`
 - `docs/meetings/2026-06-01-ssi-automation-hafa-homes.md`
 - `docs/meetings/2026-06-05-broker-feedback-realgeeks.md`
 - `docs/research/realgeeks-competitive-analysis.md`
-- Brain-Dump: `work/shimizu-tech/Michael Sazaki (BOH)/2) Talk with Mike about HafaHomes and Shimizu Technology - May 24, 2026.md`
 - Brain-Dump: `work/shimizu-tech/SSI-Automation/1) 1st Meeting with Mike and John for SSI Automation.md`
+- Brain-Dump: `work/shimizu-tech/SSI-Automation/2) Meeting with Mike and John for HafaHomes.md`
+- Brain-Dump: `work/shimizu-tech/Michael Sazaki (BOH)/2) Talk with Mike about HafaHomes and Shimizu Technology - May 24, 2026.md`
 - Brain-Dump: `work/shimizu-tech/JMI-John-Ilao/2) Meeting with John about the Dispatch App.md`
 
 Key strategic signal:
 
 > Hafa Homes should be sold broker-first as a Guam-first brokerage website/app/CRM platform, not only as a generic consumer listing app.
 
-Mike and John’s notes point toward a Real Geeks-style bundle adapted for Guam: broker-branded website, broker-branded app option, lead CRM, showing/contact workflows, and future property-management/tenant tooling. Hafa Homes remains the demo/reference brand and possible public marketplace layer.
-
-## Where we are now
-
-Hafa Homes is no longer just a cool listing demo. The latest `main` has a real broker-platform foundation:
-
-- consumer web/PWA
-- Expo native mobile app
-- Clerk auth and roles
-- broker/agent tenancy
-- server-backed saved homes
-- public showing/lead capture
-- consumer request history
-- staff/admin scheduling
-- safe notification logging/sending foundation
-- broker/admin CRM notes, tasks, and activity timeline
-- self-service account deletion for App Store account-lifecycle compliance
-
-Current main commit after PR #11:
+Mike and John’s notes point toward a Real Geeks-style bundle adapted for Guam:
 
 ```text
-3155df9 Merge pull request #11 from Shimizu-Technology/feature/account-deletion
+broker-branded website + broker-branded app option + full-market MLS/FlexMLS search + qualified lead capture + lead CRM + future property-management/tenant portal
 ```
 
-Current iOS App Store Connect status:
+Hafa Homes remains the reference/demo public brand and possible marketplace layer.
+
+## Current main status
+
+Latest `main` after PR #19:
 
 ```text
-version 1.0.1
-build 9
-status: Waiting for Review
+40df781 Merge pull request #19 from Shimizu-Technology/feature/buyer-search-profile-prompts
 ```
 
-Build `1.0.1 (9)` is the current review build and includes account deletion.
+Current product maturity:
 
-## Shipped / working
+```text
+credible broker-platform demo with first-party lead intent + buyer/search profile personalization
+```
 
-### Consumer surfaces
+Still not yet:
 
-- Public web/PWA search and listing detail surfaces.
-- Expo native app under `/mobile`.
-- Buy/rent flows, map/list browsing, listing detail, Local Intel, mortgage calculator, saved listings, and showing requests.
-- Public browsing remains unauthenticated.
-- Saved homes require sign-in and are server-backed.
-- Showing requests remain low-friction and public, while signed-in requests attach `user_id` server-side.
-- Consumer request history exists on web/mobile and hides internal CRM records.
+```text
+production-ready Real Geeks replacement with live MLS/FlexMLS feed and broker-owned domains
+```
 
-### Auth / roles
+Current iOS App Store state:
+
+```text
+iOS version 1.0.1
+build 11
+status: approved/live
+```
+
+Android public release is planned but not started. See `docs/android-play-store-release-plan.md`.
+
+## What is now shipped / working
+
+### Consumer web/mobile
+
+- Public browsing on web/PWA and Expo mobile.
+- Buy/rent listing search, map/list browsing, detail pages, Local Intel, mortgage calculator.
+- Server-backed saved homes for signed-in users.
+- Showing/contact requests remain public and low-friction.
+- Signed-in requests attach `user_id` server-side.
+- Consumer request history on web/mobile.
+- Account/profile settings with phone and preferred contact.
+- Durable Buyer/Search Profile fields:
+  - preferred contact/phone snapshot;
+  - prequalification/lender;
+  - timeline;
+  - budget range;
+  - desired villages/beds/baths;
+  - buyer/renter status;
+  - agent relationship;
+  - notes.
+- Showing, price watch, and search-assist flows prefill from account/search profile without overwriting user edits after a sheet/modal opens.
+
+### Auth / roles / safety
 
 - Clerk-backed auth across Rails API, React web, and Expo mobile.
-- Rails owns product authorization and tenancy.
+- Rails owns authorization/roles/tenant scoping.
 - Roles:
   - `platform_admin`
   - `brokerage_admin`
   - `agent`
   - `consumer`
 - Staff/admin routes are protected and tenant-scoped.
+- Public lead creation cannot spoof trusted internal assignment fields:
+  - `user_id`
+  - `brokerage_id`
+  - `assigned_agent_id`
+  - `quality_score`
+- Anonymous intent sessions stay anonymous and are not claimed by later sign-ins.
 
 ### Broker platform foundation
 
-- `Brokerage`
-- `Agent`
-- `BrokerageMembership`
-- Listings can belong to brokerages and agents.
-- Leads can belong to brokerages and assigned agents.
-- Staff lead access is scoped by role/tenant.
-- Agents default to assigned/scoped leads.
-- Public lead creation cannot spoof `user_id`, `brokerage_id`, or `assigned_agent_id`.
+- `Brokerage`, `Agent`, and `BrokerageMembership` models.
+- Listing attribution separated from lead routing:
+  - `Listing.agent` / `Listing.brokerage` = MLS/listing attribution.
+  - `Lead.requested_agent` = consumer preference.
+  - `Lead.assigned_agent` = CRM owner.
+  - `Lead.brokerage` = app/routing brokerage.
+- Public active agents API, web Agents page, mobile Agents tab.
+- Preferred-agent selection is sign-in gated.
+- No-preference leads stay in the brokerage queue instead of auto-assigning the listing agent.
 
-### Requests, scheduling, and admin parity
+### Broker/admin CRM
 
-- `ShowingAppointment` model and API.
-- Consumer `GET /api/v1/me/leads` request history.
-- Staff showing appointment create/update/index.
-- Admin dashboard, users, showings, and lead detail workflows.
-- Collapsible desktop admin sidebar and mobile admin drawer.
-- Admin/public navigation preserves context when opening public listings from a lead.
+- Admin dashboard, lead inbox/detail, users, showings, audit history, data sync surfaces.
+- Lead status and assigned-agent filtering/search/sorting.
+- Lead type differentiation:
+  - showing request;
+  - price watch request;
+  - search assist;
+  - general inquiry.
+- Showing appointments.
+- Lead notes, tasks, activity timeline, archive/edit controls.
+- Qualified lead capture and server-derived quality score labels: Hot/Warm/Early/Unqualified.
+- Staff-only current Search Profile context on lead detail.
+- Search intent snapshots attached to converted leads.
+- Staff-only search intent dashboard for active/unconverted first-party sessions.
 
-### CRM expansion merged in PR #10
+### First-party intent and prompts
 
-- `LeadNote` for internal notes.
-- `LeadTask` for follow-up tasks/reminders.
-- `LeadActivity` for timeline events.
-- Edit/archive support for notes and tasks.
-- Archived CRM records are hidden by default.
-- Activity timeline supports expandable change details.
-- Source/campaign fields on leads:
-  - `source_campaign`
-  - `source_url`
-- CRM summary metrics:
-  - open tasks
-  - overdue tasks
-  - completed tasks
-  - archived tasks
-  - active notes
-  - archived notes
-  - activity count
-- Paginated staff endpoints:
-  - `GET /api/v1/leads/:lead_id/notes`
-  - `GET /api/v1/leads/:lead_id/tasks`
-  - `GET /api/v1/leads/:lead_id/activities`
-- Responsive web CRM workspace optimized for mobile and desktop.
+- Rails-backed `LeadIntentSession` and `LeadIntentEvent` tracking.
+- Intent events for listing views, saved homes, search filters, map markers, form opens/abandons, agent selection, and saved searches.
+- Broker-configurable prompt intensity.
+- Progressive search-assist prompt on web/mobile.
+- Meaningful intent guardrails before linking sessions to leads.
+- Buyer/Search Profile prompt personalization:
+  - anonymous/no profile -> current search-assist prompt;
+  - signed-in incomplete profile -> finish profile prompt;
+  - signed-in complete profile -> suppress long prompt;
+  - behavior divergence -> update-profile prompt;
+  - profile prompts save profile by default and create CRM lead only when the user explicitly asks for agent follow-up.
 
-### Notification foundation
+### Notifications
 
 - `NotificationDelivery` logs notification attempts.
-- Resend email and ClickSend SMS are supported behind explicit env gates.
-- Local/dev live sends are off by default.
-- Showing schedule/update notifications can queue customer email/SMS and agent email.
-- Delivery job atomically claims queued records before provider calls.
-- Guam phone normalization is implemented.
+- Resend email and ClickSend SMS supported behind explicit env gates.
+- Local/dev live sends off by default.
+- Guam phone normalization implemented.
+- Production notification sending still depends on DNS/API keys/live flags/background worker readiness.
 
 ## Important limitations / blockers
 
 ### MLS / listing data
 
-Real production listing data is still blocked on MLS/Flexmls/GAR authorization and compliance.
+Real production listing data is still blocked on MLS/FlexMLS/GAR authorization and compliance.
 
 Open questions:
 
 - Can Hafa Homes be approved as a vendor/app for participating Guam brokerages?
 - Can one brokerage authorize access, or do multiple brokers each authorize feeds?
-- Feed type: IDX, Flexmls IDX, RESO Web API, RETS, CSV/XML, iframe/embed, or another approved method?
-- What attribution, disclaimer, refresh, sold/rented status, and photo caching rules apply?
+- Feed type: IDX, FlexMLS IDX, RESO Web API, RETS, CSV/XML, iframe/embed, or another approved method?
+- What attribution, disclaimer, refresh, sold/rented status, registration-wall, and photo caching rules apply?
+- Can broker-branded apps show all authorized Guam listings?
+- Are there lead-routing restrictions for other brokerages’ listings?
 
-### Production readiness
+### Production/demo readiness
 
-The latest broker CRM and scheduling migrations/features are merged but still need production deployment/migration verification before relying on them in a live demo.
+Before relying on the latest merged platform in production demos:
 
-Before production/demo:
-
-- deploy API
-- run production migrations
-- verify background jobs
-- deploy web
-- verify mobile against migrated API
-- verify notification gates/config
-- refresh TestFlight build if needed
+- deploy latest API;
+- run production migrations through PR #19;
+- deploy latest web;
+- verify background jobs;
+- verify Clerk roles/staff access;
+- verify saved homes and account/search profile;
+- verify showing/price/search-assist lead creation;
+- verify search intent dashboard;
+- refresh mobile/TestFlight build if needed;
+- verify notification gates/config.
 
 ### Notifications
 
 Production sending still requires:
 
-- Resend domain/DNS/API key/from-address setup
-- ClickSend production credentials
-- live env flags intentionally enabled
-- background worker readiness
+- Resend domain/DNS/API key/from-address setup;
+- ClickSend production credentials;
+- live env flags intentionally enabled;
+- background worker readiness.
 
 Future follow-up:
 
-- Resend webhook status updates
-- ClickSend delivery receipt sync
-- notification preferences
+- Resend webhook status updates;
+- ClickSend delivery receipt sync;
+- notification preferences;
+- app-first universal links for requests/listings.
 
-### App Store
+### Broker-specific apps
 
-- iOS build `1.0.1 (9)` has been submitted to App Store Connect and is waiting for review.
-- Build `9` includes self-service account deletion; build `8` did not.
-- Production API must keep `CLERK_SECRET_KEY` configured so Apple can test deletion if they sign in/create an account.
-- Broker-specific iOS apps may trigger Apple white-label/template scrutiny. Broker-branded apps may need materially distinct branding and/or broker-owned Apple developer accounts.
+Broker-branded iOS apps may trigger Apple white-label/template scrutiny. Broker-branded apps may need materially distinct branding/features and/or broker-owned Apple developer accounts.
 
-## Strategic assessment
+## Known hardening follow-up
+
+### Lead intent prompt analytics atomicity
+
+Non-blocking issue documented from PR #19 Greptile review:
+
+`LeadIntentSession#prompt_payload` currently writes prompt analytics/cadence state in two separate writes:
+
+1. `lead_intent_sessions.last_prompt_key`
+2. `buyer_search_profiles.last_prompted_at`
+
+Risk:
+
+- If the server crashes between those writes, analytics/cadence metadata can become inconsistent.
+- This does not expose data, break auth, break lead creation, or affect core lead routing.
+- Worst case is imperfect prompt analytics or prompt cadence metadata.
+
+Recommended fix when hardening prompt analytics:
+
+- wrap both writes in a transaction;
+- ideally make the prompt-state update method explicit, e.g. `record_prompt_shown!(prompt_key:, profile:)`;
+- keep `profile.update_column(:last_prompted_at, ...)` inside the same transaction or move profile prompt cadence into one canonical table if prompt analytics becomes mission-critical;
+- clean up/document the unused `trigger` parameter in `search_profile_prompt_context` if still unused.
+
+Priority:
+
+```text
+P3 / non-blocking hardening
+```
+
+Handle in a small follow-up PR only if prompt analytics/cadence reliability becomes important before broker demos.
+
+## Product assessment after PR #19
 
 ### What Hafa Homes can credibly demo now
 
-- A polished Guam-first consumer housing app/web experience.
-- Signed-in saved homes.
-- Public showing request capture.
-- Consumer request history.
-- Broker/agent attribution and staff scoping.
-- Staff/admin lead inbox and detail.
-- Showing scheduling.
-- Manual customer/agent notifications with safe delivery logs.
-- A real CRM workspace: notes, tasks, activity timeline, edits/archive, source tracking.
+- A polished Guam-first consumer search app/web experience.
+- Signed-in saved homes and durable buyer/search profile.
+- Showing and price watch request capture.
+- Search-assist prompts based on real first-party browsing intent.
+- Profile-first prompt behavior that avoids repeatedly asking completed users the same long form.
+- Broker/admin lead inbox with qualification, lead type, routing, assignment, and intent context.
+- Lead CRM workspace: notes, tasks, timeline, showing schedule, notification history, current search profile context.
+- Configurable lead prompt intensity for different brokerage appetite.
 
 ### What it cannot honestly claim yet
 
-- Real MLS/Flexmls integration.
+- Real MLS/FlexMLS integration.
+- Broker-owned custom domains.
 - Production-ready broker-branded websites.
-- Production-ready broker-branded app builds.
-- Full Real Geeks replacement.
-- Automated lead verification/scoring/drips.
+- Broker-branded app builds.
+- Automated price-change notifications.
+- Automated lead verification/drip campaigns.
 - Full property-management/tenant portal.
+- Production notification sending until Resend/ClickSend/live worker config is complete.
 
-### Product maturity label
+## Recommended next work
 
-Current state:
+### Immediate local/product track
 
-```text
-credible broker-platform demo
-```
+1. **Production/demo hardening for current `main`**
+   - deploy latest API/web;
+   - run migrations;
+   - smoke account/search profile, prompts, lead creation, admin inbox, mobile;
+   - prepare demo accounts/data.
 
-Not yet:
+2. **Android Play Store release**
+   - now that PR #19 is merged, Android is unblocked from a product-flow standpoint;
+   - follow `docs/android-play-store-release-plan.md`.
 
-```text
-fully sellable Real Geeks alternative
-```
+3. **Broker pitch/package materials**
+   - one-page pitch;
+   - package tiers;
+   - pricing hypotheses;
+   - demo script;
+   - Real Geeks comparison;
+   - MLS/FlexMLS FAQ;
+   - “local platform provider, not a brokerage and not a marketing agency” positioning.
 
-## Immediate operational status
+### Next product build track
 
-### App Store review monitoring
+4. **Domain-first broker-branded foundation**
+   - `BrokerageDomain`;
+   - host-based tenant resolver;
+   - brokerage branding config;
+   - broker homepage/profile;
+   - brokerage-scoped search/listing/agents surfaces;
+   - brokerage-routed lead forms;
+   - slug preview fallback for dev/demo.
 
-PR #11 is merged, the production API responded correctly to account-deletion route checks, and iOS build `1.0.1 (9)` has been submitted for review.
+5. **Lead quality / CRM automation**
+   - duplicate lead detection;
+   - phone/email verification badges;
+   - speed-to-lead reminders;
+   - notification preferences;
+   - CSV export;
+   - agent performance/follow-up reporting.
 
-Keep watching:
+6. **Property-management preview**
+   - managed properties;
+   - tenant list;
+   - lease/date/file placeholders;
+   - maintenance request preview;
+   - rent status/payment concept.
 
-1. App Store review result for `1.0.1 (9)`.
-2. Production API `CLERK_SECRET_KEY` remains configured.
-3. Disposable-account deletion smoke test if possible before or during review.
-4. TestFlight processing/availability for Mike/John/testers once Apple finishes processing.
+7. **MLS/FlexMLS integration path**
+   - only after broker/GAR/FlexMLS authorization path is clear;
+   - start with provider adapter + sample authorized data + sync logging.
 
-See `docs/app-store-release.md`.
+## Mike/John meeting-derived business homework
 
-## Recommended next product priority
-
-### Next sprint: account/profile polish, admin operations hardening, then domain-first broker branding
-
-Post-submission QA surfaced legitimate gaps that should be handled before or alongside broker demos:
-
-- admins need to create, edit, archive/reactivate, and invite users;
-- admins need a proper global audit log/history, not only lead-specific activity;
-- consumer and admin lead options must stay in parity, including preferred time `Flexible`;
-- notification links should open the native app first when installed and fall back to web;
-- manual notification emails should not duplicate greetings;
-- account creation/profile should support optional phone and preferred contact so lead forms can prefill more than name/email.
-
-Recommended sequence:
-
-1. `feature/consumer-profile-settings`
-   - dedicated mobile Profile & settings screen;
-   - matching web `/account` settings;
-   - safe profile fields: first name, last name, phone, preferred contact;
-   - signed-in lead-form prefill;
-   - delete account in a clear danger zone.
-2. `feature/notification-link-polish`
-   - add `Flexible` to consumer preferred-time options;
-   - remove duplicate email greeting behavior;
-   - add canonical notification links and app-first/deep-link plan.
-3. `feature/admin-user-lifecycle`
-   - admin-created users/invites for admins, agents, and consumers;
-   - edit roles/memberships/agent links;
-   - archive/reactivate/revoke lifecycle;
-   - Clerk-backed invitation or safe pending-user acceptance flow.
-4. `feature/admin-audit-log`
-   - global `AuditEvent` model/API/admin page;
-   - actor/action/target/change metadata;
-   - tenant-scoped visibility for brokerage staff.
-5. `feature/broker-domain-foundation` or `feature/broker-branded-sites-apps`
-   - `BrokerageDomain` and host-based tenant resolution;
-   - brokerage branding/config;
-   - broker-owned public homepage/search/listings/agents;
-   - broker-routed lead/showing forms.
-
-See:
-
-- `docs/product/admin-ops-notification-hardening-plan.md`
-- `docs/product/broker-branded-layer-plan.md`
-
-## After broker branding
-
-### CRM / lead quality follow-up
-
-- Duplicate lead detection.
-- Phone/email verification badges.
-- Saved-search/listing activity scoring.
-- Speed-to-lead reminders.
-- Notification preferences.
-- CSV export.
-- Agent performance/follow-up reporting.
-
-### MLS/Flexmls discovery
-
-Continue in parallel with:
-
-- Carl / MLS committee
-- Clare Delgado / Home Ventures
-- Bawar / GAR
-- first pilot brokerage
-
-### Property-management preview
-
-After broker branding, build a lightweight premium-tier preview:
-
-- managed properties
-- tenant list
-- lease/date placeholders
-- rent status placeholder
-- maintenance request preview
-- owner/tenant portal concept
-
-This should be demoable without pretending it is a full management suite.
-
-## Suggested business homework for Mike/John/Leon
-
-- Draft 3 package tiers:
-  1. Website/App/Search
-  2. Engagement/Lead CRM
-  3. Property Management/Tenant Portal
+- Keep broker-first, not agent-first.
+- Keep Hafa Homes positioned as a technology/platform provider, not a brokerage and not a marketing agency.
+- Show enough working product that broker discovery is about real feedback, not a fantasy idea.
+- Make the demo prove qualified leads, not just listing browsing.
+- Prepare 3 package tiers:
+  1. Brokerage Website/App/Search.
+  2. Engagement/Lead CRM.
+  3. Property Management/Tenant Portal.
 - Draft setup + monthly pricing ranges.
-- Build broker discovery target list.
-- Prepare Carl/Clare/Bawar questions.
-- Decide first broker pilot target.
-- Prepare a concise demo script.
+- Build target broker discovery list.
+- Prepare questions for Carl / Clare Delgado / Bawar / GAR.
+- Schedule trusted broker feedback with Sam or another experienced broker contact.
+- Decide first pilot broker target.
 
 ## Suggested demo story
 
 1. “Here is Hafa Homes, the reference Guam-first app.”
-2. “Here is how a buyer/renter searches, saves, and requests a showing.”
-3. “Here is the broker/admin side where the lead lands.”
-4. “Here is the CRM follow-up workspace: notes, tasks, timeline, showing schedule, notification history.”
-5. “Next, this same platform powers your brokerage-branded site/app.”
-6. “MLS/Flexmls access plugs in once your brokerage authorizes the feed.”
+2. “Here is how a buyer/renter searches, saves, chooses a preferred agent, and requests help.”
+3. “Here is how profile-first prompts capture useful readiness without annoying completed users.”
+4. “Here is the broker/admin side where the lead lands with search intent, qualification, and routing context.”
+5. “Here is the CRM follow-up workspace: notes, tasks, timeline, showing schedule, notification history.”
+6. “Next, this same platform powers your brokerage-owned domain and app experience.”
+7. “MLS/FlexMLS access plugs in once your brokerage authorizes the feed.”

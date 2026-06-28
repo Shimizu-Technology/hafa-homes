@@ -1,6 +1,6 @@
 # Mike/John Next Build Plan
 
-_Last updated: 2026-06-27 after PR #18 progressive prompt follow-up planning._
+_Last updated: 2026-06-28 after PR #19 buyer/search profile prompt personalization merged._
 
 ## Source context
 
@@ -35,6 +35,23 @@ broker-owned domain + broker-branded website/app + full-market listing search + 
 ```
 
 Hafa Homes remains the reference/demo brand and possible public marketplace layer.
+
+## Status after PR #19
+
+The first three technical priorities from this plan are now complete on `main`:
+
+1. qualified lead capture;
+2. progressive prompts + first-party intent tracking;
+3. buyer/search profile settings + prompt personalization.
+
+Current next work is no longer another prompt/qualification PR. The practical next tracks are:
+
+1. production/demo hardening for the merged platform;
+2. Android Play Store release;
+3. broker pitch/package materials;
+4. domain-first broker-branded website/app foundation;
+5. MLS/FlexMLS discovery with Carl / Clare Delgado / Bawar / a first pilot brokerage;
+6. property-management preview after the broker-branded layer is credible.
 
 ## Decisions from the Mike/John discussion
 
@@ -411,9 +428,9 @@ This depends heavily on data access and should not block the brokerage website/a
 ## Recommended build order
 
 ```text
-1. Qualified lead capture
-2. Progressive prompts + first-party intent tracking
-3. Buyer/search profile settings + prompt personalization
+1. Qualified lead capture — done in PR #17
+2. Progressive prompts + first-party intent tracking — done in PR #18
+3. Buyer/search profile settings + prompt personalization — done in PR #19
 4. Production/demo hardening for current merged platform
 5. Android Play Store release
 6. Broker pitch/package docs

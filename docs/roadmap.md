@@ -1,6 +1,6 @@
 # Roadmap
 
-_Last updated: 2026-06-27 after PR #18 progressive prompt follow-up planning._
+_Last updated: 2026-06-28 after PR #19 buyer/search profile prompt personalization merged._
 
 ## Current product direction
 
@@ -186,57 +186,45 @@ Completed in PR #17:
 
 See `docs/product/mike-john-next-build-plan.md`.
 
-## Upcoming phases
-
 ### Phase 9 — Progressive lead prompts and first-party intent tracking
 
-Recommended branch:
+Status: complete.
 
-```bash
-feature/progressive-lead-prompts
-```
-
-Goal:
-
-> Turn browsing behavior into a qualified search-assist lead without relying on third-party analytics or blocking public browsing.
-
-Recommended scope:
+Completed in PR #18:
 
 - first-party lead intent sessions/events;
 - listing view, saved home, search/filter, agent selection, form-open, and form-abandon tracking;
 - server-side prompt eligibility policy with brokerage-level settings;
 - web/mobile progressive search-assist prompts;
-- link converted prompt leads to the intent session;
+- converted prompt leads linked to intent sessions;
 - admin CRM intent snapshot showing viewed listings, saved homes, top villages, price range, and trigger context;
-- staff-only search intent dashboard for active/unconverted sessions with signed-in identity when available and anonymous sessions kept anonymous.
+- staff-only search intent dashboard;
+- anonymous sessions stay anonymous and are not claimed by later signed-in users;
+- meaningful intent guardrails before linking sessions to leads.
 
 ### Phase 10 — Buyer/search profile settings and prompt personalization
 
-Recommended branch:
+Status: complete.
 
-```bash
-feature/buyer-search-profile-prompts
-```
-
-Goal:
-
-> Let signed-in shoppers manage the same search/readiness details that prompts collect, then use that profile to prefill forms and avoid repeating the long qualification prompt.
-
-Recommended scope:
+Completed in PR #19:
 
 - signed-in `BuyerSearchProfile` API;
 - web `/account` search profile card;
-- mobile account/search profile screen;
-- prefill showing, price, and search-assist forms from saved profile;
+- mobile account/search profile editor;
+- prefill showing, price watch, and search-assist forms from saved profile;
 - prompt behavior split:
   - anonymous/no profile -> current qualification prompt;
   - signed-in incomplete profile -> finish profile prompt;
   - signed-in complete profile -> suppress long prompt;
   - behavior divergence -> lightweight update-profile prompt;
 - lead snapshots so CRM history reflects answers at submission time;
+- profile-first prompts save profile by default and create a CRM lead only when the user explicitly asks for agent follow-up;
+- admin lead inbox search/filter/sort and lead-type differentiation;
 - privacy guardrail: anonymous intent sessions never transfer into signed-in profiles.
 
 See `docs/product/buyer-search-profile-prompt-plan.md`.
+
+## Upcoming phases
 
 ### Phase 11 — Android Play Store release
 
