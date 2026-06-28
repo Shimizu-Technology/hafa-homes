@@ -2137,8 +2137,11 @@ function AccountCard({ auth, onOpenAuth }: { auth: AppAuth; onOpenAuth: (prompt?
   const [phone, setPhone] = useState('')
   const [preferredContact, setPreferredContact] = useState<'phone' | 'text' | 'email'>('email')
   const [searchProfile, setSearchProfile] = useState<SearchProfile | null>(null)
+  const [searchProfileLoading, setSearchProfileLoading] = useState(false)
+  const [searchProfileLoaded, setSearchProfileLoaded] = useState(false)
   const [searchProfileSaving, setSearchProfileSaving] = useState(false)
   const [searchProfileError, setSearchProfileError] = useState<string | null>(null)
+  const [searchProfileReloadKey, setSearchProfileReloadKey] = useState(0)
   const [searchPreferredContact, setSearchPreferredContact] = useState<'phone' | 'text' | 'email'>('email')
   const [searchPhone, setSearchPhone] = useState('')
   const [searchPrequalifiedStatus, setSearchPrequalifiedStatus] = useState('')
@@ -2160,12 +2163,17 @@ function AccountCard({ auth, onOpenAuth }: { auth: AppAuth; onOpenAuth: (prompt?
     let cancelled = false
 
     async function loadProfile() {
-      if (!auth.isSignedIn || !auth.getToken) return
+      if (!auth.isSignedIn || !auth.getToken) {
+        setSearchProfileLoaded(false)
+        setSearchProfileLoading(false)
+        return
+      }
 
       let loadedUser: CurrentUser | null = null
       setProfileLoading(true)
       setProfileError(null)
       setSearchProfileError(null)
+      setSearchProfileLoaded(false)
 
       try {
         const result = await fetchMe(auth.getToken)
@@ -2185,10 +2193,12 @@ function AccountCard({ auth, onOpenAuth }: { auth: AppAuth; onOpenAuth: (prompt?
         if (!cancelled) setProfileLoading(false)
       }
 
+      setSearchProfileLoading(true)
       try {
         const searchResult = await fetchSearchProfile(auth.getToken)
         if (!cancelled) {
           setSearchProfile(searchResult.search_profile)
+          setSearchProfileLoaded(true)
           setSearchPreferredContact(searchResult.search_profile.preferred_contact_method || loadedUser?.preferred_contact_method || 'email')
           setSearchPhone(searchResult.search_profile.phone || loadedUser?.phone || '')
           setSearchPrequalifiedStatus(searchResult.search_profile.prequalified_status || '')
@@ -2204,13 +2214,18 @@ function AccountCard({ auth, onOpenAuth }: { auth: AppAuth; onOpenAuth: (prompt?
           setSearchNotes(searchResult.search_profile.notes || '')
         }
       } catch (error) {
-        if (!cancelled) setSearchProfileError(error instanceof Error ? error.message : 'Unable to load search profile')
+        if (!cancelled) {
+          setSearchProfileLoaded(false)
+          setSearchProfileError(error instanceof Error ? error.message : 'Unable to load search profile')
+        }
+      } finally {
+        if (!cancelled) setSearchProfileLoading(false)
       }
     }
 
     loadProfile()
     return () => { cancelled = true }
-  }, [auth.getToken, auth.isSignedIn])
+  }, [auth.getToken, auth.isSignedIn, searchProfileReloadKey])
 
   async function handleSaveProfile() {
     if (!auth.getToken || profileSaving) return
@@ -2228,7 +2243,7 @@ function AccountCard({ auth, onOpenAuth }: { auth: AppAuth; onOpenAuth: (prompt?
   }
 
   async function handleSaveSearchProfile() {
-    if (!auth.getToken || searchProfileSaving) return
+    if (!auth.getToken || searchProfileSaving || searchProfileLoading || !searchProfileLoaded) return
     setSearchProfileSaving(true)
     setSearchProfileError(null)
     try {
@@ -2320,31 +2335,47 @@ function AccountCard({ auth, onOpenAuth }: { auth: AppAuth; onOpenAuth: (prompt?
             <Text style={styles.searchProfileMeterKicker}>{searchProfile?.completion_status === 'complete' ? 'Complete profile' : `${searchProfile?.completion_percentage ?? 0}% complete`}</Text>
             <Text style={styles.profileSectionCopy}>{searchProfile?.qualification_summary || 'Add contact preference, timeline, criteria, and readiness.'}</Text>
           </View>
-          <Text style={styles.requestLabel}>Preferred contact</Text>
-          <View style={styles.contactSegmentRow}>
-            {preferredContactOptions.map((option) => (
-              <Pressable key={option.value} style={[styles.contactSegment, searchPreferredContact === option.value && styles.contactSegmentActive]} onPress={() => setSearchPreferredContact(option.value as 'phone' | 'text' | 'email')}>
-                <Text style={[styles.contactSegmentText, searchPreferredContact === option.value && styles.contactSegmentTextActive]}>{option.label}</Text>
+          {(searchProfileLoading || (!searchProfileLoaded && !searchProfileError)) ? (
+            <View style={styles.searchProfileMeter}>
+              <ActivityIndicator color={colors.green2} />
+              <Text style={styles.profileSectionCopy}>Loading your saved search profile before enabling edits, so existing preferences are not overwritten.</Text>
+            </View>
+          ) : !searchProfileLoaded ? (
+            <View style={styles.searchProfileMeter}>
+              <Text style={styles.profileErrorText}>{searchProfileError || 'Unable to load search profile.'}</Text>
+              <Pressable style={styles.secondaryCta} onPress={() => setSearchProfileReloadKey((current) => current + 1)}>
+                <Text style={styles.secondaryCtaText}>Retry search profile</Text>
               </Pressable>
-            ))}
-          </View>
-          <RequestInput label="Phone" value={searchPhone} onChangeText={setSearchPhone} keyboardType="phone-pad" placeholder="+1671" />
-          <QualificationChoiceGroup label="Timeline" options={purchaseTimelineOptions} value={searchPurchaseTimeline} onChange={setSearchPurchaseTimeline} />
-          <QualificationChoiceGroup label="Prequalified?" options={prequalifiedOptions} value={searchPrequalifiedStatus} onChange={setSearchPrequalifiedStatus} />
-          <RequestInput label="Lender / bank optional" value={searchLenderName} onChangeText={setSearchLenderName} placeholder="Bank of Guam, Coast360..." />
-          <RequestInput label="Desired villages" value={searchDesiredVillages} onChangeText={setSearchDesiredVillages} placeholder="Dededo, Yigo, Tamuning" />
-          <RequestInput label="Budget min" value={searchBudgetMin} onChangeText={setSearchBudgetMin} keyboardType="number-pad" placeholder="450000" />
-          <RequestInput label="Budget max" value={searchBudgetMax} onChangeText={setSearchBudgetMax} keyboardType="number-pad" placeholder="650000" />
-          <RequestInput label="Desired beds" value={searchDesiredBeds} onChangeText={setSearchDesiredBeds} keyboardType="number-pad" placeholder="3" />
-          <RequestInput label="Desired baths" value={searchDesiredBaths} onChangeText={setSearchDesiredBaths} keyboardType="number-pad" placeholder="2" />
-          <QualificationChoiceGroup label="Buyer type" options={buyerStatusOptions} value={searchBuyerStatus} onChange={setSearchBuyerStatus} />
-          <QualificationChoiceGroup label="Working with an agent?" options={agentRelationshipOptions} value={searchAlreadyWorkingWithAgent} onChange={setSearchAlreadyWorkingWithAgent} />
-          <Text style={styles.requestLabel}>Notes</Text>
-          <TextInput value={searchNotes} onChangeText={setSearchNotes} multiline style={[styles.requestInput, styles.requestMessageInput]} placeholder="Commute, relocation, pet needs, must-haves..." placeholderTextColor="#7b8a84" />
-          {searchProfileError && <Text style={styles.profileErrorText}>{searchProfileError}</Text>}
-          <Pressable style={[styles.primaryCta, searchProfileSaving && styles.ctaDisabled]} onPress={handleSaveSearchProfile} disabled={searchProfileSaving}>
-            <Text style={styles.primaryCtaText}>{searchProfileSaving ? 'Saving search profile...' : 'Save search profile'}</Text>
-          </Pressable>
+            </View>
+          ) : (
+            <>
+              <Text style={styles.requestLabel}>Preferred contact</Text>
+              <View style={styles.contactSegmentRow}>
+                {preferredContactOptions.map((option) => (
+                  <Pressable key={option.value} style={[styles.contactSegment, searchPreferredContact === option.value && styles.contactSegmentActive]} onPress={() => setSearchPreferredContact(option.value as 'phone' | 'text' | 'email')}>
+                    <Text style={[styles.contactSegmentText, searchPreferredContact === option.value && styles.contactSegmentTextActive]}>{option.label}</Text>
+                  </Pressable>
+                ))}
+              </View>
+              <RequestInput label="Phone" value={searchPhone} onChangeText={setSearchPhone} keyboardType="phone-pad" placeholder="+1671" />
+              <QualificationChoiceGroup label="Timeline" options={purchaseTimelineOptions} value={searchPurchaseTimeline} onChange={setSearchPurchaseTimeline} />
+              <QualificationChoiceGroup label="Prequalified?" options={prequalifiedOptions} value={searchPrequalifiedStatus} onChange={setSearchPrequalifiedStatus} />
+              <RequestInput label="Lender / bank optional" value={searchLenderName} onChangeText={setSearchLenderName} placeholder="Bank of Guam, Coast360..." />
+              <RequestInput label="Desired villages" value={searchDesiredVillages} onChangeText={setSearchDesiredVillages} placeholder="Dededo, Yigo, Tamuning" />
+              <RequestInput label="Budget min" value={searchBudgetMin} onChangeText={setSearchBudgetMin} keyboardType="number-pad" placeholder="450000" />
+              <RequestInput label="Budget max" value={searchBudgetMax} onChangeText={setSearchBudgetMax} keyboardType="number-pad" placeholder="650000" />
+              <RequestInput label="Desired beds" value={searchDesiredBeds} onChangeText={setSearchDesiredBeds} keyboardType="number-pad" placeholder="3" />
+              <RequestInput label="Desired baths" value={searchDesiredBaths} onChangeText={setSearchDesiredBaths} keyboardType="number-pad" placeholder="2" />
+              <QualificationChoiceGroup label="Buyer type" options={buyerStatusOptions} value={searchBuyerStatus} onChange={setSearchBuyerStatus} />
+              <QualificationChoiceGroup label="Working with an agent?" options={agentRelationshipOptions} value={searchAlreadyWorkingWithAgent} onChange={setSearchAlreadyWorkingWithAgent} />
+              <Text style={styles.requestLabel}>Notes</Text>
+              <TextInput value={searchNotes} onChangeText={setSearchNotes} multiline style={[styles.requestInput, styles.requestMessageInput]} placeholder="Commute, relocation, pet needs, must-haves..." placeholderTextColor="#7b8a84" />
+              {searchProfileError && <Text style={styles.profileErrorText}>{searchProfileError}</Text>}
+              <Pressable style={[styles.primaryCta, searchProfileSaving && styles.ctaDisabled]} onPress={handleSaveSearchProfile} disabled={searchProfileSaving}>
+                <Text style={styles.primaryCtaText}>{searchProfileSaving ? 'Saving search profile...' : 'Save search profile'}</Text>
+              </Pressable>
+            </>
+          )}
         </View>
 
         <View style={styles.profileActionsPanel}>
