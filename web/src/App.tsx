@@ -847,7 +847,7 @@ async function fetchSyncRuns(): Promise<SyncRunsResponse> {
   return response.json()
 }
 
-async function fetchLeads(params: { assigned_agent_id?: string } = {}): Promise<LeadsResponse> {
+async function fetchLeads(params: { assigned_agent_id?: string; lead_type?: string; status?: string; q?: string; sort?: string } = {}): Promise<LeadsResponse> {
   const query = buildQuery(params)
   const response = await fetch(`${API_URL}/api/v1/leads${query ? `?${query}` : ''}`, { headers: await authHeaders() })
   if (!response.ok) throw new Error('Unable to load leads')
@@ -1195,6 +1195,33 @@ const leadStatuses: Array<{ value: LeadStatus; label: string }> = [
   { value: 'archived', label: 'Archived' },
 ]
 
+const leadTypeOptions = [
+  { value: 'showing_request', label: 'Showing request' },
+  { value: 'price_tracker', label: 'Price watch request' },
+  { value: 'search_assist', label: 'Search assist' },
+  { value: 'general_inquiry', label: 'General inquiry' },
+]
+
+const leadSortOptions = [
+  { value: 'newest', label: 'Newest first' },
+  { value: 'oldest', label: 'Oldest first' },
+  { value: 'updated', label: 'Recently updated' },
+  { value: 'quality_desc', label: 'Highest quality' },
+  { value: 'quality_asc', label: 'Lowest quality' },
+]
+
+function leadTypeLabel(value?: string) {
+  const option = leadTypeOptions.find((item) => item.value === value)
+  return option?.label ?? (value ? value.replaceAll('_', ' ') : 'Lead')
+}
+
+function leadTypeBadgeClasses(value?: string) {
+  if (value === 'showing_request') return 'bg-[#e9f5ef] text-[#0f705e]'
+  if (value === 'price_tracker') return 'bg-[#fff3d8] text-[#7a4b00]'
+  if (value === 'search_assist') return 'bg-[#e8f1ff] text-[#164a7a]'
+  return 'bg-[#edf0ec] text-[#53645f]'
+}
+
 function formatDateTime(value?: string) {
   if (!value) return 'Not recorded'
   return new Date(value).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
@@ -1499,7 +1526,7 @@ function ProgressiveLeadPrompt() {
           <h2 className="mt-3 text-2xl font-semibold tracking-[-0.05em]">{mutation.data?.follow_up_failed || mutation.data?.profile_only ? 'Search profile saved' : 'Search details sent'}</h2>
           <p className="mt-2 text-sm leading-6 text-[#66746f]">
             {mutation.data?.follow_up_failed
-              ? 'Your saved preferences can now prefill future requests. The optional agent follow-up did not send, so please request a showing or price alert from a listing if you still want the team to reach out.'
+              ? 'Your saved preferences can now prefill future requests. The optional agent follow-up did not send, so please request a showing or price watch from a listing if you still want the team to reach out.'
               : mutation.data?.profile_only
                 ? 'Your saved preferences can now prefill future requests across Hafa Homes.'
                 : 'The brokerage team can use your search context to follow up with better matches.'}
@@ -2878,8 +2905,8 @@ function SearchProfileCard({ profile, user, mutation, isLoading = false, error =
     event.preventDefault()
     mutation.mutate({
       ...searchProfilePayloadFromForm(new FormData(event.currentTarget)),
-      preferred_contact_method: user?.preferred_contact_method || profileDefault(profile, 'preferred_contact_method', 'email'),
-      phone: user?.phone || profileDefault(profile, 'phone'),
+      preferred_contact_method: user?.preferred_contact_method ?? profileDefault(profile, 'preferred_contact_method', 'email'),
+      phone: user ? (user.phone || '') : profileDefault(profile, 'phone'),
     })
   }
 
@@ -2976,14 +3003,14 @@ function RequestsPage() {
 
   return (
     <Shell compact>
-      <ContentHeader kicker="My requests" title="Your showing requests and price alerts." description="Track what you submitted, who is assigned, and when confirmed showings are scheduled." />
+      <ContentHeader kicker="My requests" title="Your showing and price watch requests." description="Track what you submitted, who is assigned, and when confirmed showings are scheduled." />
       <section className="mx-auto max-w-6xl px-5 pb-10">
         {requestsLoading && <StateCard>Loading requests...</StateCard>}
         {isError && <StateCard tone="error">Unable to load your requests.</StateCard>}
         <div className="grid gap-4">
           {requests.map((lead) => <ConsumerRequestCard key={lead.id} lead={lead} />)}
         </div>
-        {requests.length === 0 && !requestsLoading && <StateCard>No requests yet. Request a showing or save a price alert from any listing.</StateCard>}
+        {requests.length === 0 && !requestsLoading && <StateCard>No requests yet. Request a showing or send a price watch request from any listing.</StateCard>}
       </section>
     </Shell>
   )
@@ -2997,7 +3024,7 @@ function ConsumerRequestCard({ lead }: { lead: Lead }) {
       <div className="p-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#0f705e]">{lead.lead_type.replaceAll('_', ' ')}</p>
+            <p className={`inline-flex rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.16em] ${leadTypeBadgeClasses(lead.lead_type)}`}>{leadTypeLabel(lead.lead_type)}</p>
             <h2 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">{lead.listing?.title ?? 'Hafa Homes request'}</h2>
             <p className="mt-2 text-sm font-semibold text-[#66746f]">Submitted {formatDateTime(lead.created_at)}</p>
           </div>
@@ -3037,7 +3064,7 @@ function PrivacyPage() {
       />
       <section className="mx-auto max-w-4xl px-5 pb-12">
         <div className="grid gap-5 rounded-[2rem] bg-white p-6 text-sm leading-7 text-[#3d4d48] shadow-sm md:p-8">
-          <p><strong className="text-[#17211f]">Information we collect.</strong> Hafa Homes may collect contact details you submit through showing requests, price alerts, saved searches, or similar forms, plus first-party app usage information such as listing views, saved homes, search filters, agent selections, and request-form interactions.</p>
+          <p><strong className="text-[#17211f]">Information we collect.</strong> Hafa Homes may collect contact details you submit through showing requests, price watch requests, saved searches, or similar forms, plus first-party app usage information such as listing views, saved homes, search filters, agent selections, and request-form interactions.</p>
           <p><strong className="text-[#17211f]">How we use it.</strong> We use submitted information and first-party search activity to respond to inquiries, coordinate real estate follow-up, suggest more relevant listings, improve listing search, troubleshoot the app, and understand aggregate product usage.</p>
           <p><strong className="text-[#17211f]">Saved listings and search profile.</strong> Signed-in saved homes and buyer/search profile preferences are stored with your Hafa Homes account so they can sync across web and mobile and prefill future requests. The native app may also cache listing details locally on your device for performance.</p>
           <p><strong className="text-[#17211f]">Account deletion.</strong> Signed-in users can delete their account from the Account screen in the web app or the More screen in the mobile app. Deleting an account removes synced saved homes and search profile data and disconnects account links from request history while preserving submitted showing/contact requests for brokerage follow-up.</p>
@@ -4002,7 +4029,7 @@ function LeadCompactRow({ lead }: { lead: Lead }) {
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-sm font-bold text-[#17211f]">{lead.name}</p>
-          <p className="mt-1 text-xs font-semibold text-[#66746f]">{lead.listing?.title ?? lead.lead_type.replaceAll('_', ' ')}</p>
+          <p className="mt-1 text-xs font-semibold text-[#66746f]">{lead.listing?.title ?? leadTypeLabel(lead.lead_type)}</p>
         </div>
         <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-[#0f705e]">{lead.status.replaceAll('_', ' ')}</span>
       </div>
@@ -4021,7 +4048,18 @@ function ShowingCompactRow({ showing }: { showing: ShowingAppointment }) {
 
 function LeadsPage() {
   const [agentFilter, setAgentFilter] = useState('')
-  const { data, isLoading, isError, refetch } = useQuery({ queryKey: ['leads', agentFilter], queryFn: () => fetchLeads({ assigned_agent_id: agentFilter || undefined }) })
+  const [leadTypeFilter, setLeadTypeFilter] = useState('')
+  const [statusFilter, setStatusFilter] = useState('')
+  const [searchFilter, setSearchFilter] = useState('')
+  const [sortFilter, setSortFilter] = useState('newest')
+  const leadQueryParams = {
+    assigned_agent_id: agentFilter || undefined,
+    lead_type: leadTypeFilter || undefined,
+    status: statusFilter || undefined,
+    q: searchFilter.trim() || undefined,
+    sort: sortFilter,
+  }
+  const { data, isLoading, isError, refetch } = useQuery({ queryKey: ['leads', leadQueryParams], queryFn: () => fetchLeads(leadQueryParams) })
   const statusMutation = useMutation({
     mutationFn: ({ id, status }: { id: number; status: LeadStatus }) => updateLead(id, { status }),
     onSuccess: () => refetch(),
@@ -4031,24 +4069,67 @@ function LeadsPage() {
   const openLeads = leads.filter((lead) => ['new', 'contacted', 'showing_scheduled', 'nurturing'].includes(lead.status)).length
   const newLeads = leads.filter((lead) => lead.status === 'new').length
   const scheduledLeads = leads.filter((lead) => lead.status === 'showing_scheduled').length
+  const priceWatchLeads = leads.filter((lead) => lead.lead_type === 'price_tracker').length
+  const hasActiveFilters = Boolean(agentFilter || leadTypeFilter || statusFilter || searchFilter.trim() || sortFilter !== 'newest')
+  const resetFilters = () => {
+    setAgentFilter('')
+    setLeadTypeFilter('')
+    setStatusFilter('')
+    setSearchFilter('')
+    setSortFilter('newest')
+  }
 
   return (
     <AdminShell kicker="Leads" title="Lead inbox">
       <section className="mx-auto max-w-7xl px-4 pb-10 sm:px-5">
-        <div className="mb-5 grid gap-3 md:grid-cols-3">
+        <div className="mb-5 grid gap-3 md:grid-cols-4">
           <div className="rounded-[1.75rem] bg-[#0f3d35] p-5 text-white"><p className="text-xs font-bold uppercase tracking-[0.18em] text-white/55">Open leads</p><p className="mt-2 text-4xl font-semibold tracking-[-0.06em]">{openLeads}</p></div>
           <div className="rounded-[1.75rem] bg-white p-5"><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#7b8a84]">New</p><p className="mt-2 text-4xl font-semibold tracking-[-0.06em]">{newLeads}</p></div>
           <div className="rounded-[1.75rem] bg-white p-5"><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#7b8a84]">Showings</p><p className="mt-2 text-4xl font-semibold tracking-[-0.06em]">{scheduledLeads}</p></div>
+          <div className="rounded-[1.75rem] bg-white p-5"><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#7b8a84]">Price watch</p><p className="mt-2 text-4xl font-semibold tracking-[-0.06em]">{priceWatchLeads}</p></div>
         </div>
         <div className="mb-5 rounded-[1.75rem] bg-white p-4 shadow-sm sm:p-5">
-          <label className="grid gap-2 text-sm font-semibold text-[#304942] md:max-w-md">
-            Filter by assigned agent
-            <select value={agentFilter} onChange={(event) => setAgentFilter(event.target.value)} className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
-              <option value="">All assigned agents</option>
-              <option value="unassigned">Unassigned leads</option>
-              {assignableAgents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name} · {agent.brokerage?.name}</option>)}
-            </select>
-          </label>
+          <div className="grid gap-3 lg:grid-cols-[minmax(220px,1.2fr)_repeat(4,minmax(160px,1fr))]">
+            <label className="grid gap-2 text-sm font-semibold text-[#304942]">
+              Search leads
+              <div className="relative">
+                <Search size={17} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[#7b8a84]" />
+                <input value={searchFilter} onChange={(event) => setSearchFilter(event.target.value)} placeholder="Name, email, phone, listing..." className="min-h-12 w-full rounded-2xl border border-[#dce5df] bg-white pl-11 pr-4" />
+              </div>
+            </label>
+            <label className="grid gap-2 text-sm font-semibold text-[#304942]">
+              Type
+              <select value={leadTypeFilter} onChange={(event) => setLeadTypeFilter(event.target.value)} className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
+                <option value="">All lead types</option>
+                {leadTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+            </label>
+            <label className="grid gap-2 text-sm font-semibold text-[#304942]">
+              Status
+              <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
+                <option value="">All statuses</option>
+                {leadStatuses.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
+              </select>
+            </label>
+            <label className="grid gap-2 text-sm font-semibold text-[#304942]">
+              Assigned agent
+              <select value={agentFilter} onChange={(event) => setAgentFilter(event.target.value)} className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
+                <option value="">All agents</option>
+                <option value="unassigned">Unassigned leads</option>
+                {assignableAgents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name} · {agent.brokerage?.name}</option>)}
+              </select>
+            </label>
+            <label className="grid gap-2 text-sm font-semibold text-[#304942]">
+              Sort
+              <select value={sortFilter} onChange={(event) => setSortFilter(event.target.value)} className="min-h-12 rounded-2xl border border-[#dce5df] bg-white px-4">
+                {leadSortOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+            </label>
+          </div>
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[#edf0ec] pt-4">
+            <p className="text-sm font-semibold text-[#66746f]">Showing {leads.length} lead{leads.length === 1 ? '' : 's'}{isLoading ? '...' : ''}</p>
+            {hasActiveFilters && <button type="button" onClick={resetFilters} className="rounded-full bg-[#edf0ec] px-4 py-2 text-sm font-bold text-[#304942]">Reset filters</button>}
+          </div>
         </div>
         {isLoading && <StateCard>Loading leads...</StateCard>}
         {isError && <StateCard tone="error">Unable to load leads.</StateCard>}
@@ -4058,8 +4139,8 @@ function LeadsPage() {
             <article key={lead.id} className="rounded-[1.75rem] bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[#0f3d35]/10 sm:rounded-[2rem] sm:p-5">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
-                  <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#0f705e]">{lead.lead_type.replaceAll('_', ' ')}</p>
-                  <Link to={`/admin/leads/${lead.id}`} className="mt-2 block text-2xl font-semibold tracking-[-0.04em] hover:text-[#0f705e]">{lead.name}</Link>
+                  <p className={`inline-flex rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.16em] ${leadTypeBadgeClasses(lead.lead_type)}`}>{leadTypeLabel(lead.lead_type)}</p>
+                  <Link to={`/admin/leads/${lead.id}`} className="mt-3 block text-2xl font-semibold tracking-[-0.04em] hover:text-[#0f705e]">{lead.name}</Link>
                   <div className="mt-2 flex flex-wrap gap-3 text-sm font-semibold text-[#53645f]">
                     <span className="inline-flex items-center gap-1"><Mail size={15} /> {lead.email}</span>
                     {lead.phone && <span className="inline-flex items-center gap-1"><Phone size={15} /> {lead.phone}</span>}
@@ -4085,7 +4166,7 @@ function LeadsPage() {
               <div className="mt-4 flex justify-end"><Link to={`/admin/leads/${lead.id}`} className="inline-flex items-center gap-2 rounded-full bg-[#0f3d35] px-4 py-2 text-sm font-bold text-white">Open lead <ChevronRight size={16} /></Link></div>
             </article>
           ))}
-          {leads.length === 0 && !isLoading && <StateCard>No leads yet. New tour requests and price alerts will appear here.</StateCard>}
+          {leads.length === 0 && !isLoading && <StateCard>No matching leads. New tour requests and price watch requests will appear here.</StateCard>}
         </div>
       </section>
     </AdminShell>
@@ -4387,10 +4468,8 @@ function LeadEditForm({ lead, mutation }: { lead: Lead; mutation: LeadMutation }
         <label className="grid gap-2 text-sm font-semibold text-[#304942]">
           Request type
           <select name="lead_type" defaultValue={lead.lead_type} className="min-h-12 w-full min-w-0 rounded-2xl border border-[#dce5df] bg-white px-4">
-            {!['showing_request', 'price_tracker', 'general_inquiry'].includes(lead.lead_type) && <option value={lead.lead_type}>{lead.lead_type.replaceAll('_', ' ')}</option>}
-            <option value="showing_request">Showing request</option>
-            <option value="price_tracker">Price tracker</option>
-            <option value="general_inquiry">General inquiry</option>
+            {!leadTypeOptions.some((option) => option.value === lead.lead_type) && <option value={lead.lead_type}>{leadTypeLabel(lead.lead_type)}</option>}
+            {leadTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
         </label>
         <label className="grid gap-2 text-sm font-semibold text-[#304942]">
@@ -5814,7 +5893,7 @@ function PriceTrackerModal({ listing, open, onClose }: { listing: Listing; open:
       await mutation.mutateAsync({
         listing_id: listing.id,
         lead_type: 'price_tracker',
-        name: String(form.get('name') || 'Price tracker user'),
+        name: String(form.get('name') || 'Price watch user'),
         email: String(form.get('email') || ''),
         phone: String(form.get('phone') || ''),
         preferred_contact_method: 'email',
@@ -5841,10 +5920,10 @@ function PriceTrackerModal({ listing, open, onClose }: { listing: Listing; open:
   }
 
   return (
-    <div className="fixed inset-0 z-[75] grid place-items-center bg-black/50 p-5 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-[2rem] bg-white/95 p-6 shadow-2xl">
+    <div className="fixed inset-0 z-[75] grid place-items-end bg-black/50 p-2 backdrop-blur-sm md:place-items-center md:p-5">
+      <div className="safe-bottom max-h-[calc(100svh-1rem)] w-full max-w-4xl overflow-y-auto overscroll-contain rounded-[1.75rem] bg-white/95 p-4 shadow-2xl md:max-h-[calc(100vh-2rem)] md:rounded-[2rem] md:p-8">
         {mutation.isSuccess ? (
-          <div className="py-8 text-center">
+          <div className="mx-auto max-w-lg py-8 text-center">
             <CheckCircle2 className="mx-auto text-[#0f705e]" size={44} />
             <h2 className="mt-4 text-3xl font-semibold tracking-[-0.05em]">Price watch request sent</h2>
             <p className="mt-3 text-sm leading-6 text-[#66746f]">The brokerage team has your target price and can follow up when price activity matters.</p>
@@ -5855,20 +5934,31 @@ function PriceTrackerModal({ listing, open, onClose }: { listing: Listing; open:
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#0f705e]">Price watch request</p>
-                <h2 className="mt-2 text-3xl font-semibold tracking-[-0.05em]">Set your target price</h2>
+                <h2 className="mt-2 text-3xl font-semibold tracking-[-0.05em] md:text-4xl">Set your target price</h2>
+                <p className="mt-3 max-w-2xl text-sm leading-6 text-[#66746f]">This is saved as a price watch lead for the brokerage team. Automated price-change notifications are a future enhancement.</p>
               </div>
-              <button type="button" onClick={onClose} className="grid h-11 w-11 place-items-center rounded-full border border-[#d7ded9]"><X size={20} /></button>
+              <button type="button" onClick={onClose} className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-[#d7ded9]"><X size={20} /></button>
             </div>
-            <p className="mt-3 text-sm leading-6 text-[#66746f]">Current price: <strong>{currency(listing.price, listing.listing_kind)}</strong>. This creates a brokerage follow-up request; automated price-change notifications are a future enhancement.</p>
-            <div className="mt-5 grid gap-3">
-              <Input name="target_price" label="Target price" inputMode="numeric" placeholder="450000" required />
-              <Input name="email" label="Email" type="email" defaultValue={profile?.email || ''} required />
-              <Input name="name" label="Name" defaultValue={profile?.full_name || 'Hafa Homes user'} />
-              <Input name="phone" label="Phone optional" defaultValue={searchProfile?.phone || profile?.phone || '+1671'} inputMode="tel" />
-              <QualificationFields compact searchProfile={searchProfile} />
+            <div className="mt-6 grid gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(280px,0.85fr)]">
+              <div className="grid gap-3 md:grid-cols-2">
+                <Input name="target_price" label="Target price" inputMode="numeric" placeholder="450000" required />
+                <Input name="email" label="Email" type="email" defaultValue={profile?.email || ''} required />
+                <Input name="name" label="Name" defaultValue={profile?.full_name || 'Hafa Homes user'} />
+                <Input name="phone" label="Phone optional" defaultValue={searchProfile?.phone || profile?.phone || '+1671'} inputMode="tel" />
+                <QualificationFields compact searchProfile={searchProfile} />
+              </div>
+              <aside className="rounded-[1.5rem] bg-[#f6f1e8] p-5">
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-[#0f705e]">Listing context</p>
+                <h3 className="mt-3 text-xl font-semibold tracking-[-0.04em] text-[#17211f]">{listing.title}</h3>
+                <dl className="mt-5 grid gap-3 text-sm">
+                  <div className="rounded-2xl bg-white/70 p-4"><dt className="text-xs font-bold uppercase tracking-[0.16em] text-[#7b8a84]">Current price</dt><dd className="mt-1 text-lg font-black text-[#17211f]">{currency(listing.price, listing.listing_kind)}</dd></div>
+                  <div className="rounded-2xl bg-white/70 p-4"><dt className="text-xs font-bold uppercase tracking-[0.16em] text-[#7b8a84]">Property</dt><dd className="mt-1 font-semibold text-[#304942]">{listing.village.name} · {listing.property_type}</dd></div>
+                </dl>
+                <p className="mt-4 text-sm leading-6 text-[#66746f]">Admins can filter these separately from showing requests in the lead inbox.</p>
+              </aside>
             </div>
-            {mutation.isError && <p className="mt-3 text-sm font-semibold text-red-700">Unable to save tracker right now.</p>}
-            <div className="mt-5 grid grid-cols-2 gap-3">
+            {mutation.isError && <p className="mt-3 text-sm font-semibold text-red-700">Unable to send price watch request right now.</p>}
+            <div className="mt-5 grid gap-3 sm:grid-cols-[1fr_180px]">
               <button disabled={submitting || mutation.isPending} className="rounded-2xl bg-[#0f3d35] px-4 py-3 text-sm font-bold text-white disabled:opacity-60">{submitting || mutation.isPending ? 'Sending...' : 'Send request'}</button>
               <button type="button" onClick={onClose} className="rounded-2xl bg-[#edf0ec] px-4 py-3 text-sm font-bold text-[#17211f]">Cancel</button>
             </div>

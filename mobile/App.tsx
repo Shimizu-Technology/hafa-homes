@@ -1228,7 +1228,7 @@ function AppContent({ auth }: { auth: AppAuth }) {
         )}
         {activeTab === 'requests' && (
           !auth.isSignedIn
-            ? <RequestsSignInScreen clerkEnabled={auth.clerkEnabled} onOpenAuth={() => openAuthPrompt({ title: 'Sign in to view your requests', copy: 'Signed-in showing requests and price alerts can show status, agent, and scheduled appointment details.' })} />
+            ? <RequestsSignInScreen clerkEnabled={auth.clerkEnabled} onOpenAuth={() => openAuthPrompt({ title: 'Sign in to view your requests', copy: 'Signed-in showing and price watch requests can show status, agent, and scheduled appointment details.' })} />
             : <RequestsScreen auth={auth} />
         )}
         {activeTab === 'more' && <MoreScreen auth={auth} onOpenAuth={openAuthPrompt} onNavigateTab={setActiveTab} />}
@@ -1447,7 +1447,7 @@ function ProgressiveLeadPromptSheet({ prompt, auth, selectedAgent, onDismiss, on
             <View style={styles.requestSuccess}>
               <Text style={styles.kicker}>{followUpError || (prompt.profile_prompt && !agentHelpRequested) ? 'Search profile saved' : 'Search assist sent'}</Text>
               <Text style={styles.requestTitle}>{followUpError ? 'Your saved preferences are ready.' : prompt.profile_prompt && !agentHelpRequested ? 'Your saved preferences are ready.' : 'The brokerage team has your search context.'}</Text>
-              <Text style={styles.requestCopy}>{followUpError ? 'Hafa Homes can prefill future requests from this profile. The optional agent follow-up did not send, so request a showing or price alert from a listing if you still want the team to reach out.' : prompt.profile_prompt && !agentHelpRequested ? 'Hafa Homes can prefill future requests from this profile and avoid asking the long prompt again.' : 'An agent can use these details to follow up with better Guam listing matches.'}</Text>
+              <Text style={styles.requestCopy}>{followUpError ? 'Hafa Homes can prefill future requests from this profile. The optional agent follow-up did not send, so request a showing or price watch from a listing if you still want the team to reach out.' : prompt.profile_prompt && !agentHelpRequested ? 'Hafa Homes can prefill future requests from this profile and avoid asking the long prompt again.' : 'An agent can use these details to follow up with better Guam listing matches.'}</Text>
               {followUpError && <Text style={styles.requestWarning}>Agent follow-up was not sent: {followUpError}</Text>}
               <Pressable style={styles.primaryCta} onPress={onClose}><Text style={styles.primaryCtaText}>Done</Text></Pressable>
             </View>
@@ -2018,7 +2018,7 @@ function RequestsSignInScreen({ clerkEnabled, onOpenAuth }: { clerkEnabled: bool
     <ScrollView contentContainerStyle={styles.listContent}>
       <View style={styles.screenIntro}>
         <Text style={styles.kicker}>My requests</Text>
-        <Text style={styles.screenTitle}>Track showings and price alerts</Text>
+        <Text style={styles.screenTitle}>Track showings and price watch requests</Text>
         <Text style={styles.screenCopy}>Signed-in requests show status, assigned agent, brokerage contact details, and confirmed appointment information.</Text>
       </View>
       <View style={styles.accountCard}>
@@ -2064,11 +2064,11 @@ function RequestsScreen({ auth }: { auth: AppAuth }) {
       ListHeaderComponent={(
         <View style={styles.screenIntro}>
           <Text style={styles.kicker}>My requests</Text>
-          <Text style={styles.screenTitle}>Showing requests and price alerts</Text>
+          <Text style={styles.screenTitle}>Showing and price watch requests</Text>
           <Text style={styles.screenCopy}>See status, agent, brokerage, and appointment details for every signed-in request.</Text>
         </View>
       )}
-      ListEmptyComponent={loading ? <CenteredState label="Loading your requests..." loading /> : <CenteredState label="No requests yet. Request a showing or add a price alert from any listing." />}
+      ListEmptyComponent={loading ? <CenteredState label="Loading your requests..." loading /> : <CenteredState label="No requests yet. Request a showing or send a price watch request from any listing." />}
       renderItem={({ item }) => <RequestHistoryCard request={item} />}
       ListFooterComponent={error ? <Text style={styles.requestError}>{error}</Text> : null}
     />
@@ -2142,8 +2142,6 @@ function AccountCard({ auth, onOpenAuth }: { auth: AppAuth; onOpenAuth: (prompt?
   const [searchProfileSaving, setSearchProfileSaving] = useState(false)
   const [searchProfileError, setSearchProfileError] = useState<string | null>(null)
   const [searchProfileReloadKey, setSearchProfileReloadKey] = useState(0)
-  const [searchPreferredContact, setSearchPreferredContact] = useState<'phone' | 'text' | 'email'>('email')
-  const [searchPhone, setSearchPhone] = useState('')
   const [searchPrequalifiedStatus, setSearchPrequalifiedStatus] = useState('')
   const [searchLenderName, setSearchLenderName] = useState('')
   const [searchPurchaseTimeline, setSearchPurchaseTimeline] = useState('')
@@ -2184,8 +2182,6 @@ function AccountCard({ auth, onOpenAuth }: { auth: AppAuth; onOpenAuth: (prompt?
           setLastName(result.user.last_name || '')
           setPhone(result.user.phone || '')
           setPreferredContact(result.user.preferred_contact_method || 'email')
-          setSearchPreferredContact(result.user.preferred_contact_method || 'email')
-          setSearchPhone(result.user.phone || '')
         }
       } catch (error) {
         if (!cancelled) setProfileError(error instanceof Error ? error.message : 'Unable to load profile')
@@ -2199,8 +2195,6 @@ function AccountCard({ auth, onOpenAuth }: { auth: AppAuth; onOpenAuth: (prompt?
         if (!cancelled) {
           setSearchProfile(searchResult.search_profile)
           setSearchProfileLoaded(true)
-          setSearchPreferredContact(searchResult.search_profile.preferred_contact_method || loadedUser?.preferred_contact_method || 'email')
-          setSearchPhone(searchResult.search_profile.phone || loadedUser?.phone || '')
           setSearchPrequalifiedStatus(searchResult.search_profile.prequalified_status || '')
           setSearchLenderName(searchResult.search_profile.lender_name || '')
           setSearchPurchaseTimeline(searchResult.search_profile.purchase_timeline || '')
@@ -2248,8 +2242,8 @@ function AccountCard({ auth, onOpenAuth }: { auth: AppAuth; onOpenAuth: (prompt?
     setSearchProfileError(null)
     try {
       const result = await updateSearchProfile({
-        preferred_contact_method: preferredContact,
-        phone: phone.trim(),
+        preferred_contact_method: profile ? preferredContact : (searchProfile?.preferred_contact_method || preferredContact),
+        phone: profile ? phone.trim() : (phone.trim() || searchProfile?.phone || ''),
         prequalified_status: searchPrequalifiedStatus,
         lender_name: searchLenderName.trim(),
         purchase_timeline: searchPurchaseTimeline,
@@ -2310,7 +2304,7 @@ function AccountCard({ auth, onOpenAuth }: { auth: AppAuth; onOpenAuth: (prompt?
         {profileLoading && <ActivityIndicator color={colors.green} style={{ marginTop: 4 }} />}
         <View style={styles.profileDetailsPanel}>
           <Text style={styles.profileSectionTitle}>Contact details</Text>
-          <Text style={styles.profileSectionCopy}>These details prefill showing requests and price alerts.</Text>
+          <Text style={styles.profileSectionCopy}>These details prefill showing and price watch requests.</Text>
           <RequestInput label="First name" value={firstName} onChangeText={setFirstName} />
           <RequestInput label="Last name" value={lastName} onChangeText={setLastName} />
           <RequestInput label="Phone" value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="+1671" />
@@ -2880,7 +2874,7 @@ function ListingDetailScreen({ listing, saved, auth, agents, selectedAgent, onSe
             style={styles.secondaryCta}
             onPress={() => { setShowPriceTracker(true); onTrackIntent('price_tracker_opened', { listing_id: detailListing.id, source: 'mobile', metadata: { surface: 'listing_detail', listing_kind: detailListing.listing_kind } }) }}
           >
-            <Text style={styles.secondaryCtaText}>Add price alert</Text>
+            <Text style={styles.secondaryCtaText}>Ask about price changes</Text>
           </Pressable>
           {detailListing.listing_kind === 'sale' && (
             <>
@@ -3282,7 +3276,7 @@ function PriceAlertSheet({ listing, auth, requestedAgent, open, onClose }: { lis
   async function handleSubmit() {
     const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
     if (!email.trim() || !emailValid) {
-      setError('Please add a valid email for price alerts.')
+      setError('Please add a valid email for this price watch request.')
       return
     }
 
@@ -3312,8 +3306,8 @@ function PriceAlertSheet({ listing, auth, requestedAgent, open, onClose }: { lis
       }, auth.isSignedIn ? auth.getToken : undefined)
       setSubmitted(true)
     } catch (submitError) {
-      console.warn('Unable to submit price alert', submitError)
-      setError(submitError instanceof Error ? submitError.message : 'We could not save this price alert yet.')
+      console.warn('Unable to submit price watch request', submitError)
+      setError(submitError instanceof Error ? submitError.message : 'We could not send this price watch request yet.')
     } finally {
       setSubmitting(false)
     }
@@ -3326,9 +3320,9 @@ function PriceAlertSheet({ listing, auth, requestedAgent, open, onClose }: { lis
         <View style={styles.requestSheet}>
           {submitted ? (
             <View style={styles.requestSuccess}>
-              <Text style={styles.kicker}>Price alert saved</Text>
-              <Text style={styles.requestTitle}>We’ll watch this listing.</Text>
-              <Text style={styles.requestCopy}>The Hafa Homes team can follow up when price activity matters for {listing.title}.</Text>
+              <Text style={styles.kicker}>Price watch request sent</Text>
+              <Text style={styles.requestTitle}>Your target price is with the team.</Text>
+              <Text style={styles.requestCopy}>The brokerage team can follow up when price activity matters for {listing.title}.</Text>
               <Pressable style={styles.primaryCta} onPress={onClose}><Text style={styles.primaryCtaText}>Done</Text></Pressable>
             </View>
           ) : (
@@ -3336,7 +3330,7 @@ function PriceAlertSheet({ listing, auth, requestedAgent, open, onClose }: { lis
               <View style={styles.sheetHandle} />
               <View style={styles.sheetHeaderRow}>
                 <View style={styles.sheetHeaderCopy}>
-                  <Text style={styles.kicker}>Price alert</Text>
+                  <Text style={styles.kicker}>Price watch request</Text>
                   <Text style={styles.requestTitle}>Set a target price</Text>
                 </View>
                 <Pressable onPress={onClose} style={styles.sheetCloseButton}><Text style={styles.sheetCloseText}>×</Text></Pressable>
@@ -3364,7 +3358,7 @@ function PriceAlertSheet({ listing, auth, requestedAgent, open, onClose }: { lis
               </View>
               {error && <Text style={styles.requestError}>{error}</Text>}
               <Pressable disabled={submitting} style={[styles.primaryCta, submitting && styles.ctaDisabled]} onPress={handleSubmit}>
-                <Text style={styles.primaryCtaText}>{submitting ? 'Saving alert...' : 'Save price alert'}</Text>
+                <Text style={styles.primaryCtaText}>{submitting ? 'Sending request...' : 'Send price watch request'}</Text>
               </Pressable>
             </ScrollView>
           )}
