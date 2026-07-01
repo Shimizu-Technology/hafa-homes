@@ -1927,8 +1927,17 @@ function SavedScreen({ listings, onOpen, onToggleSaved }: { listings: Listing[];
 function MoreScreen({ auth, onOpenAuth, onNavigateTab }: { auth: AppAuth; onOpenAuth: (prompt?: AuthPrompt) => void; onNavigateTab: (tab: TabKey) => void }) {
   const [page, setPage] = useState<'home' | 'profile'>('home')
 
-  function openWebsite() {
-    WebBrowser.openBrowserAsync(HAFA_HOMES_WEBSITE_URL).catch(() => Linking.openURL(HAFA_HOMES_WEBSITE_URL))
+  async function openWebsite() {
+    try {
+      await WebBrowser.openBrowserAsync(HAFA_HOMES_WEBSITE_URL)
+    } catch {
+      try {
+        await Linking.openURL(HAFA_HOMES_WEBSITE_URL)
+      } catch (linkError) {
+        console.warn('Unable to open Hafa Homes website', linkError)
+        Alert.alert('Unable to open website', 'Visit hafahomes.com from your browser.')
+      }
+    }
   }
 
   if (page === 'profile') {
