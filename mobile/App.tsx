@@ -244,6 +244,7 @@ type AuthPrompt = {
 WebBrowser.maybeCompleteAuthSession()
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000'
+const HAFA_HOMES_WEBSITE_URL = 'https://hafahomes.com'
 const MAPBOX_TOKEN = process.env.EXPO_PUBLIC_MAPBOX_TOKEN
 const CLERK_PUBLISHABLE_KEY = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY
 const CLERK_JWT_TEMPLATE = process.env.EXPO_PUBLIC_CLERK_JWT_TEMPLATE
@@ -1926,6 +1927,19 @@ function SavedScreen({ listings, onOpen, onToggleSaved }: { listings: Listing[];
 function MoreScreen({ auth, onOpenAuth, onNavigateTab }: { auth: AppAuth; onOpenAuth: (prompt?: AuthPrompt) => void; onNavigateTab: (tab: TabKey) => void }) {
   const [page, setPage] = useState<'home' | 'profile'>('home')
 
+  async function openWebsite() {
+    try {
+      await WebBrowser.openBrowserAsync(HAFA_HOMES_WEBSITE_URL)
+    } catch {
+      try {
+        await Linking.openURL(HAFA_HOMES_WEBSITE_URL)
+      } catch (linkError) {
+        console.warn('Unable to open Hafa Homes website', linkError)
+        Alert.alert('Unable to open website', 'Visit hafahomes.com from your browser.')
+      }
+    }
+  }
+
   if (page === 'profile') {
     return <ProfileSettingsScreen auth={auth} onOpenAuth={onOpenAuth} onBack={() => setPage('home')} />
   }
@@ -1944,6 +1958,7 @@ function MoreScreen({ auth, onOpenAuth, onNavigateTab }: { auth: AppAuth; onOpen
         <MoreMenuItem title="Saved homes" copy="Return to homes you saved from web or mobile." label="Saved" onPress={() => onNavigateTab('saved')} />
         <MoreMenuItem title="Agents" copy="Choose the brokerage agent you want future requests routed to." label="Agents" onPress={() => onNavigateTab('agents')} />
         <MoreMenuItem title="Request history" copy="Track showing requests, agents, brokerage details, and appointment status." label="CRM" onPress={() => onNavigateTab('requests')} />
+        <MoreMenuItem title="Hafa Homes website" copy="Open the public web search, privacy policy, and island resources." label="Web" onPress={openWebsite} />
       </View>
 
       <View style={styles.moreMenuSection}>

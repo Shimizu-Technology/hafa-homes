@@ -49,6 +49,7 @@ import { useAuthContext } from './contexts/AuthContext'
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
 const FALLBACK_LISTING_IMAGE = 'https://images.unsplash.com/photo-1600047509807-ba8f99d2cdde?auto=format&fit=crop&w=1400&q=80'
+const IOS_APP_STORE_URL = 'https://apps.apple.com/us/app/hafa-homes/id6773042903'
 const LEAD_INTENT_SESSION_TOKEN_KEY = 'hafaHomes:leadIntentSessionToken'
 const LEAD_INTENT_CONTEXT_REQUIRED_KEY = 'hafaHomes:leadIntentContextRequired'
 const MEANINGFUL_LEAD_INTENT_EVENTS = new Set(['listing_detail_viewed', 'listing_saved', 'search_filter_changed', 'map_marker_clicked', 'saved_search_created'])
@@ -2109,6 +2110,17 @@ function HeroHeader({ kind, onKindChange }: { kind: 'sale' | 'rent'; onKindChang
             <p className="mt-4 max-w-xl text-sm leading-6 text-white/78 md:mt-5 md:text-base md:leading-7">
               Search by village, base commute, pets, furnished rentals, ocean views, typhoon-ready features, and the details that matter on Guam.
             </p>
+            <div className="mt-6 flex flex-wrap items-center gap-3">
+              <a
+                href={IOS_APP_STORE_URL}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-2 rounded-full bg-white px-5 py-3 text-sm font-bold text-[#0f3d35] shadow-xl shadow-black/10 transition hover:-translate-y-0.5 hover:bg-[#f6f1e8] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+              >
+                <Phone size={17} /> Get the iOS app
+              </a>
+              <span className="rounded-full border border-white/18 bg-white/8 px-4 py-3 text-sm font-bold text-white/78">Android coming soon</span>
+            </div>
           </div>
           <div className="rounded-[2rem] border border-white/15 bg-white/10 p-4 backdrop-blur">
             <div className="flex rounded-full bg-black/20 p-1">
