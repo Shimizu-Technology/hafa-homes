@@ -10,7 +10,7 @@ module Api
 
         before_action :authenticate_user!
         before_action :require_platform_admin!
-        before_action :set_user, only: [:update]
+        before_action :set_user, only: [ :update ]
 
         def index
           users = User.includes(:archived_by, :agent_profiles, brokerage_memberships: :brokerage).order(:role, :email).limit(requested_limit)
@@ -24,6 +24,7 @@ module Api
         def create
           permitted = user_params
           user = User.new(base_user_attributes(permitted))
+          user.role = requested_role(permitted)
           user.clerk_id = "pending_#{SecureRandom.uuid}"
           user.invitation_status = "pending"
           user.invited_at = Time.current
@@ -47,6 +48,8 @@ module Api
           render json: { user: serialize_user(user.reload) }, status: :created
         rescue ActiveRecord::RecordInvalid => e
           render json: { errors: e.record.errors.full_messages }, status: :unprocessable_entity
+        rescue ActionController::BadRequest => e
+          render json: { errors: [ e.message ] }, status: :unprocessable_entity
         end
 
         def update
@@ -54,6 +57,7 @@ module Api
           return if prevent_self_lockout(permitted) == false
 
           @user.assign_attributes(base_user_attributes(permitted).except(:email))
+          @user.role = requested_role(permitted, fallback: @user.role)
           membership = apply_brokerage_membership(@user, permitted[:brokerage_membership]) if permitted[:brokerage_membership].present?
 
           user_changes = {}
@@ -70,6 +74,8 @@ module Api
           render json: { user: serialize_user(@user.reload) }
         rescue ActiveRecord::RecordInvalid => e
           render json: { errors: e.record.errors.full_messages }, status: :unprocessable_entity
+        rescue ActionController::BadRequest => e
+          render json: { errors: [ e.message ] }, status: :unprocessable_entity
         end
 
         private
@@ -83,10 +89,17 @@ module Api
         end
 
         def base_user_attributes(permitted)
-          permitted.slice(:email, :role, :first_name, :last_name, :phone, :preferred_contact_method).tap do |attributes|
+          permitted.slice(:email, :first_name, :last_name, :phone, :preferred_contact_method).tap do |attributes|
             attributes[:preferred_contact_method] = nil if attributes.key?(:preferred_contact_method) && attributes[:preferred_contact_method].blank?
             attributes[:phone] = nil if attributes.key?(:phone) && attributes[:phone].blank?
           end
+        end
+
+        def requested_role(permitted, fallback: "consumer")
+          role = permitted[:requested_role].presence || fallback
+          return role if User::ROLES.include?(role)
+
+          raise ActionController::BadRequest, "role is invalid"
         end
 
         def build_brokerage_membership(user, membership_params)
@@ -186,12 +199,12 @@ module Api
           return true unless @user.id == current_user.id
 
           if ActiveModel::Type::Boolean.new.cast(permitted[:archived])
-            render json: { errors: ["You cannot archive your own account"] }, status: :unprocessable_entity
+            render json: { errors: [ "You cannot archive your own account" ] }, status: :unprocessable_entity
             return false
           end
 
-          if permitted[:role].present? && permitted[:role] != "platform_admin"
-            render json: { errors: ["You cannot remove your own platform admin role"] }, status: :unprocessable_entity
+          if permitted[:requested_role].present? && permitted[:requested_role] != "platform_admin"
+            render json: { errors: [ "You cannot remove your own platform admin role" ] }, status: :unprocessable_entity
             return false
           end
 
@@ -203,18 +216,20 @@ module Api
         end
 
         def user_params
-          params.require(:user).permit(
+          raw_user = params.require(:user)
+          raw_user.permit(
             :email,
-            :role,
             :first_name,
             :last_name,
             :phone,
             :preferred_contact_method,
             :archived,
             :agent_id,
-            brokerage_membership: [:brokerage_id, :role, :status],
-            agent_profile: [:create, :brokerage_id, :name, :email, :phone, :license_number]
-          )
+            brokerage_membership: [ :brokerage_id, :role, :status ],
+            agent_profile: [ :create, :brokerage_id, :name, :email, :phone, :license_number ]
+          ).tap do |permitted|
+            permitted[:requested_role] = raw_user[:role].to_s if raw_user.key?(:role)
+          end
         end
       end
     end

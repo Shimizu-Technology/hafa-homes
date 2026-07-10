@@ -70,7 +70,7 @@ module Api
             lead_notes: lead_notes_for(lead).map { |note| Api::V1::LeadNoteSerializer.summary(note) },
             lead_tasks: lead_tasks_for(lead).map { |task| Api::V1::LeadTaskSerializer.summary(task) },
             lead_activities: lead_activities_for(lead).map { |activity| Api::V1::LeadActivitySerializer.summary(activity) },
-            current_search_profile: buyer_search_profile_json(lead.user&.buyer_search_profile),
+            current_search_profile: buyer_search_profile_json(lead.user&.buyer_search_profiles&.find { |profile| profile.brokerage_id == lead.brokerage_id }),
             crm_summary: crm_summary(lead)
           )
         end
@@ -182,7 +182,7 @@ module Api
         end
 
         def lead_tasks_for(lead)
-          includes = [:assigned_to, :created_by, :completed_by, :archived_by]
+          includes = [ :assigned_to, :created_by, :completed_by, :archived_by ]
           open_tasks = lead.lead_tasks.where(status: "open").includes(includes).order(Arel.sql("due_at ASC NULLS LAST"), created_at: :desc).limit(15)
           completed_tasks = lead.lead_tasks.where(status: "completed").includes(includes).order(Arel.sql("completed_at DESC NULLS LAST"), updated_at: :desc).limit(5)
 
@@ -199,7 +199,7 @@ module Api
           overdue_count = open_tasks.where("due_at < ?", Time.current).count
           next_task_due_at = open_tasks.order(Arel.sql("due_at ASC NULLS LAST"), created_at: :desc).limit(1).pick(:due_at)
           note_counts = lead.lead_notes.group(Arel.sql("CASE WHEN archived_at IS NULL THEN 'active' ELSE 'archived' END")).count
-          activity_count, last_activity_at = lead.lead_activities.pick(Arel.sql("COUNT(*)"), Arel.sql("MAX(occurred_at)")) || [0, nil]
+          activity_count, last_activity_at = lead.lead_activities.pick(Arel.sql("COUNT(*)"), Arel.sql("MAX(occurred_at)")) || [ 0, nil ]
 
           {
             open_task_count: task_counts.fetch("open", 0),

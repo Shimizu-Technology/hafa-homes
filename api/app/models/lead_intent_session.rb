@@ -114,10 +114,7 @@ class LeadIntentSession < ApplicationRecord
   def record_event!(event_name:, client_event_id: nil, user: nil, brokerage: nil, listing: nil, village: nil, agent: nil, source: nil, metadata: {}, occurred_at: Time.current)
     normalized_client_event_id = client_event_id.presence
     existing_event = lead_intent_events.find_by(client_event_id: normalized_client_event_id) if normalized_client_event_id
-    if existing_event
-      refresh_summary!
-      return existing_event
-    end
+    return existing_event if existing_event
 
     with_lock do
       associate_context!(user:, brokerage:, agent:)
@@ -140,7 +137,6 @@ class LeadIntentSession < ApplicationRecord
     raise unless normalized_client_event_id
 
     event = lead_intent_events.find_by!(client_event_id: normalized_client_event_id)
-    refresh_summary!
     event
   end
 
@@ -169,8 +165,10 @@ class LeadIntentSession < ApplicationRecord
     ].join(":")
     return ineligible_prompt("already_prompted") if last_prompt_key == prompt_key
 
-    update_columns(last_prompt_key: prompt_key, updated_at: Time.current)
-    profile_context&.dig(:profile)&.update_column(:last_prompted_at, Time.current) if profile_context&.dig(:profile)&.persisted?
+    self.class.transaction do
+      update_columns(last_prompt_key: prompt_key, updated_at: Time.current)
+      profile_context&.dig(:profile)&.update_column(:last_prompted_at, Time.current) if profile_context&.dig(:profile)&.persisted?
+    end
 
     {
       eligible: true,
@@ -262,19 +260,31 @@ class LeadIntentSession < ApplicationRecord
   end
 
   def refresh_summary!
-    events = lead_intent_events.includes(:village, listing: :village).order(:occurred_at, :id).to_a
-    listing_view_events = events.select { |event| event.event_name == "listing_detail_viewed" && event.listing_id.present? }
-    saved_events = events.select { |event| event.event_name == "listing_saved" && event.listing_id.present? }
-    form_open_events = events.select { |event| %w[showing_form_opened price_tracker_opened].include?(event.event_name) }
-    village_counts = Hash.new(0)
-
-    listing_view_events.each do |event|
-      village_name = event.village&.name || event.listing&.village&.name
-      village_counts[village_name] += 1 if village_name.present?
-    end
-
-    prices = listing_view_events.filter_map { |event| event.listing&.price&.to_f }
-    latest_listing_event = listing_view_events.last
+    events = lead_intent_events
+    listing_view_events = events.where(event_name: "listing_detail_viewed").where.not(listing_id: nil)
+    saved_events = events.where(event_name: "listing_saved").where.not(listing_id: nil)
+    event_count = events.count
+    listing_view_count = listing_view_events.count
+    unique_listing_ids = listing_view_events
+      .group(:listing_id)
+      .order(Arel.sql("MAX(occurred_at) DESC"))
+      .limit(MAX_SUMMARY_IDS)
+      .pluck(:listing_id)
+    saved_listing_ids = saved_events
+      .group(:listing_id)
+      .order(Arel.sql("MAX(occurred_at) DESC"))
+      .limit(MAX_SUMMARY_IDS)
+      .pluck(:listing_id)
+    village_counts = listing_view_events
+      .joins(:village)
+      .group("villages.name")
+      .order(Arel.sql("COUNT(*) DESC"))
+      .limit(5)
+      .count
+    viewed_price_min, viewed_price_max = listing_view_events
+      .joins(:listing)
+      .pick(Arel.sql("MIN(listings.price)"), Arel.sql("MAX(listings.price)"))
+    latest_listing_event = listing_view_events.includes(:listing).order(occurred_at: :desc, id: :desc).first
     prompt_state_summary = summary.slice(
       "last_dismiss_reason",
       "last_prompt_dismissed_at",
@@ -285,24 +295,24 @@ class LeadIntentSession < ApplicationRecord
       "dismissed_search_filter_count"
     )
     next_summary = {
-      events_count: events.size,
-      listing_view_count: listing_view_events.size,
-      unique_listing_view_count: listing_view_events.map(&:listing_id).uniq.size,
-      unique_listing_ids: listing_view_events.map(&:listing_id).uniq.last(MAX_SUMMARY_IDS),
-      saved_listing_count: saved_events.map(&:listing_id).uniq.size,
-      saved_listing_ids: saved_events.map(&:listing_id).uniq.last(MAX_SUMMARY_IDS),
-      top_villages: village_counts.sort_by { |_name, count| -count }.first(5).map { |name, count| { name: name, count: count } },
-      viewed_price_min: prices.min,
-      viewed_price_max: prices.max,
+      events_count: event_count,
+      listing_view_count: listing_view_count,
+      unique_listing_view_count: listing_view_events.distinct.count(:listing_id),
+      unique_listing_ids: unique_listing_ids,
+      saved_listing_count: saved_events.distinct.count(:listing_id),
+      saved_listing_ids: saved_listing_ids,
+      top_villages: village_counts.map { |name, count| { name: name, count: count } },
+      viewed_price_min: viewed_price_min&.to_f,
+      viewed_price_max: viewed_price_max&.to_f,
       latest_listing_id: latest_listing_event&.listing_id,
       latest_listing_title: latest_listing_event&.listing&.title,
-      form_open_count: form_open_events.size,
-      form_abandon_count: events.count { |event| event.event_name == "lead_form_abandoned" },
-      search_filter_count: events.count { |event| event.event_name == "search_filter_changed" },
-      agent_selected_count: events.count { |event| event.event_name == "agent_selected" }
+      form_open_count: events.where(event_name: %w[showing_form_opened price_tracker_opened]).count,
+      form_abandon_count: events.where(event_name: "lead_form_abandoned").count,
+      search_filter_count: events.where(event_name: "search_filter_changed").count,
+      agent_selected_count: events.where(event_name: "agent_selected").count
     }.compact
 
-    update_columns(summary: next_summary.deep_stringify_keys.merge(prompt_state_summary), events_count: events.size, last_seen_at: Time.current, updated_at: Time.current)
+    update_columns(summary: next_summary.deep_stringify_keys.merge(prompt_state_summary), events_count: event_count, last_seen_at: Time.current, updated_at: Time.current)
   end
 
   def prompt_trigger(latest_event)
@@ -359,7 +369,7 @@ class LeadIntentSession < ApplicationRecord
   def search_profile_prompt_context(_trigger)
     return nil unless user
 
-    profile = user.buyer_search_profile
+    profile = user.buyer_search_profiles.find_by(brokerage: brokerage)
     return finish_search_profile_context(profile) unless profile&.complete?
 
     divergence = search_profile_divergence(profile)
@@ -482,7 +492,7 @@ class LeadIntentSession < ApplicationRecord
   end
 
   def combined_budget_bound(saved_value, viewed_value, direction)
-    values = [saved_value, viewed_value].filter_map { |value| decimal_value(value) }
+    values = [ saved_value, viewed_value ].filter_map { |value| decimal_value(value) }
     return nil if values.empty?
 
     (direction == :min ? values.min : values.max).to_f

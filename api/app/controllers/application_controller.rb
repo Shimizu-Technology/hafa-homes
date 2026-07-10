@@ -2,7 +2,9 @@ class ApplicationController < ActionController::API
   private
 
   def current_routing_brokerage
-    @current_routing_brokerage ||= Brokerage.active.order(:id).first
+    return @current_routing_brokerage if defined?(@current_routing_brokerage)
+
+    @current_routing_brokerage = BrokerageResolver.resolve(request)
   end
 
   def record_audit_event(action:, target: nil, target_label: nil, brokerage: nil, lead: nil, metadata: {}, changes: {})

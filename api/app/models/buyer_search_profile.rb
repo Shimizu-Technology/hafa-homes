@@ -6,9 +6,9 @@ class BuyerSearchProfile < ApplicationRecord
   AGENT_RELATIONSHIP_STATUSES = Lead::AGENT_RELATIONSHIP_STATUSES
 
   belongs_to :user
-  belongs_to :brokerage, optional: true
+  belongs_to :brokerage
 
-  validates :user_id, uniqueness: true
+  validates :user_id, uniqueness: { scope: :brokerage_id }
   validates :preferred_contact_method, inclusion: { in: CONTACT_METHODS }, allow_blank: true
   validates :prequalified_status, inclusion: { in: PREQUALIFIED_STATUSES }, allow_blank: true
   validates :purchase_timeline, inclusion: { in: PURCHASE_TIMELINES }, allow_blank: true
@@ -124,7 +124,6 @@ class BuyerSearchProfile < ApplicationRecord
 
   def set_defaults
     self.preferred_contact_method = preferred_contact_method.presence
-    self.brokerage ||= Brokerage.active.order(:id).first
   end
 
   def normalize_phone_number

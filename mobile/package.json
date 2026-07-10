@@ -5,13 +5,13 @@
   "dependencies": {
     "@clerk/clerk-expo": "^2.19.31",
     "@react-native-async-storage/async-storage": "2.2.0",
-    "expo": "~56.0.13",
+    "expo": "~56.0.15",
     "expo-apple-authentication": "~56.0.4",
-    "expo-auth-session": "~56.0.14",
+    "expo-auth-session": "~56.0.15",
     "expo-crypto": "~56.0.4",
-    "expo-linking": "~56.0.14",
+    "expo-linking": "~56.0.15",
     "expo-secure-store": "^56.0.4",
-    "expo-splash-screen": "~56.0.11",
+    "expo-splash-screen": "~56.0.12",
     "expo-status-bar": "~56.0.4",
     "expo-web-browser": "^56.0.5",
     "react": "19.2.3",
@@ -30,7 +30,17 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
-    "doctor": "expo-doctor"
+    "doctor": "expo-doctor",
+    "audit:production": "node scripts/audit-production.mjs"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "overrides": {
+    "@babel/core": "7.29.7",
+    "viem": "2.55.0",
+    "ws": "8.21.0",
+    "uuid": "11.1.1"
   },
   "private": true
 }

@@ -5,6 +5,7 @@ import * as AppleAuthentication from 'expo-apple-authentication'
 import * as Linking from 'expo-linking'
 import { StatusBar } from 'expo-status-bar'
 import * as WebBrowser from 'expo-web-browser'
+import { apiFetch } from './src/apiClient'
 import { WebView } from 'react-native-webview'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -65,6 +66,7 @@ type Brokerage = {
   slug?: string
   phone?: string
   website_url?: string
+  demo_data?: boolean
 }
 
 type Agent = {
@@ -364,15 +366,14 @@ function mergedPromptProfile(prompt: LeadIntentPrompt, searchProfile?: SearchPro
 }
 
 async function fetchListings(kind: ListingKind): Promise<Listing[]> {
-  const response = await fetch(`${API_URL}/api/v1/listings?kind=${kind}`)
+  const response = await apiFetch(`${API_URL}/api/v1/listings?kind=${kind}`)
   if (!response.ok) throw new Error('Unable to load listings')
   const json = await response.json()
   return json.listings ?? []
 }
 
-async function fetchAgents(brokerageId?: number): Promise<Agent[]> {
-  const query = brokerageId ? `?brokerage_id=${brokerageId}` : ''
-  const response = await fetch(`${API_URL}/api/v1/agents${query}`)
+async function fetchAgents(): Promise<Agent[]> {
+  const response = await apiFetch(`${API_URL}/api/v1/agents`)
   if (!response.ok) throw new Error('Unable to load agents')
   const json = await response.json()
   return json.agents ?? []
@@ -427,7 +428,7 @@ function withAuthDelayNotice<T>(promise: Promise<T>, onDelay: () => void, timeou
 }
 
 async function fetchListing(listingId: number): Promise<Listing> {
-  const response = await fetch(`${API_URL}/api/v1/listings/${listingId}`)
+  const response = await apiFetch(`${API_URL}/api/v1/listings/${listingId}`)
   if (!response.ok) throw new ApiRequestError(await apiErrorMessage(response, 'Unable to load listing'), response.status)
   const json = await response.json()
   return json.listing
@@ -528,7 +529,7 @@ async function recordLeadIntentEvent(eventName: string, payload: { listing_id?: 
     const clientEventId = leadIntentClientEventId(eventName)
 
     async function postEvent(token: string) {
-      return fetch(`${API_URL}/api/v1/lead_intent/events`, {
+      return apiFetch(`${API_URL}/api/v1/lead_intent/events`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(await authHeaders(getToken)) },
         body: JSON.stringify({
@@ -565,7 +566,7 @@ async function dismissLeadIntentPrompt(promptKey?: string, reason = 'dismissed',
   try {
     const sessionToken = await currentLeadIntentSessionToken()
     if (!sessionToken) return
-    const response = await fetch(`${API_URL}/api/v1/lead_intent/dismiss`, {
+    const response = await apiFetch(`${API_URL}/api/v1/lead_intent/dismiss`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(await authHeaders(getToken)) },
       body: JSON.stringify({ lead_intent: { session_token: sessionToken, prompt_key: promptKey, reason } }),
@@ -580,7 +581,7 @@ async function dismissLeadIntentPrompt(promptKey?: string, reason = 'dismissed',
 }
 
 async function fetchSavedListings(getToken: GetAuthToken): Promise<{ listing_ids: number[]; listings: Listing[] }> {
-  const response = await fetch(`${API_URL}/api/v1/me/saved_listings`, {
+  const response = await apiFetch(`${API_URL}/api/v1/me/saved_listings`, {
     headers: await authHeaders(getToken),
   })
   if (!response.ok) throw new Error('Unable to load saved homes')
@@ -588,7 +589,7 @@ async function fetchSavedListings(getToken: GetAuthToken): Promise<{ listing_ids
 }
 
 async function saveListingForUser(listingId: number, getToken: GetAuthToken): Promise<{ listing: Listing; listing_id: number; saved: boolean }> {
-  const response = await fetch(`${API_URL}/api/v1/listings/${listingId}/save`, {
+  const response = await apiFetch(`${API_URL}/api/v1/listings/${listingId}/save`, {
     method: 'POST',
     headers: await authHeaders(getToken),
   })
@@ -597,7 +598,7 @@ async function saveListingForUser(listingId: number, getToken: GetAuthToken): Pr
 }
 
 async function removeSavedListingForUser(listingId: number, getToken: GetAuthToken): Promise<{ listing_id: number; saved: boolean }> {
-  const response = await fetch(`${API_URL}/api/v1/listings/${listingId}/save`, {
+  const response = await apiFetch(`${API_URL}/api/v1/listings/${listingId}/save`, {
     method: 'DELETE',
     headers: await authHeaders(getToken),
   })
@@ -643,7 +644,7 @@ async function createLead(payload: CreateLeadPayload, getToken?: GetAuthToken, r
     throw new ApiRequestError('Your search session refreshed after sign-in. Please view the home again and reopen this form before submitting.', 409)
   }
 
-  const response = await fetch(`${API_URL}/api/v1/leads`, {
+  const response = await apiFetch(`${API_URL}/api/v1/leads`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(await authHeaders(getToken)) },
     body: JSON.stringify({ lead: payload }),
@@ -664,7 +665,7 @@ async function createLead(payload: CreateLeadPayload, getToken?: GetAuthToken, r
 }
 
 async function fetchMyLeads(getToken: GetAuthToken): Promise<{ leads: ConsumerLead[] }> {
-  const response = await fetch(`${API_URL}/api/v1/me/leads`, {
+  const response = await apiFetch(`${API_URL}/api/v1/me/leads`, {
     headers: await authHeaders(getToken),
   })
   if (!response.ok) throw new ApiRequestError(await apiErrorMessage(response, 'Unable to load your requests'), response.status)
@@ -672,7 +673,7 @@ async function fetchMyLeads(getToken: GetAuthToken): Promise<{ leads: ConsumerLe
 }
 
 async function fetchMe(getToken: GetAuthToken): Promise<{ user: CurrentUser }> {
-  const response = await fetch(`${API_URL}/api/v1/me`, {
+  const response = await apiFetch(`${API_URL}/api/v1/me`, {
     headers: await authHeaders(getToken),
   })
   if (!response.ok) throw new ApiRequestError(await apiErrorMessage(response, 'Unable to load profile'), response.status)
@@ -680,7 +681,7 @@ async function fetchMe(getToken: GetAuthToken): Promise<{ user: CurrentUser }> {
 }
 
 async function updateProfile(payload: Partial<Pick<CurrentUser, 'first_name' | 'last_name' | 'phone' | 'preferred_contact_method'>>, getToken: GetAuthToken): Promise<{ user: CurrentUser }> {
-  const response = await fetch(`${API_URL}/api/v1/me`, {
+  const response = await apiFetch(`${API_URL}/api/v1/me`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...(await authHeaders(getToken)) },
     body: JSON.stringify({ user: payload }),
@@ -690,7 +691,7 @@ async function updateProfile(payload: Partial<Pick<CurrentUser, 'first_name' | '
 }
 
 async function fetchSearchProfile(getToken: GetAuthToken): Promise<{ search_profile: SearchProfile }> {
-  const response = await fetch(`${API_URL}/api/v1/me/search_profile`, {
+  const response = await apiFetch(`${API_URL}/api/v1/me/search_profile`, {
     headers: await authHeaders(getToken),
   })
   if (!response.ok) throw new ApiRequestError(await apiErrorMessage(response, 'Unable to load search profile'), response.status)
@@ -698,7 +699,7 @@ async function fetchSearchProfile(getToken: GetAuthToken): Promise<{ search_prof
 }
 
 async function updateSearchProfile(payload: SearchProfilePayload, getToken: GetAuthToken): Promise<{ search_profile: SearchProfile }> {
-  const response = await fetch(`${API_URL}/api/v1/me/search_profile`, {
+  const response = await apiFetch(`${API_URL}/api/v1/me/search_profile`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...(await authHeaders(getToken)) },
     body: JSON.stringify({ search_profile: payload }),
@@ -708,7 +709,7 @@ async function updateSearchProfile(payload: SearchProfilePayload, getToken: GetA
 }
 
 async function deleteAccount(getToken: GetAuthToken): Promise<{ deleted: boolean }> {
-  const response = await fetch(`${API_URL}/api/v1/me`, {
+  const response = await apiFetch(`${API_URL}/api/v1/me`, {
     method: 'DELETE',
     headers: await authHeaders(getToken),
   })
@@ -1536,10 +1537,13 @@ function SearchScreen({ listings, savedIds, onOpen, onToggleSaved }: { listings:
       keyExtractor={(listing) => String(listing.id)}
       contentContainerStyle={styles.listContent}
       ListHeaderComponent={(
-        <View style={styles.screenIntro}>
+        <View style={styles.listHeaderStack}>
+          <View style={styles.screenIntro}>
             <Text style={styles.kicker}>Listings</Text>
-          <Text style={styles.screenTitle}>Latest Guam homes</Text>
-          <Text style={styles.screenCopy}>Search homes and rentals by village, price, features, and the details that matter on island.</Text>
+            <Text style={styles.screenTitle}>Latest Guam homes</Text>
+            <Text style={styles.screenCopy}>Search homes and rentals by village, price, features, and the details that matter on island.</Text>
+          </View>
+          {listings.some((listing) => listing.brokerage?.demo_data) && <DemoInventoryNotice />}
         </View>
       )}
       renderItem={({ item }) => (
@@ -1551,6 +1555,15 @@ function SearchScreen({ listings, savedIds, onOpen, onToggleSaved }: { listings:
         />
       )}
     />
+  )
+}
+
+function DemoInventoryNotice() {
+  return (
+    <View style={styles.demoInventoryNotice} accessibilityRole="text">
+      <Text style={styles.demoInventoryTitle}>Demonstration inventory</Text>
+      <Text style={styles.demoInventoryCopy}>Listing facts and photos are sample content while authorized Guam MLS/IDX access is completed. Availability and pricing are not live.</Text>
+    </View>
   )
 }
 
@@ -1626,6 +1639,11 @@ function MapScreen({ listings, savedIds, onOpen, onToggleSaved, fullMap, initial
             </Pressable>
           </View>
         </View>
+        {listings.some((listing) => listing.brokerage?.demo_data) && (
+          <View style={styles.demoMapNotice} pointerEvents="none">
+            <Text style={styles.demoMapNoticeText}>Demo inventory · availability and pricing are not live</Text>
+          </View>
+        )}
         {previewListing && (
           <MapListingPreview
             key={previewListing.id}
@@ -2843,6 +2861,7 @@ function ListingDetailScreen({ listing, saved, auth, agents, selectedAgent, onSe
           <Text style={styles.priceLarge}>{currency(detailListing.price, detailListing.listing_kind)}</Text>
           <Text style={styles.detailTitle}>{detailListing.title}</Text>
           <Text style={styles.cardMeta}>{detailListing.village.name} · {detailListing.address}</Text>
+          {detailListing.brokerage?.demo_data && <DemoInventoryNotice />}
           <Text style={styles.detailStats}>{detailListing.beds} beds · {detailListing.baths} baths · {detailListing.square_feet?.toLocaleString() ?? '—'} sqft</Text>
           <View style={styles.listingFactsCard}>
             <Text style={styles.factLine}>Listing ID <Text style={styles.factValue}>{detailListing.external_id || `HH-${detailListing.id}`}</Text></Text>
@@ -2974,6 +2993,7 @@ function ShowingRequestSheet({ listing, auth, requestedAgent, open, onOpenAuth, 
   const [alreadyWorkingWithAgent, setAlreadyWorkingWithAgent] = useState('')
   const [qualificationNotes, setQualificationNotes] = useState('')
   const [message, setMessage] = useState(`I'm interested in ${listing.title}.`)
+  const [showOptionalDetails, setShowOptionalDetails] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -3014,6 +3034,7 @@ function ShowingRequestSheet({ listing, auth, requestedAgent, open, onOpenAuth, 
       setDesiredBaths(listing.baths ? String(listing.baths) : '')
       setSubmitted(false)
       setError(null)
+      setShowOptionalDetails(false)
 
       if (!auth.isSignedIn) return
 
@@ -3168,20 +3189,29 @@ function ShowingRequestSheet({ listing, auth, requestedAgent, open, onOpenAuth, 
                     </Pressable>
                   ))}
                 </View>
-                <Text style={styles.requestLabel}>Buyer readiness</Text>
-                <Text style={styles.requestCopy}>These optional details help the agent follow up with useful matches instead of starting from scratch.</Text>
-                <QualificationChoiceGroup label="Prequalified?" options={prequalifiedOptions} value={prequalifiedStatus} onChange={(value) => { markShowingFieldEdited('prequalifiedStatus'); setPrequalifiedStatus(value) }} />
-                <QualificationChoiceGroup label="Timeline" options={purchaseTimelineOptions} value={purchaseTimeline} onChange={(value) => { markShowingFieldEdited('purchaseTimeline'); setPurchaseTimeline(value) }} />
-                <QualificationChoiceGroup label="Buyer type" options={buyerStatusOptions} value={buyerStatus} onChange={(value) => { markShowingFieldEdited('buyerStatus'); setBuyerStatus(value) }} />
-                <QualificationChoiceGroup label="Working with an agent?" options={agentRelationshipOptions} value={alreadyWorkingWithAgent} onChange={(value) => { markShowingFieldEdited('alreadyWorkingWithAgent'); setAlreadyWorkingWithAgent(value) }} />
-                <RequestInput label="Lender / bank optional" value={lenderName} onChangeText={(value) => { markShowingFieldEdited('lenderName'); setLenderName(value) }} placeholder="Bank of Guam, Coast360..." />
-                <RequestInput label="Budget min" value={budgetMin} onChangeText={(value) => { markShowingFieldEdited('budgetMin'); setBudgetMin(value) }} placeholder="450000" keyboardType="number-pad" />
-                <RequestInput label="Budget max" value={budgetMax} onChangeText={(value) => { markShowingFieldEdited('budgetMax'); setBudgetMax(value) }} placeholder="650000" keyboardType="number-pad" />
-                <RequestInput label="Desired villages" value={desiredVillages} onChangeText={(value) => { markShowingFieldEdited('desiredVillages'); setDesiredVillages(value) }} placeholder="Dededo, Yigo, Tamuning" />
-                <RequestInput label="Desired beds" value={desiredBeds} onChangeText={(value) => { markShowingFieldEdited('desiredBeds'); setDesiredBeds(value) }} placeholder="3" keyboardType="number-pad" />
-                <RequestInput label="Desired baths" value={desiredBaths} onChangeText={(value) => { markShowingFieldEdited('desiredBaths'); setDesiredBaths(value) }} placeholder="2" keyboardType="number-pad" />
-                <Text style={styles.requestLabel}>Qualification notes</Text>
-                <TextInput value={qualificationNotes} onChangeText={(value) => { markShowingFieldEdited('qualificationNotes'); setQualificationNotes(value) }} multiline style={[styles.requestInput, styles.requestMessageInput]} placeholder="Relocating soon, needs pet-friendly, prefers central Guam..." placeholderTextColor="#7b8a84" />
+                <Pressable style={styles.optionalDetailsToggle} onPress={() => setShowOptionalDetails((current) => !current)} accessibilityRole="button" accessibilityState={{ expanded: showOptionalDetails }}>
+                  <View style={styles.optionalDetailsCopy}>
+                    <Text style={styles.optionalDetailsTitle}>Tell the agent more</Text>
+                    <Text style={styles.optionalDetailsSubtitle}>Optional search and readiness details</Text>
+                  </View>
+                  <Text style={styles.optionalDetailsIcon}>{showOptionalDetails ? '−' : '+'}</Text>
+                </Pressable>
+                {showOptionalDetails && (
+                  <View style={styles.optionalDetailsFields}>
+                    <QualificationChoiceGroup label="Prequalified?" options={prequalifiedOptions} value={prequalifiedStatus} onChange={(value) => { markShowingFieldEdited('prequalifiedStatus'); setPrequalifiedStatus(value) }} />
+                    <QualificationChoiceGroup label="Timeline" options={purchaseTimelineOptions} value={purchaseTimeline} onChange={(value) => { markShowingFieldEdited('purchaseTimeline'); setPurchaseTimeline(value) }} />
+                    <QualificationChoiceGroup label="Buyer type" options={buyerStatusOptions} value={buyerStatus} onChange={(value) => { markShowingFieldEdited('buyerStatus'); setBuyerStatus(value) }} />
+                    <QualificationChoiceGroup label="Working with an agent?" options={agentRelationshipOptions} value={alreadyWorkingWithAgent} onChange={(value) => { markShowingFieldEdited('alreadyWorkingWithAgent'); setAlreadyWorkingWithAgent(value) }} />
+                    <RequestInput label="Lender / bank optional" value={lenderName} onChangeText={(value) => { markShowingFieldEdited('lenderName'); setLenderName(value) }} placeholder="Bank of Guam, Coast360..." />
+                    <RequestInput label="Budget min" value={budgetMin} onChangeText={(value) => { markShowingFieldEdited('budgetMin'); setBudgetMin(value) }} placeholder="450000" keyboardType="number-pad" />
+                    <RequestInput label="Budget max" value={budgetMax} onChangeText={(value) => { markShowingFieldEdited('budgetMax'); setBudgetMax(value) }} placeholder="650000" keyboardType="number-pad" />
+                    <RequestInput label="Desired villages" value={desiredVillages} onChangeText={(value) => { markShowingFieldEdited('desiredVillages'); setDesiredVillages(value) }} placeholder="Dededo, Yigo, Tamuning" />
+                    <RequestInput label="Desired beds" value={desiredBeds} onChangeText={(value) => { markShowingFieldEdited('desiredBeds'); setDesiredBeds(value) }} placeholder="3" keyboardType="number-pad" />
+                    <RequestInput label="Desired baths" value={desiredBaths} onChangeText={(value) => { markShowingFieldEdited('desiredBaths'); setDesiredBaths(value) }} placeholder="2" keyboardType="number-pad" />
+                    <Text style={styles.requestLabel}>Qualification notes</Text>
+                    <TextInput value={qualificationNotes} onChangeText={(value) => { markShowingFieldEdited('qualificationNotes'); setQualificationNotes(value) }} multiline style={[styles.requestInput, styles.requestMessageInput]} placeholder="Relocating soon, needs pet-friendly, prefers central Guam..." placeholderTextColor="#7b8a84" />
+                  </View>
+                )}
                 <Text style={styles.requestLabel}>Message</Text>
                 <TextInput value={message} onChangeText={setMessage} multiline style={[styles.requestInput, styles.requestMessageInput]} />
               </View>
@@ -3209,6 +3239,7 @@ function PriceAlertSheet({ listing, auth, requestedAgent, open, onClose }: { lis
   const [budgetMax, setBudgetMax] = useState('')
   const [buyerStatus, setBuyerStatus] = useState('')
   const [alreadyWorkingWithAgent, setAlreadyWorkingWithAgent] = useState('')
+  const [showPriceOptionalDetails, setShowPriceOptionalDetails] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -3246,6 +3277,7 @@ function PriceAlertSheet({ listing, auth, requestedAgent, open, onClose }: { lis
       setError(null)
       setTargetPrice(String(Math.round(listing.price * 0.97)))
       setBudgetMax('')
+      setShowPriceOptionalDetails(false)
 
       if (!auth.isSignedIn) return
 
@@ -3361,15 +3393,24 @@ function PriceAlertSheet({ listing, auth, requestedAgent, open, onClose }: { lis
                 <RequestInput label="Email" value={email} onChangeText={(value) => { markPriceFieldEdited('email'); setEmail(value) }} placeholder="you@example.com" keyboardType="email-address" autoCapitalize="none" />
                 <RequestInput label="Name" value={name} onChangeText={(value) => { markPriceFieldEdited('name'); setName(value) }} placeholder="Your name" />
                 <RequestInput label="Phone optional" value={phone} onChangeText={(value) => { markPriceFieldEdited('phone'); setPhone(value) }} placeholder="+1671" keyboardType="phone-pad" />
-                <Text style={styles.requestLabel}>Buyer readiness</Text>
-                <Text style={styles.requestCopy}>Optional details help the team understand how serious and soon your search is.</Text>
-                <QualificationChoiceGroup label="Prequalified?" options={prequalifiedOptions} value={prequalifiedStatus} onChange={(value) => { markPriceFieldEdited('prequalifiedStatus'); setPrequalifiedStatus(value) }} />
-                <QualificationChoiceGroup label="Timeline" options={purchaseTimelineOptions} value={purchaseTimeline} onChange={(value) => { markPriceFieldEdited('purchaseTimeline'); setPurchaseTimeline(value) }} />
-                <QualificationChoiceGroup label="Buyer type" options={buyerStatusOptions} value={buyerStatus} onChange={(value) => { markPriceFieldEdited('buyerStatus'); setBuyerStatus(value) }} />
-                <QualificationChoiceGroup label="Working with an agent?" options={agentRelationshipOptions} value={alreadyWorkingWithAgent} onChange={(value) => { markPriceFieldEdited('alreadyWorkingWithAgent'); setAlreadyWorkingWithAgent(value) }} />
-                <RequestInput label="Lender / bank optional" value={lenderName} onChangeText={(value) => { markPriceFieldEdited('lenderName'); setLenderName(value) }} placeholder="Bank of Guam, Coast360..." />
-                <RequestInput label="Budget min" value={budgetMin} onChangeText={(value) => { markPriceFieldEdited('budgetMin'); setBudgetMin(value) }} placeholder="450000" keyboardType="number-pad" />
-                <RequestInput label="Budget max optional" value={budgetMax} onChangeText={(value) => { markPriceFieldEdited('budgetMax'); setBudgetMax(value) }} placeholder={targetPrice || '650000'} keyboardType="number-pad" />
+                <Pressable style={styles.optionalDetailsToggle} onPress={() => setShowPriceOptionalDetails((current) => !current)} accessibilityRole="button" accessibilityState={{ expanded: showPriceOptionalDetails }}>
+                  <View style={styles.optionalDetailsCopy}>
+                    <Text style={styles.optionalDetailsTitle}>Tell the team more</Text>
+                    <Text style={styles.optionalDetailsSubtitle}>Optional search and readiness details</Text>
+                  </View>
+                  <Text style={styles.optionalDetailsIcon}>{showPriceOptionalDetails ? '−' : '+'}</Text>
+                </Pressable>
+                {showPriceOptionalDetails && (
+                  <View style={styles.optionalDetailsFields}>
+                    <QualificationChoiceGroup label="Prequalified?" options={prequalifiedOptions} value={prequalifiedStatus} onChange={(value) => { markPriceFieldEdited('prequalifiedStatus'); setPrequalifiedStatus(value) }} />
+                    <QualificationChoiceGroup label="Timeline" options={purchaseTimelineOptions} value={purchaseTimeline} onChange={(value) => { markPriceFieldEdited('purchaseTimeline'); setPurchaseTimeline(value) }} />
+                    <QualificationChoiceGroup label="Buyer type" options={buyerStatusOptions} value={buyerStatus} onChange={(value) => { markPriceFieldEdited('buyerStatus'); setBuyerStatus(value) }} />
+                    <QualificationChoiceGroup label="Working with an agent?" options={agentRelationshipOptions} value={alreadyWorkingWithAgent} onChange={(value) => { markPriceFieldEdited('alreadyWorkingWithAgent'); setAlreadyWorkingWithAgent(value) }} />
+                    <RequestInput label="Lender / bank optional" value={lenderName} onChangeText={(value) => { markPriceFieldEdited('lenderName'); setLenderName(value) }} placeholder="Bank of Guam, Coast360..." />
+                    <RequestInput label="Budget min" value={budgetMin} onChangeText={(value) => { markPriceFieldEdited('budgetMin'); setBudgetMin(value) }} placeholder="450000" keyboardType="number-pad" />
+                    <RequestInput label="Budget max optional" value={budgetMax} onChangeText={(value) => { markPriceFieldEdited('budgetMax'); setBudgetMax(value) }} placeholder={targetPrice || '650000'} keyboardType="number-pad" />
+                  </View>
+                )}
               </View>
               {error && <Text style={styles.requestError}>{error}</Text>}
               <Pressable disabled={submitting} style={[styles.primaryCta, submitting && styles.ctaDisabled]} onPress={handleSubmit}>
@@ -3453,7 +3494,13 @@ const styles = StyleSheet.create({
   content: { backgroundColor: colors.sand, flex: 1 },
   fullMapContent: { backgroundColor: '#9fd2eb' },
   listContent: { gap: 14, padding: 16, paddingBottom: 96 },
+  listHeaderStack: { gap: 12 },
   screenIntro: { backgroundColor: 'white', borderRadius: 28, padding: 18 },
+  demoInventoryNotice: { backgroundColor: '#fff8ea', borderColor: '#e7c88f', borderRadius: 20, borderWidth: 1, padding: 14 },
+  demoInventoryTitle: { color: '#5f4826', fontSize: 13, fontWeight: '900' },
+  demoInventoryCopy: { color: '#705a36', fontSize: 12, fontWeight: '700', lineHeight: 18, marginTop: 4 },
+  demoMapNotice: { alignSelf: 'center', backgroundColor: 'rgba(255,248,234,0.96)', borderColor: '#e7c88f', borderRadius: 999, borderWidth: 1, left: 22, paddingHorizontal: 12, paddingVertical: 7, position: 'absolute', right: 22, top: 92 },
+  demoMapNoticeText: { color: '#5f4826', fontSize: 11, fontWeight: '900', textAlign: 'center' },
   kicker: { color: colors.green2, fontSize: 11, fontWeight: '900', letterSpacing: 2.2, textTransform: 'uppercase' },
   screenTitle: { color: colors.ink, fontSize: 30, fontWeight: '900', letterSpacing: -1.1, marginTop: 5 },
   screenCopy: { color: colors.muted, fontSize: 14, fontWeight: '600', lineHeight: 21, marginTop: 8 },
@@ -3680,6 +3727,12 @@ const styles = StyleSheet.create({
   requestListingPrice: { color: colors.green, fontSize: 23, fontWeight: '900', letterSpacing: -0.7 },
   requestListingTitle: { color: colors.ink, fontSize: 15, fontWeight: '900', marginTop: 3 },
   requestFieldGroup: { gap: 12, marginTop: 16 },
+  optionalDetailsToggle: { alignItems: 'center', backgroundColor: colors.sand, borderColor: colors.line, borderRadius: 20, borderWidth: 1, flexDirection: 'row', justifyContent: 'space-between', padding: 14 },
+  optionalDetailsCopy: { flex: 1 },
+  optionalDetailsTitle: { color: colors.green, fontSize: 15, fontWeight: '900' },
+  optionalDetailsSubtitle: { color: colors.muted, fontSize: 12, fontWeight: '700', marginTop: 3 },
+  optionalDetailsIcon: { color: colors.green2, fontSize: 24, fontWeight: '700' },
+  optionalDetailsFields: { gap: 12 },
   requestLabel: { color: colors.green, fontSize: 11, fontWeight: '900', letterSpacing: 1.1, marginBottom: 6, textTransform: 'uppercase' },
   requestInput: { backgroundColor: colors.sand, borderColor: '#eadfce', borderRadius: 18, borderWidth: 1, color: colors.ink, fontSize: 15, fontWeight: '800', minHeight: 50, paddingHorizontal: 14, paddingVertical: 12 },
   requestMessageInput: { minHeight: 96, textAlignVertical: 'top' },
