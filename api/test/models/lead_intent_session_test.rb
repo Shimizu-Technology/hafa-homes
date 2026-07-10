@@ -3,7 +3,10 @@ require "test_helper"
 class LeadIntentSessionTest < ActiveSupport::TestCase
   test "summarizes intent with database aggregates" do
     brokerage = create_brokerage(name: "Alpha Realty", slug: "alpha")
-    village = Village.create!(name: "Tamuning", slug: "tamuning", region: "Central")
+    village = Village.find_or_create_by!(slug: "tamuning") do |record|
+      record.name = "Tamuning"
+      record.region = "Central"
+    end
     listing = Listing.create!(
       village: village,
       brokerage: brokerage,
