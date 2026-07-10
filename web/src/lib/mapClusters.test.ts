@@ -14,7 +14,15 @@ describe('groupListingsByVillage', () => {
       { village: 'Dededo', count: 2 },
       { village: 'Tamuning', count: 1 },
     ])
-    expect(clusters[0].latitude / clusters[0].count).toBeCloseTo(13.55)
-    expect(clusters[0].longitude / clusters[0].count).toBeCloseTo(144.85)
+    expect(clusters[0].latitude).toBeCloseTo(13.55)
+    expect(clusters[0].longitude).toBeCloseTo(144.85)
+  })
+
+  it('keeps valid zero coordinates', () => {
+    expect(groupListingsByVillage([
+      { latitude: 0, longitude: 0, village: { slug: 'origin', name: 'Origin' } },
+    ])).toEqual([
+      { village: 'Origin', count: 1, latitude: 0, longitude: 0 },
+    ])
   })
 })

@@ -26,6 +26,7 @@ class LeadIntentSessionTest < ActiveSupport::TestCase
         listing: listing
       )
     end
+    session.lead_intent_events.find_by!(client_event_id: "view-0").update_column(:village_id, nil)
     session.record_event!(event_name: "showing_form_opened", client_event_id: "form-open", brokerage: brokerage, listing: listing)
 
     session.reload

@@ -45,3 +45,5 @@ The repository cannot complete these without a business decision or third-party 
 ## Engineering quality gate
 
 The root CI workflow runs API tests, autoload validation, Brakeman, Bundler Audit, RuboCop, web lint/build/audit, mobile type checking, Expo Doctor, and a production dependency audit. The mobile audit temporarily accepts Clerk advisory `1120341` only because the current latest Clerk Expo release remains affected and Hafa Homes does not use the vulnerable organization/billing/reverification features. The exception expires on 2026-08-10 and must be removed or renewed deliberately.
+
+For a deployment that already has more than one active brokerage, audit the owner of legacy buyer profiles and saved searches before running the brokerage-scope migrations. Set `LEGACY_BROKERAGE_SLUG` to that verified active brokerage for the migration run. If ownership is not explicit and the database does not have exactly one active brokerage, the migrations stop without backfilling rather than silently assigning customer data to an arbitrary tenant.

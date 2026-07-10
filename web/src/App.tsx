@@ -3268,14 +3268,14 @@ function RealMap({ listings, className, immersive, style }: { listings: Listing[
       markerElement.setAttribute('aria-label', `${group.count} listings in ${group.village}`)
       markerElement.addEventListener('click', () => {
         map.easeTo({
-          center: [group.longitude / group.count, group.latitude / group.count],
+          center: [group.longitude, group.latitude],
           zoom: Math.max(map.getZoom() + 1.4, 11.4),
           duration: 450,
         })
       })
 
       const marker = new mapbox.Marker({ element: markerElement, anchor: 'center' })
-        .setLngLat([group.longitude / group.count, group.latitude / group.count])
+        .setLngLat([group.longitude, group.latitude])
         .addTo(map)
 
       markersRef.current.push(marker)

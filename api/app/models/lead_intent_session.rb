@@ -276,9 +276,13 @@ class LeadIntentSession < ApplicationRecord
       .limit(MAX_SUMMARY_IDS)
       .pluck(:listing_id)
     village_counts = listing_view_events
-      .joins(:village)
-      .group("villages.name")
-      .order(Arel.sql("COUNT(*) DESC"))
+      .joins("LEFT JOIN listings AS village_listings ON village_listings.id = lead_intent_events.listing_id")
+      .joins(<<~SQL.squish)
+        INNER JOIN villages AS resolved_villages
+          ON resolved_villages.id = COALESCE(lead_intent_events.village_id, village_listings.village_id)
+      SQL
+      .group("resolved_villages.name")
+      .order(Arel.sql("COUNT(*) DESC, resolved_villages.name ASC"))
       .limit(5)
       .count
     viewed_price_min, viewed_price_max = listing_view_events
