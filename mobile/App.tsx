@@ -1983,7 +1983,7 @@ function MoreScreen({ auth, onOpenAuth, onNavigateTab }: { auth: AppAuth; onOpen
 
       <View style={styles.moreMenuSection}>
         <Text style={styles.moreSectionLabel}>Coming next</Text>
-        {['Saved search alerts', 'Neighborhood guide', 'Mortgage tools', 'Military relocation resources'].map((item) => (
+        {['Saved search alerts', 'Neighborhood guide', 'Automated price alerts', 'Military relocation resources'].map((item) => (
           <View key={item} style={styles.resourceRow}>
             <View style={styles.resourceBullet} />
             <Text style={styles.resourceText}>{item}</Text>
