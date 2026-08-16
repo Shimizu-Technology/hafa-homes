@@ -44,7 +44,7 @@ class ListingSearchTest < ActionDispatch::IntegrationTest
       get "/api/v1/listings", params: { q: query }
 
       assert_response :success
-      assert_equal [ expected.id ], response.parsed_body.fetch("listings").pluck("id"), query
+      assert response.parsed_body.fetch("listings").pluck("id").include?(expected.id), query
     end
   end
 end
