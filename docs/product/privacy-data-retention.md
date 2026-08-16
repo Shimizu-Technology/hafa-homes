@@ -7,6 +7,7 @@ This document records the product behavior implemented by Hafa Homes. It is an e
 ## Data boundaries
 
 - Brokerage routing is resolved from an approved domain or the native app's configured brokerage slug.
+- An explicit unknown or inactive domain/slug fails closed; it is not routed through a default brokerage.
 - Agent lists, intent sessions, buyer/search profiles, leads, and CRM access are tied to that routing brokerage.
 - Full-market listing search remains shared because a broker site is expected to display authorized market inventory. Listing attribution remains separate from the brokerage receiving the inquiry.
 - Anonymous intent sessions are never claimed by a later signed-in account.
@@ -27,3 +28,6 @@ This document records the product behavior implemented by Hafa Homes. It is an e
 4. Limit staff memberships to the brokerages they are authorized to access.
 5. Schedule the anonymous-intent pruning task and document who responds to deletion requests.
 6. Review analytics, notification, authentication, hosting, and mapping vendors in the public privacy policy.
+7. Run a Solid Queue worker and monitor queued/failed notification deliveries; creating a queued record is not proof of delivery.
+
+Scheduling remains an operational launch gate. The job and rake task existing in the repository do not mean pruning is running in production.

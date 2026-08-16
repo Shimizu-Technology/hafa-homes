@@ -1,6 +1,8 @@
 # Hafa Homes current product truth
 
-_Last verified: 2026-07-10_
+_Last verified: 2026-08-16 during the PR #21 Phase 1 refresh._
+
+The canonical re-review, findings, rationale, and remediation sequence are in `2026-08-16-review-findings-and-remediation-plan.md`.
 
 This is the canonical, implementation-backed description of Hafa Homes. Older PRDs and meeting plans remain useful historical context, but they do not override this file.
 
@@ -12,7 +14,7 @@ This is the canonical, implementation-backed description of Hafa Homes. Older PR
 | Listing inventory | Demonstration facts and stock imagery, visibly labeled | Written MLS/IDX/feed authorization and compliant attribution |
 | Brokerage routing | Domain/native-slug resolution implemented | Add the pilot's approved domains and build-time native slug |
 | Full-market search | Shared market inventory by design | Confirm the broker's rights to display the chosen feed |
-| Runtime web branding | Brokerage name, logo, theme metadata, and brand colors are resolved by domain | Provide final broker assets and review all branded copy |
+| Runtime web branding | Brokerage context and two core brand colors are resolved by domain; substantial Hafa-specific copy/assets remain | Complete the pilot-backed branding phase before calling the platform turnkey white-label |
 | Agent directory | Working and brokerage-scoped | Import approved broker agents and licenses |
 | Showing and price-watch requests | Working without forced registration | Configure notification providers and broker recipients |
 | Price watch | Human follow-up request | Automated price-change alerts remain future work |
@@ -44,6 +46,6 @@ The repository cannot complete these without a business decision or third-party 
 
 ## Engineering quality gate
 
-The root CI workflow runs API tests, autoload validation, Brakeman, Bundler Audit, RuboCop, web lint/build/audit, mobile type checking, Expo Doctor, and a production dependency audit. The mobile audit temporarily accepts Clerk advisory `1120341` only because the current latest Clerk Expo release remains affected and Hafa Homes does not use the vulnerable organization/billing/reverification features. The exception expires on 2026-08-10 and must be removed or renewed deliberately.
+The root CI workflow runs API tests, autoload validation, Brakeman, Bundler Audit, RuboCop, web lint/test/build/audit, mobile type checking, Expo Doctor, and a production dependency policy. The August refresh removes the expired Clerk advisory exception by moving to the supported Clerk Core 3 Expo package. Any remaining temporary exception must identify a currently unpatched upstream advisory, explain why its affected surface is outside the shipped runtime, include an expiry date, and continue failing every unaccepted high/critical advisory.
 
 For a deployment that already has more than one active brokerage, audit the owner of legacy buyer profiles and saved searches before running the brokerage-scope migrations. Set `LEGACY_BROKERAGE_SLUG` to that verified active brokerage for the migration run. If ownership is not explicit and the database does not have exactly one active brokerage, the migrations stop without backfilling rather than silently assigning customer data to an arbitrary tenant.

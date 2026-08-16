@@ -4,8 +4,8 @@ Expo native iOS/Android app for Hafa Homes.
 
 ## Stack
 
-- Expo SDK 56
-- React Native 0.85
+- Expo SDK 57
+- React Native 0.86
 - TypeScript
 - Rails API shared with `/web`
 
@@ -13,12 +13,12 @@ Expo native iOS/Android app for Hafa Homes.
 
 See the root [Local Development](../docs/local-development.md) guide for the full API, web, and mobile workflow.
 
-Expo SDK 56 / React Native 0.85 expects Node `^20.19.4` or newer. Leon's current local Node `20.19.1` still passes `expo-doctor`, but npm prints engine warnings until Node is bumped.
+Install the exact Node version pinned by the repository’s `.node-version`. SDK 57 / React Native 0.86 replaces SDK 56 because Expo Doctor now identifies a Hermes memory regression in the older runtime.
 
 ```bash
 cd mobile
 cp .env.example .env
-npm install
+npm ci
 npm run typecheck
 npm run doctor
 npm run start
@@ -32,20 +32,28 @@ For local API access:
 - Android emulator: `EXPO_PUBLIC_API_URL=http://10.0.2.2:3000`
 - physical device: use your Mac's LAN IP or a deployed API URL
 
+Every build must also set:
+
+```env
+EXPO_PUBLIC_BROKERAGE_SLUG=hafa-homes-demo
+```
+
+Use a unique, active brokerage slug for a broker-specific build. The Hafa Homes demo slug is not a universal production fallback.
+
 Plain `.env` files are intentionally ignored by `mobile/.gitignore`.
 
 ## Current scope
 
-This initial native build includes:
+The current native build includes:
 
 - Hafa Homes app shell and branding
 - Buy/Rent listing fetch from Rails API
 - Listing list screen
 - Listing detail screen
-- Saved homes local mock state
+- Clerk authentication and server-backed saved homes
 - Mapbox map screen with price markers through Expo-compatible WebView
-- Agents/Brokerage placeholder surface
-- More/Roadmap screen
+- brokerage-scoped agents, lead intent, profiles, and requests
+- showing, price-watch, search-assist, account, request-history, and account-deletion flows
 
 ## Mapbox
 
@@ -63,11 +71,12 @@ Then restart Expo after env changes:
 npm run start -- --clear
 ```
 
-## Next mobile work
+## Verification
 
-- Add marker bottom-sheet previews
-- Add real schedule-showing lead form
-- Add mortgage calculator / affordability guide
-- Add neighborhood/schools/parks sections
-- Add brokerage/agent profiles after backend models are added
-- Configure EAS Build/TestFlight when Apple/Google accounts are ready
+```bash
+npm run typecheck
+npm run doctor
+npm run audit:production
+```
+
+The production audit fails every unaccepted high/critical advisory. A narrow, expiring exception may only cover an unpatched upstream build-tool issue whose affected parser cannot receive user-controlled data in the shipped app.

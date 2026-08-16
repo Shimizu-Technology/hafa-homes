@@ -44,7 +44,7 @@ import {
   X,
 } from 'lucide-react'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { authHeaders } from './lib/api'
+import { apiFetch, authHeaders } from './lib/api'
 import { useAuthContext } from './contexts/AuthContext'
 import type { Brokerage } from './contexts/BrokerageContext'
 import { groupListingsByVillage } from './lib/mapClusters'
@@ -180,7 +180,7 @@ async function recordLeadIntentEvent(eventName: string, payload: { listing_id?: 
   const clientEventId = leadIntentClientEventId(eventName)
 
   async function postEvent(token: string) {
-    return fetch(`${API_URL}/api/v1/lead_intent/events`, {
+    return apiFetch(`${API_URL}/api/v1/lead_intent/events`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
       body: JSON.stringify({
@@ -224,7 +224,7 @@ async function dismissLeadIntentPrompt(promptKey?: string, reason = 'dismissed')
   if (!sessionToken) return
 
   try {
-    const response = await fetch(`${API_URL}/api/v1/lead_intent/dismiss`, {
+    const response = await apiFetch(`${API_URL}/api/v1/lead_intent/dismiss`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
       body: JSON.stringify({ lead_intent: { session_token: sessionToken, prompt_key: promptKey, reason } }),
@@ -769,31 +769,31 @@ function buildQuery(params: Record<string, string | undefined>) {
 
 async function fetchListings(params: Record<string, string | undefined> = {}): Promise<ListingsResponse> {
   const query = buildQuery(params)
-  const response = await fetch(`${API_URL}/api/v1/listings${query ? `?${query}` : ''}`)
+  const response = await apiFetch(`${API_URL}/api/v1/listings${query ? `?${query}` : ''}`)
   if (!response.ok) throw new Error('Unable to load listings')
   return response.json()
 }
 
 async function fetchListing(id: string): Promise<ListingResponse> {
-  const response = await fetch(`${API_URL}/api/v1/listings/${id}`)
+  const response = await apiFetch(`${API_URL}/api/v1/listings/${id}`)
   if (!response.ok) throw new Error('Unable to load listing')
   return response.json()
 }
 
 async function fetchVillages(): Promise<VillagesResponse> {
-  const response = await fetch(`${API_URL}/api/v1/villages`)
+  const response = await apiFetch(`${API_URL}/api/v1/villages`)
   if (!response.ok) throw new Error('Unable to load villages')
   return response.json()
 }
 
 async function fetchAgents(): Promise<AgentsResponse> {
-  const response = await fetch(`${API_URL}/api/v1/agents`)
+  const response = await apiFetch(`${API_URL}/api/v1/agents`)
   if (!response.ok) throw new Error('Unable to load agents')
   return response.json()
 }
 
 async function fetchMe(): Promise<MeResponse> {
-  const response = await fetch(`${API_URL}/api/v1/me`, { headers: await authHeaders() })
+  const response = await apiFetch(`${API_URL}/api/v1/me`, { headers: await authHeaders() })
   if (!response.ok) {
     throw new ApiFetchError('Unable to load current user', response.status)
   }
@@ -801,7 +801,7 @@ async function fetchMe(): Promise<MeResponse> {
 }
 
 async function updateMe(payload: Partial<Pick<CurrentUser, 'first_name' | 'last_name' | 'phone' | 'preferred_contact_method'>>): Promise<MeResponse> {
-  const response = await fetch(`${API_URL}/api/v1/me`, {
+  const response = await apiFetch(`${API_URL}/api/v1/me`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
     body: JSON.stringify({ user: payload }),
@@ -811,13 +811,13 @@ async function updateMe(payload: Partial<Pick<CurrentUser, 'first_name' | 'last_
 }
 
 async function fetchSearchProfile(): Promise<SearchProfileResponse> {
-  const response = await fetch(`${API_URL}/api/v1/me/search_profile`, { headers: await authHeaders() })
+  const response = await apiFetch(`${API_URL}/api/v1/me/search_profile`, { headers: await authHeaders() })
   if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to load search profile'), response.status)
   return response.json()
 }
 
 async function updateSearchProfile(payload: SearchProfilePayload): Promise<SearchProfileResponse> {
-  const response = await fetch(`${API_URL}/api/v1/me/search_profile`, {
+  const response = await apiFetch(`${API_URL}/api/v1/me/search_profile`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
     body: JSON.stringify({ search_profile: payload }),
@@ -827,69 +827,69 @@ async function updateSearchProfile(payload: SearchProfilePayload): Promise<Searc
 }
 
 async function deleteCurrentAccount(): Promise<{ deleted: boolean }> {
-  const response = await fetch(`${API_URL}/api/v1/me`, { method: 'DELETE', headers: await authHeaders() })
+  const response = await apiFetch(`${API_URL}/api/v1/me`, { method: 'DELETE', headers: await authHeaders() })
   if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to delete account'), response.status)
   return response.json()
 }
 
 async function fetchSyncRuns(): Promise<SyncRunsResponse> {
-  const response = await fetch(`${API_URL}/api/v1/data_sync_runs`, { headers: await authHeaders() })
+  const response = await apiFetch(`${API_URL}/api/v1/data_sync_runs`, { headers: await authHeaders() })
   if (!response.ok) throw new Error('Unable to load sync runs')
   return response.json()
 }
 
 async function fetchLeads(params: { assigned_agent_id?: string; lead_type?: string; status?: string; q?: string; sort?: string } = {}): Promise<LeadsResponse> {
   const query = buildQuery(params)
-  const response = await fetch(`${API_URL}/api/v1/leads${query ? `?${query}` : ''}`, { headers: await authHeaders() })
+  const response = await apiFetch(`${API_URL}/api/v1/leads${query ? `?${query}` : ''}`, { headers: await authHeaders() })
   if (!response.ok) throw new Error('Unable to load leads')
   return response.json()
 }
 
 async function fetchLead(id: string): Promise<LeadResponse> {
-  const response = await fetch(`${API_URL}/api/v1/leads/${id}`, { headers: await authHeaders() })
+  const response = await apiFetch(`${API_URL}/api/v1/leads/${id}`, { headers: await authHeaders() })
   if (!response.ok) throw new Error('Unable to load lead')
   return response.json()
 }
 
 async function fetchMyLeads(): Promise<MyLeadsResponse> {
-  const response = await fetch(`${API_URL}/api/v1/me/leads`, { headers: await authHeaders() })
+  const response = await apiFetch(`${API_URL}/api/v1/me/leads`, { headers: await authHeaders() })
   if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to load your requests'), response.status)
   return response.json()
 }
 
 async function fetchAdminDashboard(): Promise<AdminDashboardResponse> {
-  const response = await fetch(`${API_URL}/api/v1/admin/dashboard`, { headers: await authHeaders() })
+  const response = await apiFetch(`${API_URL}/api/v1/admin/dashboard`, { headers: await authHeaders() })
   if (!response.ok) throw new Error('Unable to load admin dashboard')
   return response.json()
 }
 
 async function fetchAdminLeadIntentSessions(params: { status?: string; identity?: string; q?: string; sort?: string; page?: string; per_page?: string } = {}): Promise<AdminLeadIntentSessionsResponse> {
   const query = buildQuery({ status: params.status, identity: params.identity, q: params.q, sort: params.sort, page: params.page, per_page: params.per_page })
-  const response = await fetch(`${API_URL}/api/v1/admin/lead_intent_sessions${query ? `?${query}` : ''}`, { headers: await authHeaders() })
+  const response = await apiFetch(`${API_URL}/api/v1/admin/lead_intent_sessions${query ? `?${query}` : ''}`, { headers: await authHeaders() })
   if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to load search intent'), response.status)
   return response.json()
 }
 
 async function fetchShowingAppointments(): Promise<ShowingAppointmentsResponse> {
-  const response = await fetch(`${API_URL}/api/v1/showing_appointments`, { headers: await authHeaders() })
+  const response = await apiFetch(`${API_URL}/api/v1/showing_appointments`, { headers: await authHeaders() })
   if (!response.ok) throw new Error('Unable to load showing schedule')
   return response.json()
 }
 
 async function fetchAdminUsers(): Promise<AdminUsersResponse> {
-  const response = await fetch(`${API_URL}/api/v1/admin/users`, { headers: await authHeaders() })
+  const response = await apiFetch(`${API_URL}/api/v1/admin/users`, { headers: await authHeaders() })
   if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to load users'), response.status)
   return response.json()
 }
 
 async function fetchAdminBrokerages(): Promise<{ brokerages: Brokerage[] }> {
-  const response = await fetch(`${API_URL}/api/v1/admin/brokerages`, { headers: await authHeaders() })
+  const response = await apiFetch(`${API_URL}/api/v1/admin/brokerages`, { headers: await authHeaders() })
   if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to load brokerages'), response.status)
   return response.json()
 }
 
 async function updateAdminBrokerage(id: number, payload: Record<string, unknown>): Promise<{ brokerage: Brokerage }> {
-  const response = await fetch(`${API_URL}/api/v1/admin/brokerages/${id}`, {
+  const response = await apiFetch(`${API_URL}/api/v1/admin/brokerages/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
     body: JSON.stringify({ brokerage: payload }),
@@ -899,13 +899,13 @@ async function updateAdminBrokerage(id: number, payload: Record<string, unknown>
 }
 
 async function fetchAuditEvents(): Promise<AuditEventsResponse> {
-  const response = await fetch(`${API_URL}/api/v1/admin/audit_events`, { headers: await authHeaders() })
+  const response = await apiFetch(`${API_URL}/api/v1/admin/audit_events`, { headers: await authHeaders() })
   if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to load audit history'), response.status)
   return response.json()
 }
 
 async function createAdminUser(payload: Record<string, unknown>): Promise<{ user: AdminUser }> {
-  const response = await fetch(`${API_URL}/api/v1/admin/users`, {
+  const response = await apiFetch(`${API_URL}/api/v1/admin/users`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
     body: JSON.stringify({ user: payload }),
@@ -915,7 +915,7 @@ async function createAdminUser(payload: Record<string, unknown>): Promise<{ user
 }
 
 async function updateLead(id: number, payload: LeadUpdatePayload): Promise<LeadResponse> {
-  const response = await fetch(`${API_URL}/api/v1/leads/${id}`, {
+  const response = await apiFetch(`${API_URL}/api/v1/leads/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
     body: JSON.stringify({ lead: payload }),
@@ -925,7 +925,7 @@ async function updateLead(id: number, payload: LeadUpdatePayload): Promise<LeadR
 }
 
 async function createLeadNote(id: number, payload: { body: string }): Promise<{ lead_note: LeadNote; lead: Lead }> {
-  const response = await fetch(`${API_URL}/api/v1/leads/${id}/notes`, {
+  const response = await apiFetch(`${API_URL}/api/v1/leads/${id}/notes`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
     body: JSON.stringify({ lead_note: payload }),
@@ -935,7 +935,7 @@ async function createLeadNote(id: number, payload: { body: string }): Promise<{ 
 }
 
 async function updateLeadNote(id: number, payload: Partial<Pick<LeadNote, 'body'>> & { archived?: boolean }): Promise<{ lead_note: LeadNote; lead: Lead }> {
-  const response = await fetch(`${API_URL}/api/v1/lead_notes/${id}`, {
+  const response = await apiFetch(`${API_URL}/api/v1/lead_notes/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
     body: JSON.stringify({ lead_note: payload }),
@@ -945,25 +945,25 @@ async function updateLeadNote(id: number, payload: Partial<Pick<LeadNote, 'body'
 }
 
 async function fetchLeadNotesPage(leadId: number, page: number, perPage = 10): Promise<LeadNotesPageResponse> {
-  const response = await fetch(`${API_URL}/api/v1/leads/${leadId}/notes?page=${page}&per_page=${perPage}`, { headers: await authHeaders() })
+  const response = await apiFetch(`${API_URL}/api/v1/leads/${leadId}/notes?page=${page}&per_page=${perPage}`, { headers: await authHeaders() })
   if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to load notes'), response.status)
   return response.json()
 }
 
 async function fetchLeadTasksPage(leadId: number, status: 'open' | 'completed' | 'archived', page: number, perPage = 10): Promise<LeadTasksPageResponse> {
-  const response = await fetch(`${API_URL}/api/v1/leads/${leadId}/tasks?status=${status}&page=${page}&per_page=${perPage}`, { headers: await authHeaders() })
+  const response = await apiFetch(`${API_URL}/api/v1/leads/${leadId}/tasks?status=${status}&page=${page}&per_page=${perPage}`, { headers: await authHeaders() })
   if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to load tasks'), response.status)
   return response.json()
 }
 
 async function fetchLeadActivitiesPage(leadId: number, page: number, perPage = 10): Promise<LeadActivitiesPageResponse> {
-  const response = await fetch(`${API_URL}/api/v1/leads/${leadId}/activities?page=${page}&per_page=${perPage}`, { headers: await authHeaders() })
+  const response = await apiFetch(`${API_URL}/api/v1/leads/${leadId}/activities?page=${page}&per_page=${perPage}`, { headers: await authHeaders() })
   if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to load activity'), response.status)
   return response.json()
 }
 
 async function createLeadTask(id: number, payload: { title: string; notes?: string; due_at?: string }): Promise<{ lead_task: LeadTask; lead: Lead }> {
-  const response = await fetch(`${API_URL}/api/v1/leads/${id}/tasks`, {
+  const response = await apiFetch(`${API_URL}/api/v1/leads/${id}/tasks`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
     body: JSON.stringify({ lead_task: payload }),
@@ -973,7 +973,7 @@ async function createLeadTask(id: number, payload: { title: string; notes?: stri
 }
 
 async function updateLeadTask(id: number, payload: Partial<Pick<LeadTask, 'title' | 'notes' | 'status' | 'due_at'>>): Promise<{ lead_task: LeadTask; lead: Lead }> {
-  const response = await fetch(`${API_URL}/api/v1/lead_tasks/${id}`, {
+  const response = await apiFetch(`${API_URL}/api/v1/lead_tasks/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
     body: JSON.stringify({ lead_task: payload }),
@@ -983,7 +983,7 @@ async function updateLeadTask(id: number, payload: Partial<Pick<LeadTask, 'title
 }
 
 async function sendLeadNotification(id: number, payload: { channel: 'email' | 'sms'; recipient_role: 'consumer' | 'agent'; event_name?: string; subject?: string; title?: string; body?: string }): Promise<{ notification_delivery: NotificationDelivery }> {
-  const response = await fetch(`${API_URL}/api/v1/leads/${id}/notifications`, {
+  const response = await apiFetch(`${API_URL}/api/v1/leads/${id}/notifications`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
     body: JSON.stringify({ notification: payload }),
@@ -993,7 +993,7 @@ async function sendLeadNotification(id: number, payload: { channel: 'email' | 's
 }
 
 async function createShowingAppointment(payload: Partial<ShowingAppointment> & { lead_id: number }): Promise<{ showing_appointment: ShowingAppointment; lead: Lead }> {
-  const response = await fetch(`${API_URL}/api/v1/showing_appointments`, {
+  const response = await apiFetch(`${API_URL}/api/v1/showing_appointments`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
     body: JSON.stringify({ showing_appointment: payload }),
@@ -1003,7 +1003,7 @@ async function createShowingAppointment(payload: Partial<ShowingAppointment> & {
 }
 
 async function updateShowingAppointment(id: number, payload: Partial<ShowingAppointment>): Promise<{ showing_appointment: ShowingAppointment; lead: Lead }> {
-  const response = await fetch(`${API_URL}/api/v1/showing_appointments/${id}`, {
+  const response = await apiFetch(`${API_URL}/api/v1/showing_appointments/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
     body: JSON.stringify({ showing_appointment: payload }),
@@ -1013,7 +1013,7 @@ async function updateShowingAppointment(id: number, payload: Partial<ShowingAppo
 }
 
 async function updateAdminUser(id: number, payload: Record<string, unknown>): Promise<{ user: AdminUser }> {
-  const response = await fetch(`${API_URL}/api/v1/admin/users/${id}`, {
+  const response = await apiFetch(`${API_URL}/api/v1/admin/users/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
     body: JSON.stringify({ user: payload }),
@@ -1023,25 +1023,25 @@ async function updateAdminUser(id: number, payload: Record<string, unknown>): Pr
 }
 
 async function fetchSavedListings(): Promise<SavedListingsResponse> {
-  const response = await fetch(`${API_URL}/api/v1/me/saved_listings`, { headers: await authHeaders() })
+  const response = await apiFetch(`${API_URL}/api/v1/me/saved_listings`, { headers: await authHeaders() })
   if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to load saved homes'), response.status)
   return response.json()
 }
 
 async function saveListingForUser(listingId: number): Promise<SaveListingResponse> {
-  const response = await fetch(`${API_URL}/api/v1/listings/${listingId}/save`, { method: 'POST', headers: await authHeaders() })
+  const response = await apiFetch(`${API_URL}/api/v1/listings/${listingId}/save`, { method: 'POST', headers: await authHeaders() })
   if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to save home'), response.status)
   return response.json()
 }
 
 async function removeSavedListingForUser(listingId: number): Promise<{ listing_id: number; saved: boolean }> {
-  const response = await fetch(`${API_URL}/api/v1/listings/${listingId}/save`, { method: 'DELETE', headers: await authHeaders() })
+  const response = await apiFetch(`${API_URL}/api/v1/listings/${listingId}/save`, { method: 'DELETE', headers: await authHeaders() })
   if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to remove saved home'), response.status)
   return response.json()
 }
 
 async function saveSearch(payload: { name: string; email: string; alert_frequency: string; filters: Record<string, string> }) {
-  const response = await fetch(`${API_URL}/api/v1/saved_searches`, {
+  const response = await apiFetch(`${API_URL}/api/v1/saved_searches`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ saved_search: payload }),
@@ -1063,7 +1063,7 @@ async function submitLead(payload: LeadPayload, retryAfterIntentReset: boolean):
     throw new ApiFetchError('Your search session refreshed after sign-in. Please view the home again and reopen this form before submitting.', 409)
   }
 
-  const response = await fetch(`${API_URL}/api/v1/leads`, {
+  const response = await apiFetch(`${API_URL}/api/v1/leads`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
     body: JSON.stringify({ lead: payload }),

@@ -154,7 +154,7 @@ class LeadNotificationService
       showing = delivery.showing_appointment || lead&.showing_appointments&.order(Arel.sql("scheduled_starts_at DESC NULLS LAST"), created_at: :desc)&.first
       greeting = delivery.recipient_role == "agent" ? (lead&.assigned_agent&.name || showing&.agent&.name || "Team") : (lead&.name.presence || "there")
       cta_path = delivery.recipient_role == "agent" ? "/admin/leads/#{lead&.id}" : "/account/requests"
-      cta_url = delivery.recipient_role == "agent" ? "#{frontend_url}#{cta_path}" : app_link_url(cta_path)
+      cta_url = delivery.recipient_role == "agent" ? "#{frontend_url(delivery.lead)}#{cta_path}" : app_link_url(cta_path, lead: delivery.lead)
       body = email_body_copy(delivery, showing, greeting: greeting)
 
       <<~HTML
@@ -287,9 +287,9 @@ class LeadNotificationService
 
       case delivery.event_name
       when "showing_update"
-        "Hafa Homes: #{showing&.status.to_s.humanize} showing for #{listing}. #{format_time(showing&.scheduled_starts_at, timezone: showing&.timezone)}. View details: #{app_link_url('/account/requests')}"
+        "Hafa Homes: #{showing&.status.to_s.humanize} showing for #{listing}. #{format_time(showing&.scheduled_starts_at, timezone: showing&.timezone)}. View details: #{app_link_url('/account/requests', lead: lead)}"
       else
-        "Hafa Homes: update for #{listing}. View details: #{app_link_url('/account/requests')}"
+        "Hafa Homes: update for #{listing}. View details: #{app_link_url('/account/requests', lead: lead)}"
       end
     end
 
@@ -304,8 +304,8 @@ class LeadNotificationService
       ENV["RESEND_FROM_EMAIL"].presence || ENV["MAILER_FROM_EMAIL"].presence
     end
 
-    def app_link_url(path)
-      "#{frontend_url}/open?target=#{CGI.escape(path)}"
+    def app_link_url(path, lead:)
+      "#{frontend_url(lead)}/open?target=#{CGI.escape(path)}"
     end
 
     def strip_leading_greeting(body, greeting)
@@ -316,7 +316,10 @@ class LeadNotificationService
       normalized.sub(/\A(?:hi|hello|hafa|håfa)\s+#{escaped}\s*,?\s*/i, "").strip.presence || normalized
     end
 
-    def frontend_url
+    def frontend_url(lead = nil)
+      hostname = lead&.brokerage&.brokerage_domains&.active&.order(primary: :desc, id: :asc)&.pick(:hostname)
+      return "https://#{hostname}" if hostname.present? && hostname != "localhost"
+
       ENV.fetch("FRONTEND_URL") { ENV.fetch("WEB_ORIGIN", "http://localhost:5173").split(",").first.strip }
     end
 

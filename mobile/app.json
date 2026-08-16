@@ -27,7 +27,10 @@
       "intentFilters": [
         {
           "action": "VIEW",
-          "category": ["BROWSABLE", "DEFAULT"],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ],
           "data": [
             {
               "scheme": "hafahomes"
@@ -45,6 +48,7 @@
       }
     },
     "plugins": [
+      "@clerk/expo",
       "expo-secure-store",
       "expo-web-browser",
       "expo-apple-authentication",
@@ -55,7 +59,8 @@
           "imageWidth": 180,
           "backgroundColor": "#0f3d35"
         }
-      ]
+      ],
+      "expo-status-bar"
     ],
     "owner": "shimizutechnology"
   }

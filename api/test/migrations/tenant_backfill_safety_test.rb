@@ -44,6 +44,36 @@ class TenantBackfillSafetyTest < ActiveSupport::TestCase
     end
   end
 
+  test "rejects an explicit inactive or unknown legacy brokerage" do
+    inactive = create_brokerage(name: "Inactive Realty", slug: "inactive")
+    inactive.update!(status: "inactive")
+
+    [ inactive.slug, "missing" ].each do |slug|
+      with_legacy_brokerage_slug(slug) do
+        MIGRATIONS.each do |migration_class|
+          error = assert_raises(ActiveRecord::MigrationError) do
+            migration_class.new.send(:legacy_brokerage_id!, 1, "record")
+          end
+          assert_includes error.message, "does not identify an active brokerage"
+        end
+      end
+    end
+  end
+
+  test "blocks an unsafe buyer profile rollback after multi-broker use" do
+    user = create_user(email: "buyer@example.com")
+    alpha = create_brokerage(name: "Alpha Realty", slug: "alpha")
+    beta = create_brokerage(name: "Beta Realty", slug: "beta")
+    BuyerSearchProfile.create!(user: user, brokerage: alpha)
+    BuyerSearchProfile.create!(user: user, brokerage: beta)
+
+    error = assert_raises(ActiveRecord::MigrationError) do
+      ScopeBuyerSearchProfilesToBrokerages.new.send(:ensure_single_profile_per_user!)
+    end
+
+    assert_includes error.message, "Cannot reverse brokerage-scoped buyer search profiles"
+  end
+
   private
 
   def with_legacy_brokerage_slug(slug)

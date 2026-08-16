@@ -86,6 +86,7 @@ Important env vars:
 
 ```env
 EXPO_PUBLIC_API_URL=http://localhost:3000
+EXPO_PUBLIC_BROKERAGE_SLUG=hafa-homes-demo
 EXPO_PUBLIC_MAPBOX_TOKEN=
 ```
 
@@ -143,16 +144,18 @@ Restart Expo after env changes:
 npm run start -- --clear
 ```
 
-## Node version note
+## Node and mobile runtime note
 
-Expo SDK 56 / React Native 0.85 expects Node `^20.19.4` or newer. Local Node `20.19.1` may still work and pass `expo-doctor`, but npm will print engine warnings until Node is upgraded.
+The repository pins Node in `.node-version`; install that exact version before running npm commands. The mobile project uses Expo SDK 57 / React Native 0.86 to avoid the Hermes memory regression now reported against SDK 56. Do not downgrade Expo to make an audit suggestion disappear; use `npx expo install --fix` and `npm run doctor` to preserve SDK-compatible versions.
+
+Each native build must set `EXPO_PUBLIC_BROKERAGE_SLUG`. The default `hafa-homes-demo` is for Hafa Homes development/demo only. Unknown and inactive explicit broker domains/slugs fail closed instead of routing to another tenant.
 
 ## Verification checklist
 
 Before pushing changes:
 
 ```bash
-cd mobile && npm run typecheck && npm run doctor
-cd ../web && npm run build
-cd ../api && bundle exec rails runner script/smoke.rb
+cd mobile && npm ci && npm run typecheck && npm run doctor && npm run audit:production
+cd ../web && npm ci && npm run lint && npm test && npm run build && npm audit --omit=dev --audit-level=high
+cd ../api && bundle install && bin/rails test && bin/rails zeitwerk:check && bin/brakeman --no-pager --quiet && bin/bundler-audit check --update && bin/rubocop
 ```

@@ -19,12 +19,28 @@ class ScopeBuyerSearchProfilesToBrokerages < ActiveRecord::Migration[8.1]
   end
 
   def down
+    ensure_single_profile_per_user!
     remove_index :buyer_search_profiles, name: "index_buyer_search_profiles_on_user_and_brokerage"
     add_index :buyer_search_profiles, :user_id, unique: true
     change_column_null :buyer_search_profiles, :brokerage_id, true
   end
 
   private
+
+  def ensure_single_profile_per_user!
+    duplicate_user_id = select_value(<<~SQL.squish)
+      SELECT user_id
+      FROM buyer_search_profiles
+      GROUP BY user_id
+      HAVING COUNT(*) > 1
+      LIMIT 1
+    SQL
+    return unless duplicate_user_id
+
+    raise ActiveRecord::MigrationError,
+      "Cannot reverse brokerage-scoped buyer search profiles while user #{duplicate_user_id} has profiles in multiple brokerages. " \
+      "Export or consolidate those records deliberately before rolling back."
+  end
 
   def legacy_brokerage_id!(record_count, record_label)
     explicit_slug = ENV["LEGACY_BROKERAGE_SLUG"].to_s.strip

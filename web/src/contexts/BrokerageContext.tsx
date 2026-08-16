@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect } from 'react'
 import type { ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { apiFetch } from '../lib/api'
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
 
@@ -28,9 +29,7 @@ type BrokerageContextValue = {
 const BrokerageContext = createContext<BrokerageContextValue>({ brokerage: null, isLoading: true })
 
 async function fetchBrokerageContext(): Promise<{ brokerage: Brokerage }> {
-  const response = await fetch(`${API_URL}/api/v1/context`, {
-    headers: { 'X-Brokerage-Host': window.location.hostname },
-  })
+  const response = await apiFetch(`${API_URL}/api/v1/context`)
   if (!response.ok) throw new Error('Unable to resolve brokerage context')
   return response.json()
 }

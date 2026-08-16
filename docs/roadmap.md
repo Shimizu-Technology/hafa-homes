@@ -1,6 +1,8 @@
 # Roadmap
 
-_Last updated: 2026-06-28 after PR #19 buyer/search profile prompt personalization merged._
+_Last updated: 2026-08-16 during PR #21 hardening refresh._
+
+Canonical findings and remediation order: `docs/product/2026-08-16-review-findings-and-remediation-plan.md`.
 
 ## Current product direction
 
@@ -137,8 +139,8 @@ Completed in PR #10:
 Current App Store state:
 
 ```text
-iOS version 1.0.1
-build 11
+iOS version 1.0.2
+build 15
 status: approved/live
 ```
 

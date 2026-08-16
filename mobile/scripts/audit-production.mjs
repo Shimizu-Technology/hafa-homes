@@ -1,9 +1,13 @@
 import { execFileSync } from 'node:child_process'
 
 const allowedAdvisories = new Map([
-  [1120341, {
-    expires: '2026-08-10',
-    reason: 'Clerk Expo 2.19.31 is the latest published SDK and the affected organization/billing/reverification authorization features are not used by Hafa Homes.',
+  [1138808, {
+    expires: '2026-11-16',
+    reason: 'No patched image-size release exists yet. The affected ICNS parser is only reached by Metro while processing trusted repository assets during development/builds, not by app users at runtime.',
+  }],
+  [1138809, {
+    expires: '2026-11-16',
+    reason: 'No patched image-size release exists yet. The affected JXL/HEIF parsers are only reached by Metro while processing trusted repository assets during development/builds, not by app users at runtime.',
   }],
 ])
 
@@ -17,13 +21,30 @@ try {
 const audit = JSON.parse(output)
 const blocking = []
 const accepted = []
+const vulnerabilities = audit.vulnerabilities || {}
 
-for (const [dependency, finding] of Object.entries(audit.vulnerabilities || {})) {
+function advisorySourcesFor(dependency, visited = new Set()) {
+  if (visited.has(dependency)) return new Set()
+  visited.add(dependency)
+
+  const finding = vulnerabilities[dependency]
+  if (!finding) return new Set()
+
+  const sources = new Set()
+  for (const item of finding.via || []) {
+    if (typeof item === 'object' && item.source) {
+      sources.add(Number(item.source))
+    } else if (typeof item === 'string') {
+      for (const source of advisorySourcesFor(item, visited)) sources.add(source)
+    }
+  }
+  return sources
+}
+
+for (const [dependency, finding] of Object.entries(vulnerabilities)) {
   if (!['high', 'critical'].includes(finding.severity)) continue
 
-  const sources = finding.via
-    .filter((item) => typeof item === 'object' && item.source)
-    .map((item) => Number(item.source))
+  const sources = [...advisorySourcesFor(dependency)]
   const exceptions = sources.map((source) => allowedAdvisories.get(source)).filter(Boolean)
   const validException = sources.length > 0 && exceptions.length === sources.length && exceptions.every((item) => new Date(item.expires) >= new Date())
 
@@ -31,8 +52,18 @@ for (const [dependency, finding] of Object.entries(audit.vulnerabilities || {}))
   else blocking.push({ dependency, severity: finding.severity, sources })
 }
 
+const acceptedGroups = new Map()
 for (const exception of accepted) {
-  console.warn(`Accepted temporary advisory for ${exception.dependency}: ${exception.sources.join(', ')}. ${exception.exceptions[0].reason} Expires ${exception.exceptions[0].expires}.`)
+  const key = exception.sources.sort((a, b) => a - b).join(',')
+  const group = acceptedGroups.get(key) || { ...exception, dependencies: [] }
+  group.dependencies.push(exception.dependency)
+  acceptedGroups.set(key, group)
+}
+
+for (const exception of acceptedGroups.values()) {
+  const reasons = [...new Set(exception.exceptions.map((item) => item.reason))].join(' ')
+  const expiry = exception.exceptions.map((item) => item.expires).sort()[0]
+  console.warn(`Accepted temporary advisories ${exception.sources.join(', ')} for dependency graph: ${exception.dependencies.sort().join(', ')}. ${reasons} Expires ${expiry}.`)
 }
 
 if (blocking.length > 0) {

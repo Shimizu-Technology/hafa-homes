@@ -27,6 +27,39 @@ class BrokerageRoutingTest < ActionDispatch::IntegrationTest
     assert_response :not_found
   end
 
+  test "an explicit storefront host takes precedence over a native brokerage slug" do
+    get "/api/v1/context", headers: {
+      "X-Brokerage-Host" => "alpha.test",
+      "X-Brokerage-Slug" => @beta.slug
+    }
+
+    assert_response :success
+    assert_equal @alpha.id, response.parsed_body.dig("brokerage", "id")
+  end
+
+  test "resolves browser requests from origin when no storefront header is present" do
+    get "/api/v1/context", headers: { "Origin" => "https://beta.test" }
+
+    assert_response :success
+    assert_equal @beta.id, response.parsed_body.dig("brokerage", "id")
+  end
+
+  test "does not route explicit unknown or inactive storefronts through a fallback" do
+    BrokerageDomain.find_by!(hostname: "beta.test").update!(status: "inactive")
+    @beta.update!(status: "inactive")
+
+    with_default_brokerage_slug(@alpha.slug) do
+      get "/api/v1/context", headers: { "X-Brokerage-Host" => "unknown.test" }
+      assert_response :not_found
+
+      get "/api/v1/context", headers: { "X-Brokerage-Host" => "beta.test" }
+      assert_response :not_found
+
+      get "/api/v1/context", headers: { "X-Brokerage-Slug" => @beta.slug }
+      assert_response :not_found
+    end
+  end
+
   test "routes public leads to the resolved broker and rejects another broker agent" do
     post "/api/v1/leads",
       headers: { "X-Brokerage-Host" => "alpha.test" },
@@ -48,5 +81,60 @@ class BrokerageRoutingTest < ActionDispatch::IntegrationTest
 
     assert_response :created
     assert_equal @beta.id, SavedSearch.order(:id).last.brokerage_id
+  end
+
+  test "scopes one consumer search profile independently per brokerage" do
+    buyer = create_user(email: "buyer@example.com", clerk_id: "clerk-buyer")
+    BuyerSearchProfile.create!(user: buyer, brokerage: @alpha, preferred_contact_method: "email", desired_villages: "Yigo")
+    BuyerSearchProfile.create!(user: buyer, brokerage: @beta, preferred_contact_method: "phone", desired_villages: "Tamuning")
+    headers = authorization_headers(buyer)
+
+    with_clerk_auth do
+      get "/api/v1/me/search_profile", headers: headers.merge("X-Brokerage-Host" => "alpha.test")
+    end
+    assert_response :success
+    assert_equal "Yigo", response.parsed_body.dig("search_profile", "desired_villages")
+
+    with_clerk_auth do
+      patch "/api/v1/me/search_profile",
+        headers: headers.merge("X-Brokerage-Host" => "beta.test"),
+        params: { search_profile: { desired_villages: "Dededo" } }
+    end
+    assert_response :success
+    assert_equal "Yigo", buyer.buyer_search_profiles.find_by!(brokerage: @alpha).desired_villages
+    assert_equal "Dededo", buyer.buyer_search_profiles.find_by!(brokerage: @beta).desired_villages
+  end
+
+  test "rejects reuse of an intent session token across brokerages" do
+    token = "tenant-scope-token-12345"
+    params = {
+      lead_intent_event: {
+        session_token: token,
+        event_name: "search_filter_changed",
+        client_event_id: "filter-1",
+        source: "web",
+        metadata: { filter: "village", value: "Yigo" }
+      }
+    }
+
+    post "/api/v1/lead_intent/events", headers: { "X-Brokerage-Host" => "alpha.test" }, params: params
+    assert_response :created
+
+    params[:lead_intent_event][:client_event_id] = "filter-2"
+    post "/api/v1/lead_intent/events", headers: { "X-Brokerage-Host" => "beta.test" }, params: params
+    assert_response :conflict
+    assert_equal true, response.parsed_body["reset_session"]
+    assert_equal 1, LeadIntentSession.count
+    assert_equal @alpha.id, LeadIntentSession.first.brokerage_id
+  end
+
+  private
+
+  def with_default_brokerage_slug(slug)
+    previous = ENV["DEFAULT_BROKERAGE_SLUG"]
+    ENV["DEFAULT_BROKERAGE_SLUG"] = slug
+    yield
+  ensure
+    previous ? ENV["DEFAULT_BROKERAGE_SLUG"] = previous : ENV.delete("DEFAULT_BROKERAGE_SLUG")
   end
 end

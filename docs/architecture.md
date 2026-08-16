@@ -13,7 +13,7 @@ React/Vite Web (/web)
   - lead capture and request history
         |
         v
-Expo Mobile (/mobile)
+Expo Mobile (/mobile, SDK 57 / React Native 0.86)
   - consumer app experience
   - saved homes
   - request history
@@ -241,3 +241,5 @@ Default recommendation:
 - brokerage domain/tenant/branding config controls public customer-facing surfaces.
 
 Avoid one full Rails/web/mobile stack per broker unless a future enterprise customer pays for dedicated infrastructure.
+
+Current implementation boundary: domain/native routing, API tenant isolation, runtime brokerage context, and two web color variables are a foundation. Product copy, the broader color system, manifests/icons, Clerk domains, analytics/map restrictions, notification identity, and native application metadata are not fully tenant-configurable yet. See `product/2026-08-16-review-findings-and-remediation-plan.md` before describing this as white-label.
