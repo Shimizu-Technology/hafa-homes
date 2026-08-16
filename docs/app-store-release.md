@@ -1,6 +1,6 @@
 # App Store / TestFlight Release Notes
 
-_Last updated: 2026-06-28 after preparing `1.0.2` and attempting the next iOS production build._
+_Last updated: 2026-08-16 while preparing the iOS `1.0.3` release candidate in PR #22._
 
 ## Current status
 
@@ -8,12 +8,15 @@ _Last updated: 2026-06-28 after preparing `1.0.2` and attempting the next iOS pr
 - EAS project ID: `d1d219fa-fb79-47c5-9dc2-339645c6b00a`
 - iOS bundle ID: `com.shimizutechnology.hafahomes`
 - App Store Connect app ID: `6773042903`
-- iOS `1.0.1 (11)` is approved/live in App Store Connect.
-- `main` is prepared for the next App Store/TestFlight build at `1.0.2` from commit `81f1afd`.
-- EAS remote iOS build number is currently `14`; the next successful EAS cloud build should auto-increment to `15`.
-- A new iOS cloud build was attempted on 2026-06-28 but was blocked by the EAS free-plan iOS monthly build quota. The quota resets on 2026-07-01, or an EAS plan upgrade can unblock it sooner.
-- A local iOS build was also attempted, but local Xcode `16.4` / Swift `6.1` cannot build Expo SDK 56's `ExpoModulesJSI` Swift package because it declares Swift tools `6.2`. Use EAS cloud for the next production build unless local Xcode is upgraded.
+- iOS `1.0.2 (15)` is approved/live on the App Store.
+- iOS `1.0.3` is the current release candidate; its EAS build, TestFlight validation, and App Review submission are pending.
+- iOS `1.0.1 (11)` is the previous approved/live App Store build.
+- EAS build ID for `1.0.2 (15)`: `23e1f238-9906-4c54-bebb-0ac666b5df39`.
+- EAS submission ID for the App Store upload: `1ae27913-c0f6-4520-8975-a43ed52644db`.
+- The App Store version was submitted with automatic release enabled and released after approval.
+- A local iOS build was also attempted, but local Xcode `16.4` / Swift `6.1` cannot build Expo SDK 56's `ExpoModulesJSI` Swift package because it declares Swift tools `6.2`. Use EAS cloud for future production builds unless local Xcode is upgraded.
 - Production API env is configured in EAS: `EXPO_PUBLIC_API_URL=https://hafa-homes.onrender.com`
+- Production brokerage routing is explicit in EAS: `EXPO_PUBLIC_BROKERAGE_SLUG=hafa-homes-demo`
 - Production Mapbox token is configured in EAS as a sensitive variable.
 
 ## Current mobile feature set to release/review
@@ -28,9 +31,15 @@ The latest mobile app should be reviewed as a demo/early production Guam real es
 - mortgage calculator for sale listings;
 - Clerk auth;
 - server-backed saved homes;
+- preferred-agent selection for signed-in users;
 - showing/contact request form;
+- price watch request form;
 - consumer request history;
+- durable Buyer/Search Profile fields and request prefills;
+- first-party search context and progressive search-assist prompts;
 - self-service account deletion from web and mobile account screens;
+- Hafa Homes website link from the mobile More screen;
+- refreshed app icon asset;
 - demo listing data while MLS/Flexmls access is validated.
 
 Do **not** claim live MLS data until authorization/compliance is complete.
@@ -68,20 +77,53 @@ then bump `expo.version` in `mobile/app.json`, for example from `1.0.0` to `1.0.
 Version: 1.0.1
 Build number: 11
 EAS build ID: 24a33127-0dae-46e0-8bb1-727918e643c2
-Status: Approved/live in App Store Connect
+Status: Previous approved/live App Store build
 ```
 
-Build `11` replaced rejected build `10` and is the current public iOS release.
+Build `11` replaced rejected build `10` and was the public iOS release before `1.0.2 (15)`.
 
-## Next prepared build
+## Submitted 1.0.2 build
 
 ```text
 Version: 1.0.2
-Prepared commit: 81f1afd
-EAS remote build number after failed attempts: 14
-Expected next successful cloud build number: 15
-Status: Not uploaded yet; blocked by EAS free-plan iOS build quota until 2026-07-01 unless the account is upgraded.
+Build number: 15
+Source commit: 0b2e418a8e557c878e7e62d75bb14f8f37a4d2f0
+EAS build ID: 23e1f238-9906-4c54-bebb-0ac666b5df39
+IPA artifact: https://expo.dev/artifacts/eas/wDsUdl8TeT5vnnenCAN-mkR2Z5HAzTjquuHWO3kQziE.ipa
+EAS submission ID: 1ae27913-c0f6-4520-8975-a43ed52644db
+App Store Connect status: Approved/live as of 2026-07-02
+Release setting: Automatically released after approval
 ```
+
+Submission metadata notes:
+
+- Build selected: `1.0.2 (15)`.
+- Promotional text mentions Guam homes/rentals, saved properties, preferred agent, and showing/price watch requests.
+- What's New mentions first-party search context, smarter search-assist prompts, better request routing, request history, map/listing navigation, app icon presentation, and the in-app `hafahomes.com` link.
+- Review notes clarify that price watch is currently a request workflow, not automated price-alert notifications, and that the app uses standard HTTPS/TLS encryption only.
+
+## Prepared 1.0.3 release candidate
+
+```text
+Version: 1.0.3
+Release PR: #22
+Build number: Pending EAS production build
+TestFlight status: Pending upload and physical-device smoke test
+App Review status: Not submitted
+```
+
+This candidate is based on the product-hardening work merged in PR #21 and includes the current Guam search, brokerage routing, agent/account, showing-request, local-intel, and mortgage-calculator flows. Before upload, the production configuration was verified with a live Clerk key, Apple Sign-In enabled, the production API URL, the explicit `hafa-homes-demo` brokerage slug, and the production Mapbox token.
+
+Local release validation completed on 2026-08-16:
+
+- TypeScript passed.
+- Expo Doctor passed all 21 checks.
+- The production dependency audit found no unaccepted high or critical advisories.
+- Production-configured iOS and Android Hermes exports completed.
+- Read-only production API smoke checks passed for health, brokerage context, listings/search, listing detail, and agents.
+- Computer Use QA on an iOS Simulator passed for search, listing detail and photos, local intel, map rendering, agents, showing-request form, mortgage calculator, account-gated saved/request screens, More, and auth entry.
+
+The remaining release gate is a TestFlight smoke test on a physical iPhone using the uploaded production build, including native Apple Sign-In, authenticated saved homes, request history, profile, and account deletion.
 
 ## Native Apple/Clerk setup for the next build
 
