@@ -1,6 +1,6 @@
 # App Store / TestFlight Release Notes
 
-_Last updated: 2026-08-16 while preparing the iOS `1.0.3` release candidate in PR #22._
+_Last updated: 2026-08-17 after submitting iOS `1.0.3 (17)` to App Review._
 
 ## Current status
 
@@ -9,11 +9,13 @@ _Last updated: 2026-08-16 while preparing the iOS `1.0.3` release candidate in P
 - iOS bundle ID: `com.shimizutechnology.hafahomes`
 - App Store Connect app ID: `6773042903`
 - iOS `1.0.2 (15)` is approved/live on the App Store.
-- iOS `1.0.3` is the current release candidate; its EAS build, TestFlight validation, and App Review submission are pending.
+- iOS `1.0.3 (17)` was submitted to App Review on 2026-08-17 and is `Waiting for Review`.
 - iOS `1.0.1 (11)` is the previous approved/live App Store build.
-- EAS build ID for `1.0.2 (15)`: `23e1f238-9906-4c54-bebb-0ac666b5df39`.
-- EAS submission ID for the App Store upload: `1ae27913-c0f6-4520-8975-a43ed52644db`.
-- The App Store version was submitted with automatic release enabled and released after approval.
+- EAS build ID for `1.0.3 (17)`: `164ddb57-1bc6-4c20-a06c-2c568244de66`.
+- EAS submission ID for the `1.0.3` App Store upload: `f9027b93-eca1-4eb0-b2e2-94229b5a14c6`.
+- App Store Connect submission ID for `1.0.3`: `c126d23c-13e1-4cf1-8cc2-2f6a82b26df3`.
+- `1.0.3` uses manual release so approval will not publish the update until the release is intentionally triggered.
+- `1.0.2` used automatic release and remains the current live version while `1.0.3` is reviewed.
 - A local iOS build was also attempted, but local Xcode `16.4` / Swift `6.1` cannot build Expo SDK 56's `ExpoModulesJSI` Swift package because it declares Swift tools `6.2`. Use EAS cloud for future production builds unless local Xcode is upgraded.
 - Production API env is configured in EAS: `EXPO_PUBLIC_API_URL=https://hafa-homes.onrender.com`
 - Production brokerage routing is explicit in EAS: `EXPO_PUBLIC_BROKERAGE_SLUG=hafa-homes-demo`
@@ -102,17 +104,23 @@ Submission metadata notes:
 - What's New mentions first-party search context, smarter search-assist prompts, better request routing, request history, map/listing navigation, app icon presentation, and the in-app `hafahomes.com` link.
 - Review notes clarify that price watch is currently a request workflow, not automated price-alert notifications, and that the app uses standard HTTPS/TLS encryption only.
 
-## Prepared 1.0.3 release candidate
+## Submitted 1.0.3 build
 
 ```text
 Version: 1.0.3
 Release PR: #22
-Build number: Pending EAS production build
-TestFlight status: Pending upload and physical-device smoke test
-App Review status: Not submitted
+Build number: 17
+Source commit: 63951b5f0f5f64949fbbbaa84cfcc1acb1a62a4f
+EAS build ID: 164ddb57-1bc6-4c20-a06c-2c568244de66
+IPA artifact: https://expo.dev/artifacts/eas/VLZvO8xTy6OMNwqN93ZNmGg1pqPUUKUOXJE1kzH04qI.ipa
+EAS submission ID: f9027b93-eca1-4eb0-b2e2-94229b5a14c6
+App Store Connect submission ID: c126d23c-13e1-4cf1-8cc2-2f6a82b26df3
+TestFlight status: Ready to Submit; assigned to Team (Expo)
+App Review status: Waiting for Review as of 2026-08-17 12:11 AM GMT+10
+Release setting: Manual release after approval
 ```
 
-This candidate is based on the product-hardening work merged in PR #21 and includes the current Guam search, brokerage routing, agent/account, showing-request, local-intel, and mortgage-calculator flows. Before upload, the production configuration was verified with a live Clerk key, Apple Sign-In enabled, the production API URL, the explicit `hafa-homes-demo` brokerage slug, and the production Mapbox token.
+This build contains the Phase 1 product-hardening work merged in PR #22 and includes the current Guam search, brokerage routing, agent/account, showing-request, local-intel, and mortgage-calculator flows. Before upload, the production configuration was verified with a live Clerk key, Apple Sign-In enabled, the production API URL, the explicit `hafa-homes-demo` brokerage slug, and the production Mapbox token.
 
 Local release validation completed on 2026-08-16:
 
@@ -123,7 +131,16 @@ Local release validation completed on 2026-08-16:
 - Read-only production API smoke checks passed for health, brokerage context, listings/search, listing detail, and agents.
 - Computer Use QA on an iOS Simulator passed for search, listing detail and photos, local intel, map rendering, agents, showing-request form, mortgage calculator, account-gated saved/request screens, More, and auth entry.
 
-The remaining release gate is a TestFlight smoke test on a physical iPhone using the uploaded production build, including native Apple Sign-In, authenticated saved homes, request history, profile, and account deletion.
+App Store Connect validation completed on 2026-08-17:
+
+- Apple processed and validated build `17` without an upload warning or error.
+- Build metadata reports `App Uses Non-Exempt Encryption: No` and includes the Sign in with Apple entitlement.
+- TestFlight test notes were saved and the build is assigned to the internal `Team (Expo)` group.
+- App Store metadata, review notes, support/marketing URLs, screenshots, and build selection were saved.
+- The submission uses manual release and keeps the existing App Store rating.
+- Apple accepted the submission and moved version `1.0.3` to `Waiting for Review`.
+
+Before manually releasing an approved build, complete a TestFlight smoke test on a physical iPhone, including native Apple Sign-In, authenticated saved homes, request history, profile editing, and account deletion. The available registered iPhones were offline during submission, so this remains a post-submission/pre-release verification step rather than an unrecorded assumption.
 
 ## Native Apple/Clerk setup for the next build
 
