@@ -14,6 +14,7 @@ module Api
 
         def update
           brokerage = brokerage_scope.find(params[:id])
+          brokerage.assign_attributes(branding_params)
           next_settings = brokerage.settings.to_h.merge(prompt_settings_params)
           next_settings.delete_if { |_key, value| value.nil? }
           brokerage.settings = next_settings
@@ -65,6 +66,18 @@ module Api
           end
 
           settings
+        end
+
+        def branding_params
+          params.require(:brokerage).permit(
+            :phone,
+            :website_url,
+            :logo_url,
+            :brand_primary_color,
+            :brand_accent_color,
+            :app_display_name,
+            :compliance_disclaimer
+          )
         end
 
         def positive_integer_setting(value, name, min:, max:)

@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
+import type { Map as MapboxMap, Marker as MapboxMarker } from 'mapbox-gl'
 import { Link, Route, Routes, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { SignedIn, SignedOut, SignInButton, UserButton } from '@clerk/clerk-react'
 import { Brand } from './components/Brand'
@@ -43,8 +44,10 @@ import {
   X,
 } from 'lucide-react'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { authHeaders } from './lib/api'
+import { apiFetch, authHeaders } from './lib/api'
 import { useAuthContext } from './contexts/AuthContext'
+import type { Brokerage } from './contexts/BrokerageContext'
+import { groupListingsByVillage } from './lib/mapClusters'
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
@@ -177,7 +180,7 @@ async function recordLeadIntentEvent(eventName: string, payload: { listing_id?: 
   const clientEventId = leadIntentClientEventId(eventName)
 
   async function postEvent(token: string) {
-    return fetch(`${API_URL}/api/v1/lead_intent/events`, {
+    return apiFetch(`${API_URL}/api/v1/lead_intent/events`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
       body: JSON.stringify({
@@ -221,7 +224,7 @@ async function dismissLeadIntentPrompt(promptKey?: string, reason = 'dismissed')
   if (!sessionToken) return
 
   try {
-    const response = await fetch(`${API_URL}/api/v1/lead_intent/dismiss`, {
+    const response = await apiFetch(`${API_URL}/api/v1/lead_intent/dismiss`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
       body: JSON.stringify({ lead_intent: { session_token: sessionToken, prompt_key: promptKey, reason } }),
@@ -262,18 +265,6 @@ type Feature = {
   name: string
   slug: string
   category: string
-}
-
-type Brokerage = {
-  id: number
-  name: string
-  slug: string
-  status?: string
-  phone?: string
-  website_url?: string
-  app_display_name?: string
-  compliance_disclaimer?: string
-  settings?: Record<string, unknown>
 }
 
 type Agent = {
@@ -778,32 +769,31 @@ function buildQuery(params: Record<string, string | undefined>) {
 
 async function fetchListings(params: Record<string, string | undefined> = {}): Promise<ListingsResponse> {
   const query = buildQuery(params)
-  const response = await fetch(`${API_URL}/api/v1/listings${query ? `?${query}` : ''}`)
+  const response = await apiFetch(`${API_URL}/api/v1/listings${query ? `?${query}` : ''}`)
   if (!response.ok) throw new Error('Unable to load listings')
   return response.json()
 }
 
 async function fetchListing(id: string): Promise<ListingResponse> {
-  const response = await fetch(`${API_URL}/api/v1/listings/${id}`)
+  const response = await apiFetch(`${API_URL}/api/v1/listings/${id}`)
   if (!response.ok) throw new Error('Unable to load listing')
   return response.json()
 }
 
 async function fetchVillages(): Promise<VillagesResponse> {
-  const response = await fetch(`${API_URL}/api/v1/villages`)
+  const response = await apiFetch(`${API_URL}/api/v1/villages`)
   if (!response.ok) throw new Error('Unable to load villages')
   return response.json()
 }
 
-async function fetchAgents(brokerageId?: number): Promise<AgentsResponse> {
-  const query = brokerageId ? `?brokerage_id=${brokerageId}` : ''
-  const response = await fetch(`${API_URL}/api/v1/agents${query}`)
+async function fetchAgents(): Promise<AgentsResponse> {
+  const response = await apiFetch(`${API_URL}/api/v1/agents`)
   if (!response.ok) throw new Error('Unable to load agents')
   return response.json()
 }
 
 async function fetchMe(): Promise<MeResponse> {
-  const response = await fetch(`${API_URL}/api/v1/me`, { headers: await authHeaders() })
+  const response = await apiFetch(`${API_URL}/api/v1/me`, { headers: await authHeaders() })
   if (!response.ok) {
     throw new ApiFetchError('Unable to load current user', response.status)
   }
@@ -811,7 +801,7 @@ async function fetchMe(): Promise<MeResponse> {
 }
 
 async function updateMe(payload: Partial<Pick<CurrentUser, 'first_name' | 'last_name' | 'phone' | 'preferred_contact_method'>>): Promise<MeResponse> {
-  const response = await fetch(`${API_URL}/api/v1/me`, {
+  const response = await apiFetch(`${API_URL}/api/v1/me`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
     body: JSON.stringify({ user: payload }),
@@ -821,13 +811,13 @@ async function updateMe(payload: Partial<Pick<CurrentUser, 'first_name' | 'last_
 }
 
 async function fetchSearchProfile(): Promise<SearchProfileResponse> {
-  const response = await fetch(`${API_URL}/api/v1/me/search_profile`, { headers: await authHeaders() })
+  const response = await apiFetch(`${API_URL}/api/v1/me/search_profile`, { headers: await authHeaders() })
   if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to load search profile'), response.status)
   return response.json()
 }
 
 async function updateSearchProfile(payload: SearchProfilePayload): Promise<SearchProfileResponse> {
-  const response = await fetch(`${API_URL}/api/v1/me/search_profile`, {
+  const response = await apiFetch(`${API_URL}/api/v1/me/search_profile`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
     body: JSON.stringify({ search_profile: payload }),
@@ -837,69 +827,69 @@ async function updateSearchProfile(payload: SearchProfilePayload): Promise<Searc
 }
 
 async function deleteCurrentAccount(): Promise<{ deleted: boolean }> {
-  const response = await fetch(`${API_URL}/api/v1/me`, { method: 'DELETE', headers: await authHeaders() })
+  const response = await apiFetch(`${API_URL}/api/v1/me`, { method: 'DELETE', headers: await authHeaders() })
   if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to delete account'), response.status)
   return response.json()
 }
 
 async function fetchSyncRuns(): Promise<SyncRunsResponse> {
-  const response = await fetch(`${API_URL}/api/v1/data_sync_runs`, { headers: await authHeaders() })
+  const response = await apiFetch(`${API_URL}/api/v1/data_sync_runs`, { headers: await authHeaders() })
   if (!response.ok) throw new Error('Unable to load sync runs')
   return response.json()
 }
 
 async function fetchLeads(params: { assigned_agent_id?: string; lead_type?: string; status?: string; q?: string; sort?: string } = {}): Promise<LeadsResponse> {
   const query = buildQuery(params)
-  const response = await fetch(`${API_URL}/api/v1/leads${query ? `?${query}` : ''}`, { headers: await authHeaders() })
+  const response = await apiFetch(`${API_URL}/api/v1/leads${query ? `?${query}` : ''}`, { headers: await authHeaders() })
   if (!response.ok) throw new Error('Unable to load leads')
   return response.json()
 }
 
 async function fetchLead(id: string): Promise<LeadResponse> {
-  const response = await fetch(`${API_URL}/api/v1/leads/${id}`, { headers: await authHeaders() })
+  const response = await apiFetch(`${API_URL}/api/v1/leads/${id}`, { headers: await authHeaders() })
   if (!response.ok) throw new Error('Unable to load lead')
   return response.json()
 }
 
 async function fetchMyLeads(): Promise<MyLeadsResponse> {
-  const response = await fetch(`${API_URL}/api/v1/me/leads`, { headers: await authHeaders() })
+  const response = await apiFetch(`${API_URL}/api/v1/me/leads`, { headers: await authHeaders() })
   if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to load your requests'), response.status)
   return response.json()
 }
 
 async function fetchAdminDashboard(): Promise<AdminDashboardResponse> {
-  const response = await fetch(`${API_URL}/api/v1/admin/dashboard`, { headers: await authHeaders() })
+  const response = await apiFetch(`${API_URL}/api/v1/admin/dashboard`, { headers: await authHeaders() })
   if (!response.ok) throw new Error('Unable to load admin dashboard')
   return response.json()
 }
 
 async function fetchAdminLeadIntentSessions(params: { status?: string; identity?: string; q?: string; sort?: string; page?: string; per_page?: string } = {}): Promise<AdminLeadIntentSessionsResponse> {
   const query = buildQuery({ status: params.status, identity: params.identity, q: params.q, sort: params.sort, page: params.page, per_page: params.per_page })
-  const response = await fetch(`${API_URL}/api/v1/admin/lead_intent_sessions${query ? `?${query}` : ''}`, { headers: await authHeaders() })
+  const response = await apiFetch(`${API_URL}/api/v1/admin/lead_intent_sessions${query ? `?${query}` : ''}`, { headers: await authHeaders() })
   if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to load search intent'), response.status)
   return response.json()
 }
 
 async function fetchShowingAppointments(): Promise<ShowingAppointmentsResponse> {
-  const response = await fetch(`${API_URL}/api/v1/showing_appointments`, { headers: await authHeaders() })
+  const response = await apiFetch(`${API_URL}/api/v1/showing_appointments`, { headers: await authHeaders() })
   if (!response.ok) throw new Error('Unable to load showing schedule')
   return response.json()
 }
 
 async function fetchAdminUsers(): Promise<AdminUsersResponse> {
-  const response = await fetch(`${API_URL}/api/v1/admin/users`, { headers: await authHeaders() })
+  const response = await apiFetch(`${API_URL}/api/v1/admin/users`, { headers: await authHeaders() })
   if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to load users'), response.status)
   return response.json()
 }
 
 async function fetchAdminBrokerages(): Promise<{ brokerages: Brokerage[] }> {
-  const response = await fetch(`${API_URL}/api/v1/admin/brokerages`, { headers: await authHeaders() })
+  const response = await apiFetch(`${API_URL}/api/v1/admin/brokerages`, { headers: await authHeaders() })
   if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to load brokerages'), response.status)
   return response.json()
 }
 
 async function updateAdminBrokerage(id: number, payload: Record<string, unknown>): Promise<{ brokerage: Brokerage }> {
-  const response = await fetch(`${API_URL}/api/v1/admin/brokerages/${id}`, {
+  const response = await apiFetch(`${API_URL}/api/v1/admin/brokerages/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
     body: JSON.stringify({ brokerage: payload }),
@@ -909,13 +899,13 @@ async function updateAdminBrokerage(id: number, payload: Record<string, unknown>
 }
 
 async function fetchAuditEvents(): Promise<AuditEventsResponse> {
-  const response = await fetch(`${API_URL}/api/v1/admin/audit_events`, { headers: await authHeaders() })
+  const response = await apiFetch(`${API_URL}/api/v1/admin/audit_events`, { headers: await authHeaders() })
   if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to load audit history'), response.status)
   return response.json()
 }
 
 async function createAdminUser(payload: Record<string, unknown>): Promise<{ user: AdminUser }> {
-  const response = await fetch(`${API_URL}/api/v1/admin/users`, {
+  const response = await apiFetch(`${API_URL}/api/v1/admin/users`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
     body: JSON.stringify({ user: payload }),
@@ -925,7 +915,7 @@ async function createAdminUser(payload: Record<string, unknown>): Promise<{ user
 }
 
 async function updateLead(id: number, payload: LeadUpdatePayload): Promise<LeadResponse> {
-  const response = await fetch(`${API_URL}/api/v1/leads/${id}`, {
+  const response = await apiFetch(`${API_URL}/api/v1/leads/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
     body: JSON.stringify({ lead: payload }),
@@ -935,7 +925,7 @@ async function updateLead(id: number, payload: LeadUpdatePayload): Promise<LeadR
 }
 
 async function createLeadNote(id: number, payload: { body: string }): Promise<{ lead_note: LeadNote; lead: Lead }> {
-  const response = await fetch(`${API_URL}/api/v1/leads/${id}/notes`, {
+  const response = await apiFetch(`${API_URL}/api/v1/leads/${id}/notes`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
     body: JSON.stringify({ lead_note: payload }),
@@ -945,7 +935,7 @@ async function createLeadNote(id: number, payload: { body: string }): Promise<{ 
 }
 
 async function updateLeadNote(id: number, payload: Partial<Pick<LeadNote, 'body'>> & { archived?: boolean }): Promise<{ lead_note: LeadNote; lead: Lead }> {
-  const response = await fetch(`${API_URL}/api/v1/lead_notes/${id}`, {
+  const response = await apiFetch(`${API_URL}/api/v1/lead_notes/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
     body: JSON.stringify({ lead_note: payload }),
@@ -955,25 +945,25 @@ async function updateLeadNote(id: number, payload: Partial<Pick<LeadNote, 'body'
 }
 
 async function fetchLeadNotesPage(leadId: number, page: number, perPage = 10): Promise<LeadNotesPageResponse> {
-  const response = await fetch(`${API_URL}/api/v1/leads/${leadId}/notes?page=${page}&per_page=${perPage}`, { headers: await authHeaders() })
+  const response = await apiFetch(`${API_URL}/api/v1/leads/${leadId}/notes?page=${page}&per_page=${perPage}`, { headers: await authHeaders() })
   if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to load notes'), response.status)
   return response.json()
 }
 
 async function fetchLeadTasksPage(leadId: number, status: 'open' | 'completed' | 'archived', page: number, perPage = 10): Promise<LeadTasksPageResponse> {
-  const response = await fetch(`${API_URL}/api/v1/leads/${leadId}/tasks?status=${status}&page=${page}&per_page=${perPage}`, { headers: await authHeaders() })
+  const response = await apiFetch(`${API_URL}/api/v1/leads/${leadId}/tasks?status=${status}&page=${page}&per_page=${perPage}`, { headers: await authHeaders() })
   if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to load tasks'), response.status)
   return response.json()
 }
 
 async function fetchLeadActivitiesPage(leadId: number, page: number, perPage = 10): Promise<LeadActivitiesPageResponse> {
-  const response = await fetch(`${API_URL}/api/v1/leads/${leadId}/activities?page=${page}&per_page=${perPage}`, { headers: await authHeaders() })
+  const response = await apiFetch(`${API_URL}/api/v1/leads/${leadId}/activities?page=${page}&per_page=${perPage}`, { headers: await authHeaders() })
   if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to load activity'), response.status)
   return response.json()
 }
 
 async function createLeadTask(id: number, payload: { title: string; notes?: string; due_at?: string }): Promise<{ lead_task: LeadTask; lead: Lead }> {
-  const response = await fetch(`${API_URL}/api/v1/leads/${id}/tasks`, {
+  const response = await apiFetch(`${API_URL}/api/v1/leads/${id}/tasks`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
     body: JSON.stringify({ lead_task: payload }),
@@ -983,7 +973,7 @@ async function createLeadTask(id: number, payload: { title: string; notes?: stri
 }
 
 async function updateLeadTask(id: number, payload: Partial<Pick<LeadTask, 'title' | 'notes' | 'status' | 'due_at'>>): Promise<{ lead_task: LeadTask; lead: Lead }> {
-  const response = await fetch(`${API_URL}/api/v1/lead_tasks/${id}`, {
+  const response = await apiFetch(`${API_URL}/api/v1/lead_tasks/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
     body: JSON.stringify({ lead_task: payload }),
@@ -993,7 +983,7 @@ async function updateLeadTask(id: number, payload: Partial<Pick<LeadTask, 'title
 }
 
 async function sendLeadNotification(id: number, payload: { channel: 'email' | 'sms'; recipient_role: 'consumer' | 'agent'; event_name?: string; subject?: string; title?: string; body?: string }): Promise<{ notification_delivery: NotificationDelivery }> {
-  const response = await fetch(`${API_URL}/api/v1/leads/${id}/notifications`, {
+  const response = await apiFetch(`${API_URL}/api/v1/leads/${id}/notifications`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
     body: JSON.stringify({ notification: payload }),
@@ -1003,7 +993,7 @@ async function sendLeadNotification(id: number, payload: { channel: 'email' | 's
 }
 
 async function createShowingAppointment(payload: Partial<ShowingAppointment> & { lead_id: number }): Promise<{ showing_appointment: ShowingAppointment; lead: Lead }> {
-  const response = await fetch(`${API_URL}/api/v1/showing_appointments`, {
+  const response = await apiFetch(`${API_URL}/api/v1/showing_appointments`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
     body: JSON.stringify({ showing_appointment: payload }),
@@ -1013,7 +1003,7 @@ async function createShowingAppointment(payload: Partial<ShowingAppointment> & {
 }
 
 async function updateShowingAppointment(id: number, payload: Partial<ShowingAppointment>): Promise<{ showing_appointment: ShowingAppointment; lead: Lead }> {
-  const response = await fetch(`${API_URL}/api/v1/showing_appointments/${id}`, {
+  const response = await apiFetch(`${API_URL}/api/v1/showing_appointments/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
     body: JSON.stringify({ showing_appointment: payload }),
@@ -1023,7 +1013,7 @@ async function updateShowingAppointment(id: number, payload: Partial<ShowingAppo
 }
 
 async function updateAdminUser(id: number, payload: Record<string, unknown>): Promise<{ user: AdminUser }> {
-  const response = await fetch(`${API_URL}/api/v1/admin/users/${id}`, {
+  const response = await apiFetch(`${API_URL}/api/v1/admin/users/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
     body: JSON.stringify({ user: payload }),
@@ -1033,25 +1023,25 @@ async function updateAdminUser(id: number, payload: Record<string, unknown>): Pr
 }
 
 async function fetchSavedListings(): Promise<SavedListingsResponse> {
-  const response = await fetch(`${API_URL}/api/v1/me/saved_listings`, { headers: await authHeaders() })
+  const response = await apiFetch(`${API_URL}/api/v1/me/saved_listings`, { headers: await authHeaders() })
   if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to load saved homes'), response.status)
   return response.json()
 }
 
 async function saveListingForUser(listingId: number): Promise<SaveListingResponse> {
-  const response = await fetch(`${API_URL}/api/v1/listings/${listingId}/save`, { method: 'POST', headers: await authHeaders() })
+  const response = await apiFetch(`${API_URL}/api/v1/listings/${listingId}/save`, { method: 'POST', headers: await authHeaders() })
   if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to save home'), response.status)
   return response.json()
 }
 
 async function removeSavedListingForUser(listingId: number): Promise<{ listing_id: number; saved: boolean }> {
-  const response = await fetch(`${API_URL}/api/v1/listings/${listingId}/save`, { method: 'DELETE', headers: await authHeaders() })
+  const response = await apiFetch(`${API_URL}/api/v1/listings/${listingId}/save`, { method: 'DELETE', headers: await authHeaders() })
   if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to remove saved home'), response.status)
   return response.json()
 }
 
 async function saveSearch(payload: { name: string; email: string; alert_frequency: string; filters: Record<string, string> }) {
-  const response = await fetch(`${API_URL}/api/v1/saved_searches`, {
+  const response = await apiFetch(`${API_URL}/api/v1/saved_searches`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ saved_search: payload }),
@@ -1073,7 +1063,7 @@ async function submitLead(payload: LeadPayload, retryAfterIntentReset: boolean):
     throw new ApiFetchError('Your search session refreshed after sign-in. Please view the home again and reopen this form before submitting.', 409)
   }
 
-  const response = await fetch(`${API_URL}/api/v1/leads`, {
+  const response = await apiFetch(`${API_URL}/api/v1/leads`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
     body: JSON.stringify({ lead: payload }),
@@ -1207,8 +1197,8 @@ const leadSortOptions = [
   { value: 'newest', label: 'Newest first' },
   { value: 'oldest', label: 'Oldest first' },
   { value: 'updated', label: 'Recently updated' },
-  { value: 'quality_desc', label: 'Highest quality' },
-  { value: 'quality_asc', label: 'Lowest quality' },
+  { value: 'quality_desc', label: 'Highest readiness' },
+  { value: 'quality_asc', label: 'Lowest readiness' },
 ]
 
 function leadTypeLabel(value?: string) {
@@ -1320,7 +1310,7 @@ function RequireStaff({ children }: { children: React.ReactNode }) {
             <h1 className="mt-3 text-3xl font-semibold tracking-[-0.05em]">Sign in to continue.</h1>
             <p className="mt-3 text-[#66746f]">Brokerage, agent, and platform dashboards are protected with Clerk.</p>
             <SignInButton mode="modal">
-              <button className="mt-6 rounded-full bg-[#0f3d35] px-6 py-3 text-sm font-bold text-white shadow-lg shadow-[#0f3d35]/20">Sign in</button>
+              <button className="mt-6 rounded-full bg-[var(--brand-primary)] px-6 py-3 text-sm font-bold text-white shadow-lg shadow-[var(--brand-primary)]/20">Sign in</button>
             </SignInButton>
           </div>
         </section>
@@ -1342,7 +1332,7 @@ function RequireStaff({ children }: { children: React.ReactNode }) {
             <h1 className="mt-3 text-3xl font-semibold tracking-[-0.05em]">Unable to verify admin access.</h1>
             <p className="mt-3 text-[#66746f]">{description}</p>
             <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
-              <button type="button" onClick={() => refetch()} disabled={isFetching} className="rounded-full bg-[#0f3d35] px-6 py-3 text-sm font-bold text-white shadow-lg shadow-[#0f3d35]/20 disabled:opacity-60">
+              <button type="button" onClick={() => refetch()} disabled={isFetching} className="rounded-full bg-[var(--brand-primary)] px-6 py-3 text-sm font-bold text-white shadow-lg shadow-[var(--brand-primary)]/20 disabled:opacity-60">
                 {isFetching ? 'Checking...' : 'Try again'}
               </button>
               <UserButton />
@@ -1412,6 +1402,7 @@ function App() {
 function ProgressiveLeadPrompt() {
   const [prompt, setPrompt] = useState<LeadIntentPrompt | null>(null)
   const [dismissedKey, setDismissedKey] = useState<string | null>(null)
+  const [conversionModalOpen, setConversionModalOpen] = useState(false)
   const mutation = useMutation({
     mutationFn: async (variables: { profilePayload?: SearchProfilePayload; leadPayload?: LeadPayload; createLeadRequested: boolean; profilePrompt: boolean }) => {
       const profileResponse = variables.profilePrompt && variables.profilePayload ? await updateSearchProfile(variables.profilePayload) : null
@@ -1469,7 +1460,15 @@ function ProgressiveLeadPrompt() {
     return () => window.removeEventListener('hafaHomes:leadIntentPrompt', handlePrompt)
   }, [dismissedKey, mutation])
 
-  if (!prompt) return null
+  useEffect(() => {
+    const handleModalState = (event: Event) => {
+      setConversionModalOpen(Boolean((event as CustomEvent<{ open?: boolean }>).detail?.open))
+    }
+    window.addEventListener('hafaHomes:conversionModalState', handleModalState)
+    return () => window.removeEventListener('hafaHomes:conversionModalState', handleModalState)
+  }, [])
+
+  if (!prompt || conversionModalOpen) return null
 
   const activePrompt = prompt
   const selectedAgentId = isClerkEnabled && isSignedIn ? storedSelectedAgentId() : null
@@ -1520,7 +1519,7 @@ function ProgressiveLeadPrompt() {
   }
 
   return (
-    <div className="fixed inset-x-3 bottom-3 z-[85] mx-auto max-w-xl rounded-[2rem] border border-white/60 bg-white/95 p-4 shadow-2xl shadow-[#0f3d35]/20 backdrop-blur md:bottom-6 md:p-5">
+    <div className="fixed inset-x-3 bottom-3 z-[85] mx-auto max-w-xl rounded-[2rem] border border-white/60 bg-white/95 p-4 shadow-2xl shadow-[var(--brand-primary)]/20 backdrop-blur md:bottom-6 md:p-5">
       {mutation.isSuccess ? (
         <div className="text-center">
           <CheckCircle2 className="mx-auto text-[#0f705e]" size={36} />
@@ -1533,7 +1532,7 @@ function ProgressiveLeadPrompt() {
                 : 'The brokerage team can use your search context to follow up with better matches.'}
           </p>
           {mutation.data?.follow_up_failed && <p className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm font-semibold leading-6 text-amber-900">Agent follow-up was not sent: {mutation.data.follow_up_error}</p>}
-          <button onClick={() => setPrompt(null)} className="mt-4 min-h-11 w-full rounded-2xl bg-[#0f3d35] px-4 text-sm font-bold text-white">Done</button>
+          <button onClick={() => setPrompt(null)} className="mt-4 min-h-11 w-full rounded-2xl bg-[var(--brand-primary)] px-4 text-sm font-bold text-white">Done</button>
         </div>
       ) : (
         <form onSubmit={handleSubmit}>
@@ -1604,7 +1603,7 @@ function ProgressiveLeadPrompt() {
 
           {mutation.isError && <p className="mt-3 text-sm font-semibold text-red-700">{displayErrorMessage(mutation.error, 'Unable to save search details right now.')}</p>}
           <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto]">
-            <button disabled={mutation.isPending} className="min-h-12 rounded-2xl bg-[#0f3d35] px-5 text-sm font-bold text-white disabled:opacity-60">{mutation.isPending ? 'Saving...' : activePrompt.cta || 'Get matched with an agent'}</button>
+            <button disabled={mutation.isPending} className="min-h-12 rounded-2xl bg-[var(--brand-primary)] px-5 text-sm font-bold text-white disabled:opacity-60">{mutation.isPending ? 'Saving...' : activePrompt.cta || 'Get matched with an agent'}</button>
             <button type="button" onClick={() => handleDismiss('not_now')} className="min-h-12 rounded-2xl bg-[#edf0ec] px-5 text-sm font-bold text-[#304942]">Not now</button>
           </div>
         </form>
@@ -1650,7 +1649,7 @@ function OpenInAppPage() {
           <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#0f705e]">Opening Hafa Homes</p>
           <h1 className="mt-3 text-3xl font-semibold tracking-[-0.05em]">Taking you to your request.</h1>
           <p className="mt-3 text-[#66746f]">If the app is installed, it should open automatically. Otherwise we’ll continue on the web.</p>
-          <Link to={target} className="mt-6 inline-flex rounded-full bg-[#0f3d35] px-6 py-3 text-sm font-bold text-white">Continue on web</Link>
+          <Link to={target} className="mt-6 inline-flex rounded-full bg-[var(--brand-primary)] px-6 py-3 text-sm font-bold text-white">Continue on web</Link>
         </div>
       </section>
     </Shell>
@@ -1666,8 +1665,8 @@ function NotFoundPage() {
           <h1 className="mt-3 text-3xl font-semibold tracking-[-0.05em]">We could not find that Hafa Homes page.</h1>
           <p className="mt-3 text-[#66746f]">Use the links below to continue your search or review your account activity.</p>
           <div className="mt-6 flex flex-wrap justify-center gap-3">
-            <Link to="/" className="rounded-full bg-[#0f3d35] px-5 py-3 text-sm font-bold text-white">Search homes</Link>
-            <Link to="/account/requests" className="rounded-full border border-[#d7ded9] px-5 py-3 text-sm font-bold text-[#0f3d35]">My requests</Link>
+            <Link to="/" className="rounded-full bg-[var(--brand-primary)] px-5 py-3 text-sm font-bold text-white">Search homes</Link>
+            <Link to="/account/requests" className="rounded-full border border-[#d7ded9] px-5 py-3 text-sm font-bold text-[var(--brand-primary)]">My requests</Link>
           </div>
         </div>
       </section>
@@ -1690,14 +1689,17 @@ function SearchPage() {
   const features = searchParams.get('features') || ''
   const beds = searchParams.get('beds') || ''
   const maxPrice = searchParams.get('max_price') || ''
+  const query = searchParams.get('q') || ''
+  const [searchInput, setSearchInput] = useState(query)
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['listings', kind, village, propertyType, features, beds, maxPrice],
-    queryFn: () => fetchListings({ kind, village, property_type: propertyType, features, beds, max_price: maxPrice }),
+    queryKey: ['listings', kind, village, propertyType, features, beds, maxPrice, query],
+    queryFn: () => fetchListings({ kind, village, property_type: propertyType, features, beds, max_price: maxPrice, q: query }),
   })
   const { data: villagesData } = useQuery({ queryKey: ['villages'], queryFn: fetchVillages })
 
   const listings = data?.listings ?? []
+  const usesDemoInventory = listings.some((listing) => listing.brokerage?.demo_data)
   const featureList = features ? features.split(',').filter(Boolean) : []
 
   useEffect(() => {
@@ -1705,6 +1707,10 @@ function SearchPage() {
       setViewMode('map')
     }
   }, [])
+
+  useEffect(() => {
+    setSearchInput(query)
+  }, [query])
 
   useEffect(() => {
     const updateMobileMapHeight = () => {
@@ -1749,6 +1755,11 @@ function SearchPage() {
     setParam('features', nextFeatures.join(','))
   }
 
+  function submitSearch(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setParam('q', searchInput.trim())
+  }
+
   function clearMobileFilters() {
     const next = new URLSearchParams(searchParams)
     ;['village', 'property_type', 'beds', 'max_price', 'features'].forEach((key) => next.delete(key))
@@ -1772,6 +1783,9 @@ function SearchPage() {
           }}
           onFilterClick={() => setShowFilters(true)}
           onMenuClick={() => setMobileMenuOpen(true)}
+          searchInput={searchInput}
+          onSearchInputChange={setSearchInput}
+          onSearch={submitSearch}
         />
       </div>
       <MobileFilterSheet
@@ -1793,12 +1807,20 @@ function SearchPage() {
       </div>
 
       <section className="relative z-10 mx-auto hidden max-w-7xl px-5 md:-mt-10 md:block">
-        <div className="rounded-[2rem] border border-black/5 bg-white p-4 shadow-2xl shadow-[#0f3d35]/10">
+        <div className="rounded-[2rem] border border-black/5 bg-white p-4 shadow-2xl shadow-[var(--brand-primary)]/10">
           <div className="grid gap-3 lg:grid-cols-[1fr_auto_auto] lg:items-center">
-            <div className="flex items-center gap-3 rounded-2xl border border-[#dce5df] px-4 py-3 text-[#50625e]">
+            <form onSubmit={submitSearch} role="search" className="flex min-w-0 items-center gap-3 rounded-2xl border border-[#dce5df] px-4 py-2 text-[#50625e] focus-within:border-[#0f705e] focus-within:ring-4 focus-within:ring-[#dff3ec]">
               <Search size={18} />
-              <span className="text-sm">Search village, address, base, or feature</span>
-            </div>
+              <input
+                type="search"
+                aria-label="Search listings"
+                value={searchInput}
+                onChange={(event) => setSearchInput(event.target.value)}
+                placeholder="Village, address, base, feature, or listing ID"
+                className="min-w-0 flex-1 bg-transparent text-sm text-[#304942] outline-none placeholder:text-[#66746f]"
+              />
+              <button type="submit" className="rounded-xl bg-[var(--brand-primary)] px-3 py-2 text-xs font-bold text-white">Search</button>
+            </form>
             <select
               value={village}
               onChange={(event) => setParam('village', event.target.value)}
@@ -1825,7 +1847,7 @@ function SearchPage() {
                   key={chip.slug}
                   onClick={() => toggleFeature(chip.slug)}
                   className={`rounded-full px-3 py-2 text-xs font-semibold transition ${
-                    active ? 'bg-[#0f3d35] text-white' : 'bg-[#f6f1e8] text-[#53645f] hover:bg-[#e8ded0]'
+                    active ? 'bg-[var(--brand-primary)] text-white' : 'bg-[#f6f1e8] text-[#53645f] hover:bg-[#e8ded0]'
                   }`}
                 >
                   {chip.label}
@@ -1895,6 +1917,7 @@ function SearchPage() {
           {isLoading && <StateCard>Loading listings...</StateCard>}
           {isError && <StateCard tone="error">We could not load listings right now. Please try again shortly.</StateCard>}
           {!isLoading && listings.length === 0 && <StateCard>No listings match those filters yet.</StateCard>}
+          {usesDemoInventory && <DemoInventoryNotice className="mb-4" />}
 
           {viewMode === 'map' ? (
             fullMapOpen ? (
@@ -1909,7 +1932,7 @@ function SearchPage() {
           )}
 
           {viewMode === 'list' && (
-            <button onClick={() => setSaveSearchOpen(true)} className="mt-5 w-full rounded-2xl bg-[#0f3d35] px-4 py-3 text-sm font-bold text-white md:hidden">Save this search</button>
+            <button onClick={() => setSaveSearchOpen(true)} className="mt-5 w-full rounded-2xl bg-[var(--brand-primary)] px-4 py-3 text-sm font-bold text-white md:hidden">Save this search</button>
           )}
         </div>
 
@@ -1934,6 +1957,9 @@ function MobileAppSearchHeader({
   onViewModeChange,
   onFilterClick,
   onMenuClick,
+  searchInput,
+  onSearchInputChange,
+  onSearch,
 }: {
   kind: 'sale' | 'rent'
   viewMode: 'list' | 'map'
@@ -1942,9 +1968,12 @@ function MobileAppSearchHeader({
   onViewModeChange: (value: 'list' | 'map') => void
   onFilterClick: () => void
   onMenuClick: () => void
+  searchInput: string
+  onSearchInputChange: (value: string) => void
+  onSearch: (event: FormEvent<HTMLFormElement>) => void
 }) {
   return (
-    <header className="safe-top sticky top-0 z-40 border-b border-white/10 bg-[#0f3d35] text-white shadow-xl shadow-[#0f3d35]/20 md:hidden">
+    <header className="safe-top sticky top-0 z-40 border-b border-white/10 bg-[var(--brand-primary)] text-white shadow-xl shadow-[var(--brand-primary)]/20 md:hidden">
       <div className="px-4 pb-2 pt-2">
         <div className="flex items-center justify-between gap-3">
           <Brand light />
@@ -1952,24 +1981,31 @@ function MobileAppSearchHeader({
             <Menu size={22} />
           </button>
         </div>
-        <div className="mt-3 grid grid-cols-[1fr_auto] gap-2">
-          <div className="flex min-h-11 items-center gap-2 rounded-2xl bg-white px-3 text-[#53645f]">
+        <form onSubmit={onSearch} role="search" className="mt-3 grid grid-cols-[1fr_auto] gap-2">
+          <div className="flex min-h-11 min-w-0 items-center gap-2 rounded-2xl bg-white px-3 text-[#53645f] focus-within:ring-4 focus-within:ring-[#f5c16c]/35">
             <Search size={17} />
-            <span className="text-sm font-semibold">Address, village, or listing ID</span>
+            <input
+              type="search"
+              aria-label="Search listings"
+              value={searchInput}
+              onChange={(event) => onSearchInputChange(event.target.value)}
+              placeholder="Address, village, or listing ID"
+              className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-[#304942] outline-none placeholder:text-[#53645f]"
+            />
           </div>
-          <button className="rounded-2xl bg-[#e99f3e] px-4 text-sm font-bold text-[#25170b]">Save</button>
-        </div>
+          <button type="submit" className="rounded-2xl bg-[#e99f3e] px-4 text-sm font-bold text-[#25170b]">Search</button>
+        </form>
         <div className="mt-2 grid grid-cols-3 gap-2 text-sm font-bold">
           <button onClick={onFilterClick} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-2xl bg-white/10 text-white/86"><SlidersHorizontal size={17} /> Filter</button>
-          <button onClick={() => onViewModeChange('map')} className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-2xl ${viewMode === 'map' ? 'bg-white text-[#0f3d35]' : 'bg-white/10 text-white/86'}`}><Map size={17} /> Map</button>
-          <button onClick={() => onViewModeChange('list')} className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-2xl ${viewMode === 'list' ? 'bg-white text-[#0f3d35]' : 'bg-white/10 text-white/86'}`}><Menu size={17} /> List</button>
+          <button onClick={() => onViewModeChange('map')} className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-2xl ${viewMode === 'map' ? 'bg-white text-[var(--brand-primary)]' : 'bg-white/10 text-white/86'}`}><Map size={17} /> Map</button>
+          <button onClick={() => onViewModeChange('list')} className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-2xl ${viewMode === 'list' ? 'bg-white text-[var(--brand-primary)]' : 'bg-white/10 text-white/86'}`}><Menu size={17} /> List</button>
         </div>
         <div className="mt-2 flex items-center justify-between gap-3 rounded-2xl bg-white/10 p-1 text-sm font-bold">
           {(['sale', 'rent'] as const).map((option) => (
             <button
               key={option}
               onClick={() => onKindChange(option)}
-              className={`min-h-9 flex-1 rounded-xl capitalize ${kind === option ? 'bg-white text-[#0f3d35]' : 'text-white/75'}`}
+              className={`min-h-9 flex-1 rounded-xl capitalize ${kind === option ? 'bg-white text-[var(--brand-primary)]' : 'text-white/75'}`}
             >
               {option === 'sale' ? 'Buy' : 'Rent'}
             </button>
@@ -2069,7 +2105,7 @@ function MobileFilterSheet({
                   key={chip.slug}
                   type="button"
                   onClick={() => onFeatureToggle(chip.slug)}
-                  className={`rounded-full px-3 py-2 text-xs font-semibold ${active ? 'bg-[#0f3d35] text-white' : 'bg-[#f6f1e8] text-[#53645f]'}`}
+                  className={`rounded-full px-3 py-2 text-xs font-semibold ${active ? 'bg-[var(--brand-primary)] text-white' : 'bg-[#f6f1e8] text-[#53645f]'}`}
                 >
                   {chip.label}
                 </button>
@@ -2086,7 +2122,7 @@ function MobileFilterSheet({
           >
             Clear
           </button>
-          <button type="button" onClick={onClose} className="rounded-2xl bg-[#0f3d35] px-4 py-3 text-sm font-bold text-white">
+          <button type="button" onClick={onClose} className="rounded-2xl bg-[var(--brand-primary)] px-4 py-3 text-sm font-bold text-white">
             Show results
           </button>
         </div>
@@ -2097,8 +2133,8 @@ function MobileFilterSheet({
 
 function HeroHeader({ kind, onKindChange }: { kind: 'sale' | 'rent'; onKindChange: (value: 'sale' | 'rent') => void }) {
   return (
-    <section className="relative overflow-hidden bg-[#0f3d35] px-5 pb-12 pt-5 text-white md:pb-14 md:pt-6">
-      <div className="absolute inset-0 opacity-30 [background:radial-gradient(circle_at_20%_20%,#79d0b2,transparent_28%),radial-gradient(circle_at_85%_10%,#f5c16c,transparent_24%),linear-gradient(135deg,#0f3d35,#071b18)]" />
+    <section className="relative overflow-hidden bg-[var(--brand-primary)] px-5 pb-12 pt-5 text-white md:pb-14 md:pt-6">
+      <div className="absolute inset-0 opacity-30 [background:radial-gradient(circle_at_20%_20%,#79d0b2,transparent_28%),radial-gradient(circle_at_85%_10%,#f5c16c,transparent_24%),linear-gradient(135deg,var(--brand-primary),#071b18)]" />
       <div className="relative mx-auto max-w-7xl">
         <TopNav />
         <div className="mt-10 grid gap-7 md:mt-14 lg:grid-cols-[1fr_400px] lg:items-end">
@@ -2115,7 +2151,7 @@ function HeroHeader({ kind, onKindChange }: { kind: 'sale' | 'rent'; onKindChang
                 href={IOS_APP_STORE_URL}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center gap-2 rounded-full bg-white px-5 py-3 text-sm font-bold text-[#0f3d35] shadow-xl shadow-black/10 transition hover:-translate-y-0.5 hover:bg-[#f6f1e8] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+                className="inline-flex items-center gap-2 rounded-full bg-white px-5 py-3 text-sm font-bold text-[var(--brand-primary)] shadow-xl shadow-black/10 transition hover:-translate-y-0.5 hover:bg-[#f6f1e8] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
               >
                 <Phone size={17} /> Get the iOS app
               </a>
@@ -2128,7 +2164,7 @@ function HeroHeader({ kind, onKindChange }: { kind: 'sale' | 'rent'; onKindChang
                 <button
                   key={option}
                   onClick={() => onKindChange(option)}
-                  className={`flex-1 rounded-full px-5 py-3 text-sm font-semibold capitalize transition ${kind === option ? 'bg-white text-[#0f3d35] shadow' : 'text-white/80'}`}
+                  className={`flex-1 rounded-full px-5 py-3 text-sm font-semibold capitalize transition ${kind === option ? 'bg-white text-[var(--brand-primary)] shadow' : 'text-white/80'}`}
                 >
                   {option === 'sale' ? 'Buy' : 'Rent'}
                 </button>
@@ -2139,6 +2175,15 @@ function HeroHeader({ kind, onKindChange }: { kind: 'sale' | 'rent'; onKindChang
         </div>
       </div>
     </section>
+  )
+}
+
+function DemoInventoryNotice({ className = '' }: { className?: string }) {
+  return (
+    <div className={`rounded-2xl border border-[#e7c88f] bg-[#fff8ea] px-4 py-3 text-sm font-semibold leading-6 text-[#5f4826] ${className}`} role="note">
+      <span className="md:hidden"><span className="font-black">Demonstration inventory.</span> Availability and pricing are not live.</span>
+      <span className="hidden md:inline"><span className="font-black">Demonstration inventory.</span> Listing facts and photos are sample content while authorized Guam MLS/IDX access is being completed. Availability and pricing are not live.</span>
+    </div>
   )
 }
 
@@ -2164,15 +2209,15 @@ function ListingCard({ listing }: { listing: Listing }) {
         captureAnalyticsEvent('listing_saved_toggled', { listing_id: listing.id, saved: nextSaved, source: 'listing_card' })
         saveMutation.mutate()
       } : undefined}
-      className={`rounded-full border p-2 ${isSaved ? 'border-[#0f3d35] bg-[#e9f5ef] text-[#0f3d35]' : 'border-[#d7ded9] text-[#53645f]'}`}
+      className={`rounded-full border p-2 ${isSaved ? 'border-[var(--brand-primary)] bg-[#e9f5ef] text-[var(--brand-primary)]' : 'border-[#d7ded9] text-[#53645f]'}`}
       aria-label={isSaved ? 'Saved listing' : 'Save listing'}
     >
-      <Heart size={17} fill={isSaved ? '#0f3d35' : 'none'} />
+      <Heart size={17} fill={isSaved ? 'var(--brand-primary)' : 'none'} />
     </button>
   )
 
   return (
-    <article className="group overflow-hidden rounded-[1.7rem] border border-black/5 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[#0f3d35]/10 md:grid md:min-h-[260px] md:grid-cols-[260px_1fr]">
+    <article className="group overflow-hidden rounded-[1.7rem] border border-black/5 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[var(--brand-primary)]/10 md:grid md:min-h-[260px] md:grid-cols-[260px_1fr]">
       <Link to={`/listings/${listing.id}`} onClick={() => captureAnalyticsEvent('listing_opened', { listing_id: listing.id, source: 'listing_image' })} className="block overflow-hidden">
         <img src={listing.primary_photo_url} onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = FALLBACK_LISTING_IMAGE }} alt="" className="h-56 w-full object-cover transition duration-500 group-hover:scale-105 md:h-[260px]" />
       </Link>
@@ -2188,7 +2233,7 @@ function ListingCard({ listing }: { listing: Listing }) {
         <PropertyStats listing={listing} />
         <FeaturePills features={listing.features.slice(0, 4)} />
         <div className="mt-5 flex items-center justify-between">
-          <Link to={`/listings/${listing.id}`} onClick={() => captureAnalyticsEvent('listing_opened', { listing_id: listing.id, source: 'listing_card' })} className="inline-flex items-center gap-2 text-sm font-bold text-[#0f3d35]">View details <ChevronRight size={16} /></Link>
+          <Link to={`/listings/${listing.id}`} onClick={() => captureAnalyticsEvent('listing_opened', { listing_id: listing.id, source: 'listing_card' })} className="inline-flex items-center gap-2 text-sm font-bold text-[var(--brand-primary)]">View details <ChevronRight size={16} /></Link>
           {isSignedIn ? heartButton : <SignInButton mode="modal">{heartButton}</SignInButton>}
         </div>
       </div>
@@ -2272,7 +2317,7 @@ function ListingDetailPage() {
       {isError && <div className="p-5"><StateCard tone="error">Unable to load listing.</StateCard></div>}
       {listing && (
         <>
-          <div className="mobile-detail-header sticky top-0 z-40 border-b border-white/10 bg-[#0f3d35] px-4 pb-4 text-white shadow-xl shadow-[#0f3d35]/15 md:hidden">
+          <div className="mobile-detail-header sticky top-0 z-40 border-b border-white/10 bg-[var(--brand-primary)] px-4 pb-4 text-white shadow-xl shadow-[var(--brand-primary)]/15 md:hidden">
             <div className="flex items-center justify-between gap-3">
               <Link to="/" className="inline-flex min-h-12 items-center gap-2 rounded-full bg-white/10 px-4 text-sm font-bold hover:bg-white/15 active:scale-[0.98]"><ArrowLeft size={18} /> Search</Link>
               <div className="flex items-center gap-2">
@@ -2286,12 +2331,12 @@ function ListingDetailPage() {
             </div>
           </div>
 
-          <div className="hidden bg-[#0f3d35] px-5 py-5 text-white md:block"><div className="mx-auto max-w-7xl"><TopNav /></div></div>
+          <div className="hidden bg-[var(--brand-primary)] px-5 py-5 text-white md:block"><div className="mx-auto max-w-7xl"><TopNav /></div></div>
           {fromAdmin && (
             <div className="border-b border-[#eadfce] bg-[#fff8ea] px-5 py-3">
               <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 text-sm font-bold text-[#304942]">
                 <span>You are viewing this public listing from the admin CRM.</span>
-                <Link to={adminBackPath} className="inline-flex items-center gap-2 rounded-full bg-[#0f3d35] px-4 py-2 text-white"><ArrowLeft size={16} /> Back to lead</Link>
+                <Link to={adminBackPath} className="inline-flex items-center gap-2 rounded-full bg-[var(--brand-primary)] px-4 py-2 text-white"><ArrowLeft size={16} /> Back to lead</Link>
               </div>
             </div>
           )}
@@ -2300,7 +2345,7 @@ function ListingDetailPage() {
             <Link to={fromAdmin ? adminBackPath : '/'} className="mb-6 hidden items-center gap-2 text-sm font-bold text-[#0f705e] md:inline-flex"><ArrowLeft size={16} /> {fromAdmin ? 'Back to lead' : 'Back to search'}</Link>
             <div className="grid gap-6 lg:grid-cols-[1fr_390px]">
               <div>
-                <div className="relative mx-4 mt-5 overflow-hidden rounded-[2rem] bg-[#0f3d35] shadow-xl shadow-[#0f3d35]/10 md:mx-0 md:mt-0">
+                <div className="relative mx-4 mt-5 overflow-hidden rounded-[2rem] bg-[var(--brand-primary)] shadow-xl shadow-[var(--brand-primary)]/10 md:mx-0 md:mt-0">
                   <img
                     src={photos[photoIndex]?.url || listing.primary_photo_url}
                     onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = FALLBACK_LISTING_IMAGE }}
@@ -2309,16 +2354,16 @@ function ListingDetailPage() {
                   />
                   {photos.length > 1 && (
                     <>
-                      <button onClick={() => setPhotoIndex((photoIndex - 1 + photos.length) % photos.length)} className="absolute left-3 top-1/2 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-white/90 text-[#0f3d35] shadow-lg hover:bg-white active:scale-95"><ChevronLeft size={22} /></button>
-                      <button onClick={() => setPhotoIndex((photoIndex + 1) % photos.length)} className="absolute right-3 top-1/2 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-white/90 text-[#0f3d35] shadow-lg hover:bg-white active:scale-95"><ChevronRightIcon size={22} /></button>
+                      <button onClick={() => setPhotoIndex((photoIndex - 1 + photos.length) % photos.length)} className="absolute left-3 top-1/2 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-white/90 text-[var(--brand-primary)] shadow-lg hover:bg-white active:scale-95"><ChevronLeft size={22} /></button>
+                      <button onClick={() => setPhotoIndex((photoIndex + 1) % photos.length)} className="absolute right-3 top-1/2 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-white/90 text-[var(--brand-primary)] shadow-lg hover:bg-white active:scale-95"><ChevronRightIcon size={22} /></button>
                     </>
                   )}
-                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-[#0f3d35]/70 to-transparent p-4 text-center text-sm font-bold text-white">
+                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-[var(--brand-primary)]/70 to-transparent p-4 text-center text-sm font-bold text-white">
                     {photos.length > 1 ? `${photoIndex + 1} of ${photos.length}` : '1 photo'}
                   </div>
                 </div>
 
-                <div className="relative z-10 mx-4 mt-5 rounded-[2rem] bg-white p-5 shadow-xl shadow-[#0f3d35]/10 md:mx-0 md:mt-6 md:p-6">
+                <div className="relative z-10 mx-4 mt-5 rounded-[2rem] bg-white p-5 shadow-xl shadow-[var(--brand-primary)]/10 md:mx-0 md:mt-6 md:p-6">
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <p className="text-4xl font-semibold tracking-[-0.06em] md:text-5xl">{currency(listing.price, listing.listing_kind)}</p>
@@ -2336,6 +2381,7 @@ function ListingDetailPage() {
                   </div>
 
                   <p className="mt-7 max-w-3xl text-base leading-8 text-[#3d4d48]">{listing.description}</p>
+                  {listing.brokerage?.demo_data && <DemoInventoryNotice className="mt-6" />}
                   <FeaturePills features={listing.features} />
                   <ListingAgentRoutingPanel listing={listing} routingAgents={routingAgents} selectedAgentId={selectedAgentId} canSelectAgent={isClerkEnabled && isSignedIn} isClerkEnabled={isClerkEnabled} isLoadingAgents={routingAgentsLoading} onSelectAgent={selectPreferredAgent} className="mt-6 lg:hidden" />
                   {listing.listing_kind === 'sale' && <WebMortgageCalculator listing={listing} />}
@@ -2345,7 +2391,7 @@ function ListingDetailPage() {
               </div>
 
               <aside className="hidden lg:sticky lg:top-6 lg:block lg:self-start">
-                <div className="rounded-[2rem] border border-black/5 bg-white p-6 shadow-xl shadow-[#0f3d35]/10">
+                <div className="rounded-[2rem] border border-black/5 bg-white p-6 shadow-xl shadow-[var(--brand-primary)]/10">
                   <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#7b8a84]">Request info</p>
                   <h2 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">Ask about this property</h2>
                   <p className="mt-3 text-sm leading-6 text-[#66746f]">Schedule a tour, ask about price changes, or save this listing for later.</p>
@@ -2353,16 +2399,16 @@ function ListingDetailPage() {
                     setLeadOpen(true)
                     captureAnalyticsEvent('lead_modal_opened', { listing_id: listing.id, source: 'desktop_aside' })
                     recordLeadIntentEvent('showing_form_opened', { listing_id: listing.id, source: 'web', metadata: { surface: 'desktop_aside', listing_kind: listing.listing_kind } })
-                  }} className="mt-5 w-full rounded-2xl bg-[#0f3d35] px-4 py-3 text-sm font-bold text-white">Request a showing</button>
+                  }} className="mt-5 w-full rounded-2xl bg-[var(--brand-primary)] px-4 py-3 text-sm font-bold text-white">Request a showing</button>
                   <button onClick={() => {
                     setPriceTrackerOpen(true)
                     captureAnalyticsEvent('price_tracker_opened', { listing_id: listing.id, source: 'desktop_aside' })
                     recordLeadIntentEvent('price_tracker_opened', { listing_id: listing.id, source: 'web', metadata: { surface: 'desktop_aside', listing_kind: listing.listing_kind } })
-                  }} className="mt-3 w-full rounded-2xl border border-[#d7ded9] px-4 py-3 text-sm font-bold text-[#0f3d35]">Ask about price changes</button>
+                  }} className="mt-3 w-full rounded-2xl border border-[#d7ded9] px-4 py-3 text-sm font-bold text-[var(--brand-primary)]">Ask about price changes</button>
                   {isSignedIn ? (
-                    <button onClick={() => saveMutation.mutate()} className="mt-3 w-full rounded-2xl border border-[#d7ded9] px-4 py-3 text-sm font-bold text-[#0f3d35]">{saved ? 'Remove saved home' : 'Save home'}</button>
+                    <button onClick={() => saveMutation.mutate()} className="mt-3 w-full rounded-2xl border border-[#d7ded9] px-4 py-3 text-sm font-bold text-[var(--brand-primary)]">{saved ? 'Remove saved home' : 'Save home'}</button>
                   ) : (
-                    <SignInButton mode="modal"><button className="mt-3 w-full rounded-2xl border border-[#d7ded9] px-4 py-3 text-sm font-bold text-[#0f3d35]">Sign in to save</button></SignInButton>
+                    <SignInButton mode="modal"><button className="mt-3 w-full rounded-2xl border border-[#d7ded9] px-4 py-3 text-sm font-bold text-[var(--brand-primary)]">Sign in to save</button></SignInButton>
                   )}
                   <ListingAgentRoutingPanel listing={listing} routingAgents={routingAgents} selectedAgentId={selectedAgentId} canSelectAgent={isClerkEnabled && isSignedIn} isClerkEnabled={isClerkEnabled} isLoadingAgents={routingAgentsLoading} onSelectAgent={selectPreferredAgent} className="mt-6" />
                   <dl className="mt-6 space-y-3 text-sm">
@@ -2375,7 +2421,7 @@ function ListingDetailPage() {
             </div>
           </section>
 
-          <nav className="safe-bottom fixed inset-x-0 bottom-0 z-50 mx-4 mb-3 grid grid-cols-3 rounded-[1.5rem] border border-black/5 bg-white/95 px-3 pt-3 text-center text-xs font-bold text-[#0f3d35] shadow-2xl shadow-[#0f3d35]/15 backdrop-blur md:hidden">
+          <nav className="safe-bottom fixed inset-x-0 bottom-0 z-50 mx-4 mb-3 grid grid-cols-3 rounded-[1.5rem] border border-black/5 bg-white/95 px-3 pt-3 text-center text-xs font-bold text-[var(--brand-primary)] shadow-2xl shadow-[var(--brand-primary)]/15 backdrop-blur md:hidden">
             <button onClick={shareListing} className="flex min-h-16 flex-col items-center justify-center gap-1"><Share2 size={23} /> Share</button>
             <button onClick={() => {
               setPriceTrackerOpen(true)
@@ -2386,7 +2432,7 @@ function ListingDetailPage() {
               <button onClick={() => {
                 captureAnalyticsEvent('listing_saved_toggled', { listing_id: listing.id, saved: !saved })
                 saveMutation.mutate()
-              }} className="flex min-h-16 flex-col items-center justify-center gap-1"><Heart size={25} fill={saved ? '#0f3d35' : 'none'} /> {saved ? 'Saved' : 'Save'}</button>
+              }} className="flex min-h-16 flex-col items-center justify-center gap-1"><Heart size={25} fill={saved ? 'var(--brand-primary)' : 'none'} /> {saved ? 'Saved' : 'Save'}</button>
             ) : (
               <SignInButton mode="modal"><button className="flex min-h-16 flex-col items-center justify-center gap-1"><Heart size={25} /> Save</button></SignInButton>
             )}
@@ -2429,7 +2475,7 @@ function ListingAgentRoutingPanel({
       <div>
         <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#0f705e]">Listed by</p>
         <div className="mt-3 flex items-center gap-3">
-          <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-[#0f3d35] text-sm font-black text-[#f5c16c]">
+          <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-[var(--brand-primary)] text-sm font-black text-[#f5c16c]">
             {listing.agent?.photo_url ? <img src={listing.agent.photo_url} alt="" className="h-full w-full rounded-2xl object-cover" /> : initialsFromName(listedAgentName)}
           </div>
           <div className="min-w-0">
@@ -2450,10 +2496,10 @@ function ListingAgentRoutingPanel({
             <p className="text-sm font-semibold leading-6 text-[#304942]">Sign in to choose a preferred agent for future requests. You can still send a showing request without an account.</p>
             {isClerkEnabled ? (
               <SignInButton mode="modal">
-                <button type="button" className="mt-3 min-h-11 rounded-full bg-[#0f3d35] px-5 text-sm font-bold text-white">Sign in to choose</button>
+                <button type="button" className="mt-3 min-h-11 rounded-full bg-[var(--brand-primary)] px-5 text-sm font-bold text-white">Sign in to choose</button>
               </SignInButton>
             ) : (
-              <button type="button" disabled className="mt-3 min-h-11 rounded-full bg-[#0f3d35]/60 px-5 text-sm font-bold text-white">Sign-in coming online</button>
+              <button type="button" disabled className="mt-3 min-h-11 rounded-full bg-[var(--brand-primary)]/60 px-5 text-sm font-bold text-white">Sign-in coming online</button>
             )}
           </div>
         ) : isLoadingAgents ? (
@@ -2483,7 +2529,7 @@ function ListingAgentRoutingPanel({
 function DetailStat({ icon, value, label }: { icon: React.ReactNode; value: string; label: string }) {
   return (
     <div className="rounded-2xl bg-[#f6f1e8] p-3 ring-1 ring-[#eadfce] md:p-3">
-      <div className="mx-auto grid h-9 w-9 place-items-center text-[#0f3d35] [&_svg]:h-7 [&_svg]:w-7">{icon}</div>
+      <div className="mx-auto grid h-9 w-9 place-items-center text-[var(--brand-primary)] [&_svg]:h-7 [&_svg]:w-7">{icon}</div>
       <p className="mt-2 text-lg font-extrabold leading-none tracking-[-0.03em]">{value}</p>
       <p className="mt-1 text-xs font-bold text-[#53645f]">{label}</p>
     </div>
@@ -2525,7 +2571,7 @@ function LocalIntelPanel({ listing }: { listing: Listing }) {
           <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#0f705e]">Local intel</p>
           <h2 className="mt-2 text-3xl font-semibold tracking-[-0.05em]">Around {listing.village.name}</h2>
         </div>
-        {listing.village.region && <span className="rounded-full bg-white px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] text-[#0f3d35]">{listing.village.region}</span>}
+        {listing.village.region && <span className="rounded-full bg-white px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] text-[var(--brand-primary)]">{listing.village.region}</span>}
       </div>
       {intel.summary && <p className="mt-4 text-base font-semibold leading-7 text-[#53645f]">{intel.summary}</p>}
       {Boolean(intel.lifestyle_tags?.length) && <div className="mt-4 flex flex-wrap gap-2">{intel.lifestyle_tags?.slice(0, 5).map((tag) => <span key={tag} className="rounded-full bg-white px-3 py-1 text-xs font-bold text-[#0f705e]">{tag}</span>)}</div>}
@@ -2561,11 +2607,11 @@ function VillagesPage() {
       <section className="mx-auto grid max-w-7xl gap-4 px-5 pb-10 md:grid-cols-2 lg:grid-cols-3">
         {isLoading && <StateCard>Loading villages...</StateCard>}
         {data?.villages.map((village) => (
-          <Link key={village.id} to={`/villages/${village.slug}`} className="group rounded-[2rem] bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[#0f3d35]/10">
+          <Link key={village.id} to={`/villages/${village.slug}`} className="group rounded-[2rem] bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[var(--brand-primary)]/10">
             <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#0f705e]">{village.region}</p>
             <h2 className="mt-3 text-3xl font-semibold tracking-[-0.05em]">{village.name}</h2>
             <p className="mt-3 line-clamp-3 text-sm leading-6 text-[#66746f]">{village.description}</p>
-            <p className="mt-5 inline-flex items-center gap-2 text-sm font-bold text-[#0f3d35]">Explore listings <ChevronRight size={16} /></p>
+            <p className="mt-5 inline-flex items-center gap-2 text-sm font-bold text-[var(--brand-primary)]">Explore listings <ChevronRight size={16} /></p>
           </Link>
         ))}
       </section>
@@ -2609,7 +2655,7 @@ function AgentsPage() {
         description="Browse active brokerage agents. Sign in to set a preferred contact, and Hafa Homes can route future requests to that agent while listing attribution stays intact."
       />
       <section className="mx-auto max-w-7xl px-5 pb-10">
-        <div className="mb-5 rounded-[2rem] bg-[#0f3d35] p-5 text-white shadow-xl shadow-[#0f3d35]/10 md:p-6">
+        <div className="mb-5 rounded-[2rem] bg-[var(--brand-primary)] p-5 text-white shadow-xl shadow-[var(--brand-primary)]/10 md:p-6">
           <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-center">
             <div>
               <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#bdebdc]">Lead routing</p>
@@ -2618,7 +2664,7 @@ function AgentsPage() {
             </div>
             <div className="flex flex-col gap-2 sm:flex-row md:flex-col lg:flex-row">
               {canSelectAgent && selectedAgentId && <button type="button" onClick={clearSelectedAgent} className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/25 px-5 text-sm font-bold text-white">Clear preference</button>}
-              <Link to="/" className="inline-flex min-h-12 items-center justify-center rounded-full bg-white px-5 text-sm font-bold text-[#0f3d35]">Search listings</Link>
+              <Link to="/" className="inline-flex min-h-12 items-center justify-center rounded-full bg-white px-5 text-sm font-bold text-[var(--brand-primary)]">Search listings</Link>
             </div>
           </div>
         </div>
@@ -2629,9 +2675,9 @@ function AgentsPage() {
           {agents.map((agent) => {
             const selected = selectedAgentId === agent.id
             return (
-              <article key={agent.id} className={`rounded-[2rem] bg-white p-5 shadow-sm ring-1 transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[#0f3d35]/10 ${selected ? 'ring-[#0f705e]' : 'ring-black/5'}`}>
+              <article key={agent.id} className={`rounded-[2rem] bg-white p-5 shadow-sm ring-1 transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[var(--brand-primary)]/10 ${selected ? 'ring-[#0f705e]' : 'ring-black/5'}`}>
                 <div className="flex items-start gap-4">
-                  <div className="grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-2xl bg-[#0f3d35] text-lg font-black text-[#f5c16c]">
+                  <div className="grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-2xl bg-[var(--brand-primary)] text-lg font-black text-[#f5c16c]">
                     {agent.photo_url ? <img src={agent.photo_url} alt="" className="h-full w-full object-cover" /> : agentInitials(agent)}
                   </div>
                   <div className="min-w-0">
@@ -2649,16 +2695,16 @@ function AgentsPage() {
                   <button
                     type="button"
                     onClick={() => selectAgent(agent)}
-                    className={`mt-5 w-full rounded-2xl px-4 py-3 text-sm font-bold transition ${selected ? 'bg-[#e9f5ef] text-[#0f705e]' : 'bg-[#0f3d35] text-white hover:bg-[#174c43]'}`}
+                    className={`mt-5 w-full rounded-2xl px-4 py-3 text-sm font-bold transition ${selected ? 'bg-[#e9f5ef] text-[#0f705e]' : 'bg-[var(--brand-primary)] text-white hover:bg-[#174c43]'}`}
                   >
                     {selected ? 'Selected for future requests' : `Work with ${agent.name.split(' ')[0]}`}
                   </button>
                 ) : isClerkEnabled ? (
                   <SignInButton mode="modal">
-                    <button type="button" className="mt-5 w-full rounded-2xl bg-[#0f3d35] px-4 py-3 text-sm font-bold text-white transition hover:bg-[#174c43]">Sign in to work with {agent.name.split(' ')[0]}</button>
+                    <button type="button" className="mt-5 w-full rounded-2xl bg-[var(--brand-primary)] px-4 py-3 text-sm font-bold text-white transition hover:bg-[#174c43]">Sign in to work with {agent.name.split(' ')[0]}</button>
                   </SignInButton>
                 ) : (
-                  <button type="button" disabled className="mt-5 w-full rounded-2xl bg-[#0f3d35]/60 px-4 py-3 text-sm font-bold text-white">Sign-in coming online</button>
+                  <button type="button" disabled className="mt-5 w-full rounded-2xl bg-[var(--brand-primary)]/60 px-4 py-3 text-sm font-bold text-white">Sign-in coming online</button>
                 )}
               </article>
             )
@@ -2703,11 +2749,11 @@ function MilitaryPage() {
       <ContentHeader kicker="PCS and relocation" title="Military housing search built around Guam realities." description="A dedicated path for families comparing base access, OHA-friendly rentals, pets, furnished homes, and arrival timelines." />
       <section className="mx-auto grid max-w-7xl gap-5 px-5 pb-10 lg:grid-cols-3">
         {cards.map(([title, description, slug]) => (
-          <Link key={slug} to={`/?kind=rent&features=${slug}`} className="rounded-[2rem] bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[#0f3d35]/10">
+          <Link key={slug} to={`/?kind=rent&features=${slug}`} className="rounded-[2rem] bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[var(--brand-primary)]/10">
             <ShieldCheck className="text-[#0f705e]" />
             <h2 className="mt-5 text-3xl font-semibold tracking-[-0.05em]">{title}</h2>
             <p className="mt-3 text-sm leading-6 text-[#66746f]">{description}</p>
-            <p className="mt-5 inline-flex items-center gap-2 text-sm font-bold text-[#0f3d35]">Search rentals <ChevronRight size={16} /></p>
+            <p className="mt-5 inline-flex items-center gap-2 text-sm font-bold text-[var(--brand-primary)]">Search rentals <ChevronRight size={16} /></p>
           </Link>
         ))}
       </section>
@@ -2726,7 +2772,7 @@ function SavedPage() {
     return (
       <Shell compact>
         <ContentHeader kicker="Saved homes" title="Sign in to see your saved Guam homes." description="Favorites sync across web and mobile once they are tied to your Hafa Homes account." />
-        <section className="mx-auto max-w-3xl px-5 pb-10"><div className="rounded-[2rem] bg-white p-8 text-center shadow-sm"><SignInButton mode="modal"><button className="rounded-full bg-[#0f3d35] px-6 py-3 text-sm font-bold text-white">Sign in or create account</button></SignInButton></div></section>
+        <section className="mx-auto max-w-3xl px-5 pb-10"><div className="rounded-[2rem] bg-white p-8 text-center shadow-sm"><SignInButton mode="modal"><button className="rounded-full bg-[var(--brand-primary)] px-6 py-3 text-sm font-bold text-white">Sign in or create account</button></SignInButton></div></section>
       </Shell>
     )
   }
@@ -2747,8 +2793,8 @@ function SavedPage() {
                 <Link to={`/listings/${listing.id}`} className="mt-1 block text-xl font-semibold tracking-[-0.04em] text-[#17211f] hover:text-[#0f705e]">{listing.title}</Link>
                 <p className="mt-2 text-sm font-semibold text-[#66746f]">{listing.village.name} · {listing.address}</p>
                 <div className="mt-5 flex flex-wrap gap-3">
-                  <Link to={`/listings/${listing.id}`} className="rounded-full bg-[#0f3d35] px-4 py-2 text-sm font-bold text-white">View details</Link>
-                  <button onClick={() => removeMutation.mutate(listing.id)} className="rounded-full border border-[#d7ded9] px-4 py-2 text-sm font-bold text-[#0f3d35]">Remove</button>
+                  <Link to={`/listings/${listing.id}`} className="rounded-full bg-[var(--brand-primary)] px-4 py-2 text-sm font-bold text-white">View details</Link>
+                  <button onClick={() => removeMutation.mutate(listing.id)} className="rounded-full border border-[#d7ded9] px-4 py-2 text-sm font-bold text-[var(--brand-primary)]">Remove</button>
                 </div>
               </div>
             </article>
@@ -2806,7 +2852,7 @@ function AccountPage() {
     return (
       <Shell compact>
         <ContentHeader kicker="Account" title="Sign in to manage your Hafa Homes account." description="Public browsing stays open. Accounts unlock synced saved homes, request history, and self-service account deletion." />
-        <section className="mx-auto max-w-3xl px-5 pb-10"><div className="rounded-[2rem] bg-white p-8 text-center shadow-sm"><SignInButton mode="modal"><button className="rounded-full bg-[#0f3d35] px-6 py-3 text-sm font-bold text-white">Sign in or create account</button></SignInButton></div></section>
+        <section className="mx-auto max-w-3xl px-5 pb-10"><div className="rounded-[2rem] bg-white p-8 text-center shadow-sm"><SignInButton mode="modal"><button className="rounded-full bg-[var(--brand-primary)] px-6 py-3 text-sm font-bold text-white">Sign in or create account</button></SignInButton></div></section>
       </Shell>
     )
   }
@@ -2857,9 +2903,9 @@ function AccountPage() {
           {profileMutation.isError && <p className="mt-3 text-sm font-semibold text-red-700">{displayErrorMessage(profileMutation.error, 'Unable to update profile right now.')}</p>}
           {profileMutation.isSuccess && <p className="mt-3 text-sm font-semibold text-[#0f705e]">Profile saved.</p>}
           <div className="mt-5 flex flex-wrap gap-3">
-            <button type="submit" disabled={profileMutation.isPending} className="rounded-full bg-[#0f3d35] px-5 py-3 text-sm font-bold text-white disabled:opacity-60">{profileMutation.isPending ? 'Saving...' : 'Save profile'}</button>
-            <Link to="/saved" className="rounded-full border border-[#d7ded9] px-5 py-3 text-sm font-bold text-[#0f3d35]">Saved homes</Link>
-            <Link to="/account/requests" className="rounded-full border border-[#d7ded9] px-5 py-3 text-sm font-bold text-[#0f3d35]">Request history</Link>
+            <button type="submit" disabled={profileMutation.isPending} className="rounded-full bg-[var(--brand-primary)] px-5 py-3 text-sm font-bold text-white disabled:opacity-60">{profileMutation.isPending ? 'Saving...' : 'Save profile'}</button>
+            <Link to="/saved" className="rounded-full border border-[#d7ded9] px-5 py-3 text-sm font-bold text-[var(--brand-primary)]">Saved homes</Link>
+            <Link to="/account/requests" className="rounded-full border border-[#d7ded9] px-5 py-3 text-sm font-bold text-[var(--brand-primary)]">Request history</Link>
             <button
               type="button"
               onClick={async () => {
@@ -2869,7 +2915,7 @@ function AccountPage() {
                   navigate('/', { replace: true })
                 }
               }}
-              className="rounded-full border border-[#d7ded9] px-5 py-3 text-sm font-bold text-[#0f3d35]"
+              className="rounded-full border border-[#d7ded9] px-5 py-3 text-sm font-bold text-[var(--brand-primary)]"
             >
               Sign out
             </button>
@@ -2900,7 +2946,7 @@ function AccountPage() {
                 <button type="button" onClick={() => deleteMutation.mutate()} disabled={!canDelete} className="rounded-full bg-red-700 px-5 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-45">
                   {deleteMutation.isPending ? 'Deleting...' : 'Delete permanently'}
                 </button>
-                <button type="button" onClick={() => { setDeletePanelOpen(false); setConfirmation('') }} className="rounded-full border border-[#d7ded9] px-5 py-3 text-sm font-bold text-[#0f3d35]">Cancel</button>
+                <button type="button" onClick={() => { setDeletePanelOpen(false); setConfirmation('') }} className="rounded-full border border-[#d7ded9] px-5 py-3 text-sm font-bold text-[var(--brand-primary)]">Cancel</button>
               </div>
             </div>
           )}
@@ -2924,7 +2970,7 @@ function SearchProfileCard({ profile, user, mutation, isLoading = false, error =
 
   if (isLoading) {
     return (
-      <section className="rounded-[2rem] bg-[#102f2a] p-6 text-white shadow-2xl shadow-[#0f3d35]/15 lg:col-span-2">
+      <section className="rounded-[2rem] bg-[#102f2a] p-6 text-white shadow-2xl shadow-[var(--brand-primary)]/15 lg:col-span-2">
         <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#bdebdc]">Search profile</p>
         <h2 className="mt-3 text-3xl font-semibold tracking-[-0.05em]">Loading saved search preferences.</h2>
         <p className="mt-3 text-sm leading-6 text-white/70">Your contact details are ready above. This search profile section will appear as soon as saved preferences load.</p>
@@ -2933,7 +2979,7 @@ function SearchProfileCard({ profile, user, mutation, isLoading = false, error =
   }
 
   return (
-    <form onSubmit={handleSubmit} className="rounded-[2rem] bg-[#102f2a] p-6 text-white shadow-2xl shadow-[#0f3d35]/15 lg:col-span-2">
+    <form onSubmit={handleSubmit} className="rounded-[2rem] bg-[#102f2a] p-6 text-white shadow-2xl shadow-[var(--brand-primary)]/15 lg:col-span-2">
       <div className="grid gap-5 lg:grid-cols-[0.85fr_1.15fr]">
         <div>
           <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#bdebdc]">Search profile</p>
@@ -2943,7 +2989,7 @@ function SearchProfileCard({ profile, user, mutation, isLoading = false, error =
           <div className="mt-5 rounded-3xl bg-white/10 p-4">
             <div className="flex items-center justify-between gap-3">
               <span className="text-xs font-bold uppercase tracking-[0.16em] text-white/55">Completion</span>
-              <span className="rounded-full bg-white px-3 py-1 text-xs font-black uppercase tracking-[0.12em] text-[#0f3d35]">{profile?.completion_status === 'complete' ? 'Complete' : `${profile?.completion_percentage ?? 0}%`}</span>
+              <span className="rounded-full bg-white px-3 py-1 text-xs font-black uppercase tracking-[0.12em] text-[var(--brand-primary)]">{profile?.completion_status === 'complete' ? 'Complete' : `${profile?.completion_percentage ?? 0}%`}</span>
             </div>
             <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/15">
               <div className="h-full rounded-full bg-[#f5c16c]" style={{ width: `${profile?.completion_percentage ?? 0}%` }} />
@@ -3006,7 +3052,7 @@ function RequestsPage() {
     return (
       <Shell compact>
         <ContentHeader kicker="My requests" title="Sign in to view your showing requests." description="Signed-in requests can show status, assigned agent, and scheduled appointment details." />
-        <section className="mx-auto max-w-3xl px-5 pb-10"><div className="rounded-[2rem] bg-white p-8 text-center shadow-sm"><SignInButton mode="modal"><button className="rounded-full bg-[#0f3d35] px-6 py-3 text-sm font-bold text-white">Sign in or create account</button></SignInButton></div></section>
+        <section className="mx-auto max-w-3xl px-5 pb-10"><div className="rounded-[2rem] bg-white p-8 text-center shadow-sm"><SignInButton mode="modal"><button className="rounded-full bg-[var(--brand-primary)] px-6 py-3 text-sm font-bold text-white">Sign in or create account</button></SignInButton></div></section>
       </Shell>
     )
   }
@@ -3079,10 +3125,11 @@ function PrivacyPage() {
           <p><strong className="text-[#17211f]">Information we collect.</strong> Hafa Homes may collect contact details you submit through showing requests, price watch requests, saved searches, or similar forms, plus first-party app usage information such as listing views, saved homes, search filters, agent selections, and request-form interactions.</p>
           <p><strong className="text-[#17211f]">How we use it.</strong> We use submitted information and first-party search activity to respond to inquiries, coordinate real estate follow-up, suggest more relevant listings, improve listing search, troubleshoot the app, and understand aggregate product usage.</p>
           <p><strong className="text-[#17211f]">Saved listings and search profile.</strong> Signed-in saved homes and buyer/search profile preferences are stored with your Hafa Homes account so they can sync across web and mobile and prefill future requests. The native app may also cache listing details locally on your device for performance.</p>
+          <p><strong className="text-[#17211f]">Retention.</strong> Anonymous browsing-intent sessions that never become an account or inquiry are scheduled for deletion after 90 days. Account preferences remain until you update or delete the account. Submitted real-estate requests may be retained by the receiving brokerage for follow-up, compliance, and recordkeeping.</p>
           <p><strong className="text-[#17211f]">Account deletion.</strong> Signed-in users can delete their account from the Account screen in the web app or the More screen in the mobile app. Deleting an account removes synced saved homes and search profile data and disconnects account links from request history while preserving submitted showing/contact requests for brokerage follow-up.</p>
           <p><strong className="text-[#17211f]">Third-party services.</strong> The app may use services such as Clerk for authentication, Mapbox for maps, hosting providers for the API/web app, and analytics or monitoring tools when enabled.</p>
           <p><strong className="text-[#17211f]">Contact.</strong> For privacy questions or data requests, email <a className="font-bold text-[#0f705e]" href="mailto:hello@hafahomes.com">hello@hafahomes.com</a>.</p>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#7b8a84]">Last updated June 27, 2026</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#7b8a84]">Last updated July 10, 2026</p>
         </div>
       </section>
     </Shell>
@@ -3094,7 +3141,7 @@ function SyncPage() {
   return (
     <AdminShell kicker="Data sync" title="Listing data monitor">
       <section className="mx-auto max-w-5xl px-5 pb-10">
-        <div className="rounded-[2rem] bg-[#101f1c] p-6 text-white shadow-2xl shadow-[#0f3d35]/20">
+        <div className="rounded-[2rem] bg-[#101f1c] p-6 text-white shadow-2xl shadow-[var(--brand-primary)]/20">
           <div className="flex items-center justify-between gap-4 border-b border-white/10 pb-5">
             <div>
               <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#bdebdc]">Sync monitor</p>
@@ -3141,7 +3188,7 @@ function MapPanel({ listings, onExpand, immersive = false, mobileMapHeight }: { 
       <RealMap listings={points} immersive={immersive} className={mapHeight} style={mapStyle} />
       <MapOverlayHeader listingsCount={points.length} onExpand={onExpand} realMap />
       {!immersive && (
-        <div className="absolute bottom-5 left-5 z-10 hidden max-w-md rounded-3xl bg-white/92 p-4 text-sm leading-6 text-[#53645f] shadow-xl shadow-[#0f3d35]/10 backdrop-blur md:block">
+        <div className="absolute bottom-5 left-5 z-10 hidden max-w-md rounded-3xl bg-white/92 p-4 text-sm leading-6 text-[#53645f] shadow-xl shadow-[var(--brand-primary)]/10 backdrop-blur md:block">
           Tap a price marker to open the listing details. Use full map for the best search experience.
         </div>
       )}
@@ -3151,9 +3198,9 @@ function MapPanel({ listings, onExpand, immersive = false, mobileMapHeight }: { 
 
 function RealMap({ listings, className, immersive, style }: { listings: Listing[]; className: string; immersive: boolean; style?: React.CSSProperties }) {
   const containerRef = useRef<HTMLDivElement | null>(null)
-  const mapRef = useRef<any>(null)
-  const mapboxRef = useRef<any>(null)
-  const markersRef = useRef<any[]>([])
+  const mapRef = useRef<MapboxMap | null>(null)
+  const mapboxRef = useRef<typeof import('mapbox-gl').default | null>(null)
+  const markersRef = useRef<MapboxMarker[]>([])
   const [mapReady, setMapReady] = useState(false)
   const [mapError, setMapError] = useState(false)
   const navigate = useNavigate()
@@ -3216,6 +3263,10 @@ function RealMap({ listings, className, immersive, style }: { listings: Listing[
 
     const bounds = new mapbox.LngLatBounds()
 
+    const priceMarkers: MapboxMarker[] = []
+    const clusterMarkers: MapboxMarker[] = []
+    const villageGroups = groupListingsByVillage(listings)
+
     listings.forEach((listing) => {
       if (!listing.latitude || !listing.longitude) return
 
@@ -3235,8 +3286,45 @@ function RealMap({ listings, className, immersive, style }: { listings: Listing[
         .addTo(map)
 
       markersRef.current.push(marker)
+      priceMarkers.push(marker)
       bounds.extend([listing.longitude, listing.latitude])
+
     })
+
+    villageGroups.forEach((group) => {
+      const markerElement = document.createElement('button')
+      markerElement.type = 'button'
+      markerElement.className = 'hafa-map-cluster'
+      const countElement = document.createElement('strong')
+      const labelElement = document.createElement('span')
+      countElement.textContent = String(group.count)
+      labelElement.textContent = group.village
+      markerElement.append(countElement, labelElement)
+      markerElement.setAttribute('aria-label', `${group.count} listings in ${group.village}`)
+      markerElement.addEventListener('click', () => {
+        map.easeTo({
+          center: [group.longitude, group.latitude],
+          zoom: Math.max(map.getZoom() + 1.4, 11.4),
+          duration: 450,
+        })
+      })
+
+      const marker = new mapbox.Marker({ element: markerElement, anchor: 'center' })
+        .setLngLat([group.longitude, group.latitude])
+        .addTo(map)
+
+      markersRef.current.push(marker)
+      clusterMarkers.push(marker)
+    })
+
+    const updateMarkerVisibility = () => {
+      const showPrices = map.getZoom() >= 11.35
+      priceMarkers.forEach((marker) => { marker.getElement().style.display = showPrices ? 'block' : 'none' })
+      clusterMarkers.forEach((marker) => { marker.getElement().style.display = showPrices ? 'none' : 'inline-flex' })
+    }
+
+    map.on('zoom', updateMarkerVisibility)
+    updateMarkerVisibility()
 
     if (!bounds.isEmpty()) {
       map.fitBounds(bounds, {
@@ -3245,6 +3333,8 @@ function RealMap({ listings, className, immersive, style }: { listings: Listing[
         duration: 650,
       })
     }
+
+    return () => { map.off('zoom', updateMarkerVisibility) }
   }, [listings, immersive, navigate, mapReady])
 
   useEffect(() => {
@@ -3257,8 +3347,8 @@ function RealMap({ listings, className, immersive, style }: { listings: Listing[
   if (mapError) {
     return (
       <div className={`grid w-full place-items-center bg-[#dbe8df] px-6 text-center ${className}`}>
-        <div className="rounded-3xl bg-white/90 p-5 shadow-xl shadow-[#0f3d35]/10">
-          <p className="text-sm font-bold text-[#0f3d35]">Map temporarily unavailable</p>
+        <div className="rounded-3xl bg-white/90 p-5 shadow-xl shadow-[var(--brand-primary)]/10">
+          <p className="text-sm font-bold text-[var(--brand-primary)]">Map temporarily unavailable</p>
           <p className="mt-2 max-w-xs text-sm leading-6 text-[#53645f]">Listings are still available in list view while the map finishes loading.</p>
         </div>
       </div>
@@ -3270,16 +3360,16 @@ function RealMap({ listings, className, immersive, style }: { listings: Listing[
 
 function MapOverlayHeader({ listingsCount, onExpand, realMap = false }: { listingsCount: number; onExpand?: () => void; realMap?: boolean }) {
   return (
-    <div className="absolute left-3 right-3 top-3 z-20 flex items-center justify-between gap-2 rounded-2xl bg-white/90 p-2 shadow-lg shadow-[#0f3d35]/10 backdrop-blur md:left-5 md:right-5 md:top-5 md:rounded-3xl md:p-4">
+    <div className="absolute left-3 right-3 top-3 z-20 flex items-center justify-between gap-2 rounded-2xl bg-white/90 p-2 shadow-lg shadow-[var(--brand-primary)]/10 backdrop-blur md:left-5 md:right-5 md:top-5 md:rounded-3xl md:p-4">
       <div className="min-w-0">
         <p className="hidden text-xs font-bold uppercase tracking-[0.2em] text-[#0f705e] md:block">{realMap ? 'Interactive map' : 'Map concept'}</p>
         <h3 className="truncate text-sm font-extrabold tracking-[-0.03em] text-[#17211f] md:mt-1 md:text-xl">Map</h3>
       </div>
       <div className="flex shrink-0 items-center gap-2">
-        <span className="rounded-full bg-[#edf4ef] px-3 py-2 text-xs font-bold text-[#0f3d35] md:hidden">{listingsCount} listings</span>
-        <span className="hidden rounded-full bg-[#0f3d35] px-3 py-1 text-xs font-bold text-white md:inline-flex">{listingsCount} pins</span>
+        <span className="rounded-full bg-[#edf4ef] px-3 py-2 text-xs font-bold text-[var(--brand-primary)] md:hidden">{listingsCount} listings</span>
+        <span className="hidden rounded-full bg-[var(--brand-primary)] px-3 py-1 text-xs font-bold text-white md:inline-flex">{listingsCount} pins</span>
         {onExpand && (
-          <button onClick={onExpand} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-[#d7ded9] bg-white px-3 text-xs font-bold text-[#0f3d35] md:min-h-0 md:rounded-full md:py-2">
+          <button onClick={onExpand} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-[#d7ded9] bg-white px-3 text-xs font-bold text-[var(--brand-primary)] md:min-h-0 md:rounded-full md:py-2">
             <Maximize2 size={14} /> <span className="hidden sm:inline">Open full map</span><span className="sm:hidden">Full</span>
           </button>
         )}
@@ -3305,7 +3395,7 @@ function FallbackMapPanel({ listings, onExpand, immersive = false, mapStyle }: {
               key={listing.id}
               to={`/listings/${listing.id}`}
               style={{ left: `${left}%`, top: `${top}%` }}
-              className="absolute z-20 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#0f3d35] px-3 py-2 text-xs font-bold text-white shadow-xl shadow-[#0f3d35]/30 transition hover:scale-105 md:px-4 md:text-sm"
+              className="absolute z-20 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[var(--brand-primary)] px-3 py-2 text-xs font-bold text-white shadow-xl shadow-[var(--brand-primary)]/30 transition hover:scale-105 md:px-4 md:text-sm"
             >
               {currency(listing.price, listing.listing_kind).replace('/mo', '')}
             </Link>
@@ -3313,7 +3403,7 @@ function FallbackMapPanel({ listings, onExpand, immersive = false, mapStyle }: {
         })}
         {!immersive && (
           <div className="absolute bottom-5 left-5 z-10 hidden max-w-md rounded-3xl bg-white/92 p-4 text-sm leading-6 text-[#53645f] backdrop-blur md:block">
-            Add <code className="rounded bg-[#edf4ef] px-1 font-bold text-[#0f3d35]">VITE_MAPBOX_TOKEN</code> to enable the real interactive Mapbox map.
+            Add <code className="rounded bg-[#edf4ef] px-1 font-bold text-[var(--brand-primary)]">VITE_MAPBOX_TOKEN</code> to enable the real interactive Mapbox map.
           </div>
         )}
       </div>
@@ -3326,12 +3416,12 @@ function FullMapModal({ open, onClose, listings }: { open: boolean; onClose: () 
 
   return (
     <div className="fixed inset-0 z-[80] bg-[#f6f1e8]">
-      <div className="absolute left-3 right-3 top-3 z-30 flex items-center justify-between rounded-3xl bg-white/90 p-3 shadow-xl shadow-[#0f3d35]/10 backdrop-blur md:left-6 md:right-6 md:top-6">
+      <div className="absolute left-3 right-3 top-3 z-30 flex items-center justify-between rounded-3xl bg-white/90 p-3 shadow-xl shadow-[var(--brand-primary)]/10 backdrop-blur md:left-6 md:right-6 md:top-6">
         <div>
           <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#0f705e] md:text-xs">Full map search</p>
           <h2 className="text-lg font-semibold tracking-[-0.04em] md:text-2xl">Explore Guam listings</h2>
         </div>
-        <button onClick={onClose} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-[#0f3d35] px-4 text-sm font-bold text-white">
+        <button onClick={onClose} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-[var(--brand-primary)] px-4 text-sm font-bold text-white">
           <X size={16} /> Close
         </button>
       </div>
@@ -3373,7 +3463,7 @@ function SaveSearchModal({ open, onClose, filters }: { open: boolean; onClose: (
             <CheckCircle2 className="mx-auto text-[#0f705e]" size={44} />
             <h2 className="mt-4 text-3xl font-semibold tracking-[-0.05em]">Search saved</h2>
             <p className="mt-3 text-sm leading-6 text-[#66746f]">Your search has been saved. Matching homes and price changes can be sent as alerts.</p>
-            <button onClick={onClose} className="mt-6 w-full rounded-2xl bg-[#0f3d35] px-4 py-3 text-sm font-bold text-white">Close</button>
+            <button onClick={onClose} className="mt-6 w-full rounded-2xl bg-[var(--brand-primary)] px-4 py-3 text-sm font-bold text-white">Close</button>
           </div>
         ) : (
           <form onSubmit={handleSubmit}>
@@ -3397,7 +3487,7 @@ function SaveSearchModal({ open, onClose, filters }: { open: boolean; onClose: (
               </label>
             </div>
             {mutation.isError && <p className="mt-3 text-sm font-semibold text-red-700">Unable to save search right now.</p>}
-            <button disabled={mutation.isPending} className="mt-5 w-full rounded-2xl bg-[#0f3d35] px-4 py-3 text-sm font-bold text-white disabled:opacity-60">
+            <button disabled={mutation.isPending} className="mt-5 w-full rounded-2xl bg-[var(--brand-primary)] px-4 py-3 text-sm font-bold text-white disabled:opacity-60">
               {mutation.isPending ? 'Saving...' : 'Save search'}
             </button>
           </form>
@@ -3451,7 +3541,7 @@ function AdminShell({ children, title, kicker, description }: { children: React.
         onClick={() => setMobileOpen(false)}
         aria-label={sidebarCollapsed ? item.label : undefined}
         title={sidebarCollapsed ? item.label : undefined}
-        className={`group relative flex min-h-12 items-center rounded-2xl text-sm font-bold transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#bdebdc] ${sidebarCollapsed ? 'justify-center px-2' : 'gap-3 px-4'} ${active ? 'bg-white text-[#0f3d35] shadow-xl shadow-black/10' : 'text-white/72 hover:bg-white/10 hover:text-white'}`}
+        className={`group relative flex min-h-12 items-center rounded-2xl text-sm font-bold transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#bdebdc] ${sidebarCollapsed ? 'justify-center px-2' : 'gap-3 px-4'} ${active ? 'bg-white text-[var(--brand-primary)] shadow-xl shadow-black/10' : 'text-white/72 hover:bg-white/10 hover:text-white'}`}
       >
         <span className={active ? 'text-[#0f705e]' : 'text-white/70'}>{item.icon}</span>
         {!sidebarCollapsed && <span>{item.label}</span>}
@@ -3465,7 +3555,7 @@ function AdminShell({ children, title, kicker, description }: { children: React.
   }
 
   const sidebar = (
-    <aside className={`fixed inset-y-0 left-0 z-[80] flex flex-col border-r border-white/10 bg-[#0f3d35] px-4 py-5 text-white shadow-2xl shadow-black/20 transition-all duration-200 lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 lg:shadow-none ${collapsed ? 'lg:w-[88px]' : 'lg:w-72'} ${mobileOpen ? 'translate-x-0' : '-translate-x-full'} w-72`}>
+    <aside className={`fixed inset-y-0 left-0 z-[80] flex flex-col border-r border-white/10 bg-[var(--brand-primary)] px-4 py-5 text-white shadow-2xl shadow-black/20 transition-all duration-200 lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 lg:shadow-none ${collapsed ? 'lg:w-[88px]' : 'lg:w-72'} ${mobileOpen ? 'translate-x-0' : '-translate-x-full'} w-72`}>
       <div className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'justify-between'} gap-3`}>
         <Link to="/admin" onClick={() => setMobileOpen(false)} className={`flex items-center gap-3 ${sidebarCollapsed ? 'justify-center' : ''}`} aria-label="Hafa Homes admin dashboard">
           <img src="/hafa-homes-mark.svg" alt="" className="h-10 w-10 shrink-0 rounded-2xl shadow-sm" />
@@ -3517,7 +3607,7 @@ function AdminShell({ children, title, kicker, description }: { children: React.
           <div className="sticky top-0 z-40 border-b border-[#e1d7c7] bg-white/82 px-4 py-3 backdrop-blur sm:px-5">
             <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 sm:gap-4">
               <div className="flex items-center gap-3">
-                <button onClick={() => setMobileOpen(true)} className="grid h-11 w-11 place-items-center rounded-full border border-[#d7ded9] bg-white text-[#0f3d35] lg:hidden" aria-label="Open admin navigation"><Menu size={18} /></button>
+                <button onClick={() => setMobileOpen(true)} className="grid h-11 w-11 place-items-center rounded-full border border-[#d7ded9] bg-white text-[var(--brand-primary)] lg:hidden" aria-label="Open admin navigation"><Menu size={18} /></button>
                 <Link to="/" className="text-sm font-bold text-[#0f705e]">View public site</Link>
               </div>
               <UserButton />
@@ -3577,7 +3667,7 @@ function AdminDashboardPage() {
 }
 
 function AdminMetric({ label, value, tone = 'light' }: { label: string; value: number; tone?: 'light' | 'dark' | 'warn' }) {
-  const classes = tone === 'dark' ? 'bg-[#0f3d35] text-white' : tone === 'warn' ? 'bg-[#fff5d9] text-[#6b4508]' : 'bg-white text-[#17211f]'
+  const classes = tone === 'dark' ? 'bg-[var(--brand-primary)] text-white' : tone === 'warn' ? 'bg-[#fff5d9] text-[#6b4508]' : 'bg-white text-[#17211f]'
   return <div className={`rounded-[1.25rem] p-3 shadow-sm sm:rounded-[1.5rem] sm:p-5 ${classes}`}><p className="text-[10px] font-bold uppercase tracking-[0.14em] opacity-60 sm:text-xs sm:tracking-[0.18em]">{label}</p><p className="mt-2 text-2xl font-semibold tracking-[-0.06em] sm:mt-3 sm:text-4xl">{value}</p></div>
 }
 
@@ -3624,7 +3714,7 @@ function AdminIntentPage() {
               {primaryBrokerage ? promptModeSummary(promptModeFromSettings(primaryBrokerage.settings), primaryBrokerage.settings) : 'Balanced mode prompts after a few clear buying signals, then waits before asking again.'}
             </p>
           </div>
-          <button type="button" onClick={() => setSettingsOpen(true)} className="inline-flex min-h-14 w-full items-center justify-center gap-2 whitespace-nowrap rounded-[1.35rem] bg-[#0f3d35] px-7 py-3.5 text-sm font-bold text-white shadow-xl shadow-[#0f3d35]/15 transition hover:-translate-y-0.5 hover:bg-[#0c312b] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#bdebdc] sm:w-auto sm:min-w-[190px]">
+          <button type="button" onClick={() => setSettingsOpen(true)} className="inline-flex min-h-14 w-full items-center justify-center gap-2 whitespace-nowrap rounded-[1.35rem] bg-[var(--brand-primary)] px-7 py-3.5 text-sm font-bold text-white shadow-xl shadow-[var(--brand-primary)]/15 transition hover:-translate-y-0.5 hover:bg-[#0c312b] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#bdebdc] sm:w-auto sm:min-w-[190px]">
             <SlidersHorizontal size={17} /> Prompt settings
           </button>
         </div>
@@ -3648,7 +3738,7 @@ function AdminIntentPage() {
               <form onSubmit={(event) => { event.preventDefault(); setSearchQuery(searchInput.trim()) }} className="grid w-full gap-2 lg:max-w-3xl">
                 <div className="flex flex-wrap gap-2">
                   <input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Search user, email, village, listing, or behavior" className="min-h-11 min-w-0 flex-1 rounded-2xl border border-[#dce5df] bg-white px-3 text-sm font-bold text-[#304942] sm:min-w-[240px]" />
-                  <button className="min-h-11 w-full rounded-2xl bg-[#0f3d35] px-4 text-sm font-bold text-white sm:w-auto">Search</button>
+                  <button className="min-h-11 w-full rounded-2xl bg-[var(--brand-primary)] px-4 text-sm font-bold text-white sm:w-auto">Search</button>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="min-h-11 w-full rounded-2xl border border-[#dce5df] bg-white px-3 text-sm font-bold text-[#304942] sm:w-auto">
@@ -3685,7 +3775,7 @@ function AdminIntentPage() {
           </div>
 
           <aside className="space-y-4">
-            <div className="rounded-[1.75rem] bg-[#0f3d35] p-5 text-white shadow-xl shadow-[#0f3d35]/15 sm:rounded-[2rem]">
+            <div className="rounded-[1.75rem] bg-[var(--brand-primary)] p-5 text-white shadow-xl shadow-[var(--brand-primary)]/15 sm:rounded-[2rem]">
               <TrendingUp className="text-[#bdebdc]" />
               <p className="mt-5 text-xs font-bold uppercase tracking-[0.2em] text-white/55">Top villages</p>
               <div className="mt-4 grid gap-2">
@@ -3822,7 +3912,7 @@ function PromptSettingsCard({ brokerage, mutation }: { brokerage: Brokerage; mut
           <h3 className="mt-1 text-2xl font-semibold tracking-[-0.05em] text-[#17211f]">{brokerage.name}</h3>
           <p className="mt-2 text-sm font-semibold leading-6 text-[#66746f]">{promptModeSummary(mode, settings)}</p>
         </div>
-        <button disabled={mutation.isPending} className="min-h-14 w-full whitespace-nowrap rounded-[1.35rem] bg-[#0f3d35] px-7 py-3.5 text-sm font-bold text-white shadow-xl shadow-[#0f3d35]/15 transition hover:-translate-y-0.5 disabled:translate-y-0 disabled:opacity-55 sm:w-auto">{mutation.isPending ? 'Saving...' : 'Save settings'}</button>
+        <button disabled={mutation.isPending} className="min-h-14 w-full whitespace-nowrap rounded-[1.35rem] bg-[var(--brand-primary)] px-7 py-3.5 text-sm font-bold text-white shadow-xl shadow-[var(--brand-primary)]/15 transition hover:-translate-y-0.5 disabled:translate-y-0 disabled:opacity-55 sm:w-auto">{mutation.isPending ? 'Saving...' : 'Save settings'}</button>
       </div>
 
       <div className="mt-5 grid gap-4 lg:grid-cols-4 lg:items-start">
@@ -3931,7 +4021,7 @@ function AdminIntentSessionCard({ session }: { session: AdminLeadIntentSession }
   const statusClasses = intentStatusClasses(session.status)
 
   return (
-    <article className="rounded-[1.5rem] border border-[#dfe8e2] bg-[#fbfaf6] p-4 transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[#0f3d35]/10 sm:p-5">
+    <article className="rounded-[1.5rem] border border-[#dfe8e2] bg-[#fbfaf6] p-4 transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[var(--brand-primary)]/10 sm:p-5">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <div className="flex flex-wrap items-center gap-2">
@@ -3972,7 +4062,7 @@ function AdminIntentSessionCard({ session }: { session: AdminLeadIntentSession }
         <div className="rounded-2xl bg-white p-3">
           <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#7b8a84]">Next action</p>
           {session.converted_lead ? (
-            <Link to={`/admin/leads/${session.converted_lead.id}`} className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-full bg-[#0f3d35] px-4 text-sm font-bold text-white">Open converted lead <ChevronRight size={16} /></Link>
+            <Link to={`/admin/leads/${session.converted_lead.id}`} className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-full bg-[var(--brand-primary)] px-4 text-sm font-bold text-white">Open converted lead <ChevronRight size={16} /></Link>
           ) : session.user ? (
             <p className="mt-3 text-sm font-semibold leading-6 text-[#304942]">Signed-in shopper. Prioritize follow-up only when they save homes, request help, or repeatedly revisit a focused search.</p>
           ) : (
@@ -3998,7 +4088,7 @@ function PaginationControls({ pagination, onPageChange }: { pagination: Paginati
       <p className="text-xs font-bold uppercase tracking-[0.14em] text-[#7b8a84]">Page {pagination.page} of {pagination.total_pages} · {pagination.total_count} total</p>
       <div className="flex gap-2">
         <button disabled={pagination.page <= 1} onClick={() => onPageChange(pagination.page - 1)} className="min-h-10 rounded-full border border-[#dce5df] bg-white px-4 text-sm font-bold text-[#304942] disabled:cursor-not-allowed disabled:opacity-45">Previous</button>
-        <button disabled={pagination.page >= pagination.total_pages} onClick={() => onPageChange(pagination.page + 1)} className="min-h-10 rounded-full bg-[#0f3d35] px-4 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-45">Next</button>
+        <button disabled={pagination.page >= pagination.total_pages} onClick={() => onPageChange(pagination.page + 1)} className="min-h-10 rounded-full bg-[var(--brand-primary)] px-4 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-45">Next</button>
       </div>
     </div>
   )
@@ -4020,7 +4110,7 @@ function IntentEventRow({ event }: { event: AdminLeadIntentEvent }) {
 function intentStatusClasses(status?: string) {
   if (status === 'converted') return 'bg-[#e9f5ef] text-[#0f705e]'
   if (status === 'snoozed') return 'bg-[#fff5d9] text-[#6b4508]'
-  return 'bg-[#dceee8] text-[#0f3d35]'
+  return 'bg-[#dceee8] text-[var(--brand-primary)]'
 }
 
 function intentPriceRange(intent: LeadIntentSummary) {
@@ -4095,7 +4185,7 @@ function LeadsPage() {
     <AdminShell kicker="Leads" title="Lead inbox">
       <section className="mx-auto max-w-7xl px-4 pb-10 sm:px-5">
         <div className="mb-5 grid gap-3 md:grid-cols-4">
-          <div className="rounded-[1.75rem] bg-[#0f3d35] p-5 text-white"><p className="text-xs font-bold uppercase tracking-[0.18em] text-white/55">Open leads</p><p className="mt-2 text-4xl font-semibold tracking-[-0.06em]">{openLeads}</p></div>
+          <div className="rounded-[1.75rem] bg-[var(--brand-primary)] p-5 text-white"><p className="text-xs font-bold uppercase tracking-[0.18em] text-white/55">Open leads</p><p className="mt-2 text-4xl font-semibold tracking-[-0.06em]">{openLeads}</p></div>
           <div className="rounded-[1.75rem] bg-white p-5"><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#7b8a84]">New</p><p className="mt-2 text-4xl font-semibold tracking-[-0.06em]">{newLeads}</p></div>
           <div className="rounded-[1.75rem] bg-white p-5"><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#7b8a84]">Showings</p><p className="mt-2 text-4xl font-semibold tracking-[-0.06em]">{scheduledLeads}</p></div>
           <div className="rounded-[1.75rem] bg-white p-5"><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#7b8a84]">Price watch</p><p className="mt-2 text-4xl font-semibold tracking-[-0.06em]">{priceWatchLeads}</p></div>
@@ -4152,7 +4242,7 @@ function LeadsPage() {
         {statusMutation.isError && <StateCard tone="error">{displayErrorMessage(statusMutation.error, 'Unable to update lead right now.')}</StateCard>}
         <div className="grid gap-4">
           {leads.map((lead) => (
-            <article key={lead.id} className="rounded-[1.75rem] bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[#0f3d35]/10 sm:rounded-[2rem] sm:p-5">
+            <article key={lead.id} className="rounded-[1.75rem] bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[var(--brand-primary)]/10 sm:rounded-[2rem] sm:p-5">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
                   <p className={`inline-flex rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.16em] ${leadTypeBadgeClasses(lead.lead_type)}`}>{leadTypeLabel(lead.lead_type)}</p>
@@ -4179,7 +4269,7 @@ function LeadsPage() {
               </div>
               {lead.listing && <p className="mt-4 rounded-2xl bg-[#f6f1e8] p-3 text-sm font-semibold text-[#304942]">Interested in {lead.listing.title} · {lead.listing.village} · {currency(lead.listing.price, lead.listing.listing_kind)}</p>}
               {lead.message && <p className="mt-4 line-clamp-2 text-sm leading-6 text-[#66746f]">{lead.message}</p>}
-              <div className="mt-4 flex justify-end"><Link to={`/admin/leads/${lead.id}`} className="inline-flex items-center gap-2 rounded-full bg-[#0f3d35] px-4 py-2 text-sm font-bold text-white">Open lead <ChevronRight size={16} /></Link></div>
+              <div className="mt-4 flex justify-end"><Link to={`/admin/leads/${lead.id}`} className="inline-flex items-center gap-2 rounded-full bg-[var(--brand-primary)] px-4 py-2 text-sm font-bold text-white">Open lead <ChevronRight size={16} /></Link></div>
             </article>
           ))}
           {leads.length === 0 && !isLoading && <StateCard>No matching leads. New tour requests and price watch requests will appear here.</StateCard>}
@@ -4257,7 +4347,7 @@ function LeadDetailPage() {
             </div>
 
             <aside className="space-y-5">
-              <div className="rounded-[1.75rem] bg-[#0f3d35] p-4 text-white shadow-xl shadow-[#0f3d35]/15 sm:rounded-[2rem] sm:p-6">
+              <div className="rounded-[1.75rem] bg-[var(--brand-primary)] p-4 text-white shadow-xl shadow-[var(--brand-primary)]/15 sm:rounded-[2rem] sm:p-6">
                 <Building2 className="text-[#bdebdc]" />
                 <p className="mt-5 text-xs font-bold uppercase tracking-[0.2em] text-white/55">Brokerage routing</p>
                 <h2 className="mt-2 text-2xl font-semibold tracking-[-0.05em] sm:text-3xl">{lead.brokerage?.name ?? 'Unassigned brokerage'}</h2>
@@ -4329,11 +4419,11 @@ function LeadQualificationCard({ lead, compact = false }: { lead: Lead; compact?
     <section className={`rounded-[1.5rem] border border-[#dfe8e2] bg-[#fbfaf6] ${compact ? 'p-3' : 'p-4 sm:p-5'}`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#0f705e]">Qualified lead snapshot</p>
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#0f705e]">Buyer readiness snapshot</p>
           <p className="mt-2 text-sm font-semibold leading-6 text-[#304942]">{lead.qualification_summary || 'No readiness details captured yet'}</p>
         </div>
         <span className={`rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.12em] ${qualityBadgeClasses(lead.quality_label)}`}>
-          {lead.quality_label || 'Unqualified'} · {lead.quality_score ?? 0}
+          {lead.quality_label || 'Not scored'} · {lead.quality_score ?? 0}
         </span>
       </div>
       <div className={`mt-4 grid gap-2 ${compact ? 'md:grid-cols-4' : 'sm:grid-cols-2'}`}>
@@ -4344,6 +4434,7 @@ function LeadQualificationCard({ lead, compact = false }: { lead: Lead; compact?
           </div>
         ))}
       </div>
+      {!compact && <p className="mt-3 text-xs font-semibold leading-5 text-[#7b8a84]">Readiness is based on first-party browsing and shopper-submitted details. It is not identity, phone, or financing verification.</p>}
       {!compact && lead.qualification_notes && (
         <p className="mt-3 rounded-2xl bg-white p-3 text-sm font-semibold leading-6 text-[#53645f]">{lead.qualification_notes}</p>
       )}
@@ -4370,7 +4461,7 @@ function LeadSearchProfileSnapshot({ profile }: { profile?: SearchProfile | null
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#0f705e]">Current search profile</p>
           <p className="mt-2 text-sm font-semibold leading-6 text-[#304942]">{profile.qualification_summary || 'Signed-in shopper profile is still incomplete.'}</p>
         </div>
-        <span className="rounded-full bg-[#f6f1e8] px-3 py-1 text-xs font-black uppercase tracking-[0.12em] text-[#0f3d35]">Live profile</span>
+        <span className="rounded-full bg-[#f6f1e8] px-3 py-1 text-xs font-black uppercase tracking-[0.12em] text-[var(--brand-primary)]">Live profile</span>
       </div>
       <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
         {items.map(([label, value]) => (
@@ -4463,7 +4554,7 @@ function LeadEditForm({ lead, mutation }: { lead: Lead; mutation: LeadMutation }
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#7b8a84]">Customer details</p>
           <p className="mt-1 text-sm font-semibold text-[#66746f]">Agents can correct contact info and request preferences after a customer call.</p>
         </div>
-        <button disabled={mutation.isPending} className="min-h-11 w-full rounded-full bg-[#0f3d35] px-5 text-sm font-bold text-white disabled:opacity-60 sm:w-auto">
+        <button disabled={mutation.isPending} className="min-h-11 w-full rounded-full bg-[var(--brand-primary)] px-5 text-sm font-bold text-white disabled:opacity-60 sm:w-auto">
           {mutation.isPending ? 'Saving...' : 'Save changes'}
         </button>
       </div>
@@ -4506,7 +4597,7 @@ function LeadEditForm({ lead, mutation }: { lead: Lead; mutation: LeadMutation }
         </label>
         <Input name="target_price" label="Target price" defaultValue={lead.target_price ? String(lead.target_price) : ''} type="number" min="0" step="1000" />
         <label className="grid gap-2 text-sm font-semibold text-[#304942]">
-          Lead quality
+          Verification status
           <select name="quality_status" defaultValue={lead.quality_status || 'unknown'} className="min-h-12 w-full min-w-0 rounded-2xl border border-[#dce5df] bg-white px-4">
             <option value="unknown">Unknown</option>
             <option value="verified">Verified</option>
@@ -4592,11 +4683,11 @@ type TaskUpdateMutation = {
 }
 
 function LeadCrmPanel({ lead, noteMutation, noteUpdateMutation, taskMutation, taskUpdateMutation }: { lead: Lead; noteMutation: NoteMutation; noteUpdateMutation: NoteUpdateMutation; taskMutation: TaskMutation; taskUpdateMutation: TaskUpdateMutation }) {
-  const initialNotes = (lead.lead_notes ?? []).filter((note) => !note.archived_at)
-  const initialTasks = (lead.lead_tasks ?? []).filter((task) => task.status !== 'cancelled')
-  const initialActivities = lead.lead_activities ?? []
-  const initialOpenTasks = initialTasks.filter((task) => task.status === 'open')
-  const initialCompletedTasks = initialTasks.filter((task) => task.status === 'completed')
+  const initialNotes = useMemo(() => (lead.lead_notes ?? []).filter((note) => !note.archived_at), [lead.lead_notes])
+  const initialTasks = useMemo(() => (lead.lead_tasks ?? []).filter((task) => task.status !== 'cancelled'), [lead.lead_tasks])
+  const initialActivities = useMemo(() => lead.lead_activities ?? [], [lead.lead_activities])
+  const initialOpenTasks = useMemo(() => initialTasks.filter((task) => task.status === 'open'), [initialTasks])
+  const initialCompletedTasks = useMemo(() => initialTasks.filter((task) => task.status === 'completed'), [initialTasks])
   const [notes, setNotes] = useState(initialNotes)
   const [openTasks, setOpenTasks] = useState(initialOpenTasks)
   const [completedTasks, setCompletedTasks] = useState(initialCompletedTasks)
@@ -4622,7 +4713,7 @@ function LeadCrmPanel({ lead, noteMutation, noteUpdateMutation, taskMutation, ta
     setVisibleCompletedTaskCount(3)
     setVisibleNoteCount(4)
     setVisibleActivityCount(8)
-  }, [lead.id, lead.updated_at, lead.lead_notes, lead.lead_tasks, lead.lead_activities])
+  }, [lead.id, lead.updated_at, initialActivities, initialCompletedTasks, initialNotes, initialOpenTasks])
 
   function handleNoteSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -4744,7 +4835,7 @@ function LeadCrmPanel({ lead, noteMutation, noteUpdateMutation, taskMutation, ta
       {loadMoreError && <p className="mt-4 rounded-2xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{loadMoreError}</p>}
 
       {nextTask && (
-        <div className={`mt-5 rounded-[1.25rem] p-4 ${nextTask.overdue ? 'bg-[#fff5d9] text-[#6b4508]' : 'bg-[#e9f5ef] text-[#0f3d35]'}`}>
+        <div className={`mt-5 rounded-[1.25rem] p-4 ${nextTask.overdue ? 'bg-[#fff5d9] text-[#6b4508]' : 'bg-[#e9f5ef] text-[var(--brand-primary)]'}`}>
           <p className="text-xs font-bold uppercase tracking-[0.18em] opacity-70">Next follow-up</p>
           <p className="mt-2 text-sm font-bold">{nextTask.title}</p>
           <p className="mt-1 text-xs font-semibold opacity-75">{nextTask.due_at ? formatDateTime(nextTask.due_at) : 'No due date set'}</p>
@@ -4763,7 +4854,7 @@ function LeadCrmPanel({ lead, noteMutation, noteUpdateMutation, taskMutation, ta
                 <textarea name="notes" rows={3} className="w-full min-w-0 rounded-2xl border border-[#dce5df] bg-white px-4 py-3" />
               </label>
               {taskMutation.isError && <p className="text-sm font-semibold text-red-700">{displayErrorMessage(taskMutation.error, 'Unable to add task.')}</p>}
-              <button disabled={taskMutation.isPending} className="min-h-11 rounded-2xl bg-[#0f3d35] px-4 text-sm font-bold text-white disabled:opacity-60">
+              <button disabled={taskMutation.isPending} className="min-h-11 rounded-2xl bg-[var(--brand-primary)] px-4 text-sm font-bold text-white disabled:opacity-60">
                 {taskMutation.isPending ? 'Adding task...' : 'Add follow-up task'}
               </button>
             </div>
@@ -4777,7 +4868,7 @@ function LeadCrmPanel({ lead, noteMutation, noteUpdateMutation, taskMutation, ta
             </label>
             {noteMutation.isError && <p className="mt-3 text-sm font-semibold text-red-700">{displayErrorMessage(noteMutation.error, 'Unable to add note.')}</p>}
             {noteUpdateMutation.isError && <p className="mt-3 text-sm font-semibold text-red-700">{displayErrorMessage(noteUpdateMutation.error, 'Unable to update note.')}</p>}
-            <button disabled={noteMutation.isPending} className="mt-3 min-h-11 w-full rounded-2xl border border-[#dce5df] px-4 text-sm font-bold text-[#0f3d35] disabled:opacity-60">
+            <button disabled={noteMutation.isPending} className="mt-3 min-h-11 w-full rounded-2xl border border-[#dce5df] px-4 text-sm font-bold text-[var(--brand-primary)] disabled:opacity-60">
               {noteMutation.isPending ? 'Adding note...' : 'Save internal note'}
             </button>
           </form>
@@ -4891,8 +4982,8 @@ function SectionPager({ label, visibleCount, totalCount, pageSize, loading = fal
     <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs font-semibold text-[#7b8a84]">
       <span>Showing {Math.min(visibleCount, totalCount)} of {totalCount} {label}</span>
       <div className="flex flex-wrap gap-2">
-        {hasMore && <button type="button" disabled={loading} onClick={onMore} className="rounded-full border border-[#dce5df] bg-white px-3 py-1.5 font-bold text-[#0f3d35] disabled:opacity-60">{loading ? 'Loading...' : 'Show more'}</button>}
-        {isExpanded && <button type="button" onClick={onReset} className="rounded-full border border-[#dce5df] bg-white px-3 py-1.5 font-bold text-[#0f3d35]">Show latest only</button>}
+        {hasMore && <button type="button" disabled={loading} onClick={onMore} className="rounded-full border border-[#dce5df] bg-white px-3 py-1.5 font-bold text-[var(--brand-primary)] disabled:opacity-60">{loading ? 'Loading...' : 'Show more'}</button>}
+        {isExpanded && <button type="button" onClick={onReset} className="rounded-full border border-[#dce5df] bg-white px-3 py-1.5 font-bold text-[var(--brand-primary)]">Show latest only</button>}
       </div>
     </div>
   )
@@ -4942,8 +5033,8 @@ function NoteCard({ note, mutation }: { note: LeadNote; mutation: NoteUpdateMuta
       <form onSubmit={handleSubmit} className="rounded-2xl bg-[#f6f1e8] p-3">
         <textarea value={draft} onChange={(event) => setDraft(event.target.value)} rows={4} className="w-full rounded-2xl border border-[#dce5df] bg-white px-3 py-2 text-sm leading-6 text-[#304942]" required />
         <div className="mt-2 flex flex-wrap justify-end gap-2">
-          <button type="button" onClick={() => { setDraft(note.body); setEditing(false) }} className="rounded-full border border-[#dce5df] bg-white px-3 py-1.5 text-xs font-bold text-[#0f3d35]">Cancel</button>
-          <button disabled={mutation.isPending} className="rounded-full bg-[#0f3d35] px-3 py-1.5 text-xs font-bold text-white disabled:opacity-60">Save note</button>
+          <button type="button" onClick={() => { setDraft(note.body); setEditing(false) }} className="rounded-full border border-[#dce5df] bg-white px-3 py-1.5 text-xs font-bold text-[var(--brand-primary)]">Cancel</button>
+          <button disabled={mutation.isPending} className="rounded-full bg-[var(--brand-primary)] px-3 py-1.5 text-xs font-bold text-white disabled:opacity-60">Save note</button>
         </div>
       </form>
     )
@@ -4955,7 +5046,7 @@ function NoteCard({ note, mutation }: { note: LeadNote; mutation: NoteUpdateMuta
       <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs font-semibold text-[#66746f]">{note.author?.full_name ?? 'Team'} · {formatDateTime(note.created_at)}</p>
         <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={() => setEditing(true)} className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-[#0f3d35]">Edit</button>
+          <button type="button" onClick={() => setEditing(true)} className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-[var(--brand-primary)]">Edit</button>
           <button type="button" disabled={mutation.isPending} onClick={archiveNote} className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-[#8a4b0f] disabled:opacity-60">Archive</button>
         </div>
       </div>
@@ -5000,8 +5091,8 @@ function TaskRow({ task, mutation, compact = false }: { task: LeadTask; mutation
           <textarea name="notes" rows={3} defaultValue={task.notes || ''} className="w-full rounded-2xl border border-[#dce5df] bg-white px-3 py-2 text-sm leading-6 text-[#304942]" />
         </label>
         <div className="mt-2 flex flex-wrap justify-end gap-2">
-          <button type="button" onClick={() => setEditing(false)} className="rounded-full border border-[#dce5df] bg-white px-3 py-1.5 text-xs font-bold text-[#0f3d35]">Cancel</button>
-          <button disabled={mutation.isPending} className="rounded-full bg-[#0f3d35] px-3 py-1.5 text-xs font-bold text-white disabled:opacity-60">Save task</button>
+          <button type="button" onClick={() => setEditing(false)} className="rounded-full border border-[#dce5df] bg-white px-3 py-1.5 text-xs font-bold text-[var(--brand-primary)]">Cancel</button>
+          <button disabled={mutation.isPending} className="rounded-full bg-[var(--brand-primary)] px-3 py-1.5 text-xs font-bold text-white disabled:opacity-60">Save task</button>
         </div>
       </form>
     )
@@ -5017,15 +5108,15 @@ function TaskRow({ task, mutation, compact = false }: { task: LeadTask; mutation
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
           {completed ? (
-            <button type="button" disabled={mutation.isPending} onClick={() => mutation.mutate({ taskId: task.id, payload: { status: 'open' } })} className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-[#0f3d35] disabled:opacity-60">
+            <button type="button" disabled={mutation.isPending} onClick={() => mutation.mutate({ taskId: task.id, payload: { status: 'open' } })} className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-[var(--brand-primary)] disabled:opacity-60">
               Reopen
             </button>
           ) : (
-            <button type="button" disabled={mutation.isPending} onClick={() => mutation.mutate({ taskId: task.id, payload: { status: 'completed' } })} className="rounded-full bg-[#0f3d35] px-3 py-1.5 text-xs font-bold text-white disabled:opacity-60">
+            <button type="button" disabled={mutation.isPending} onClick={() => mutation.mutate({ taskId: task.id, payload: { status: 'completed' } })} className="rounded-full bg-[var(--brand-primary)] px-3 py-1.5 text-xs font-bold text-white disabled:opacity-60">
               Done
             </button>
           )}
-          <button type="button" onClick={() => setEditing(true)} className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-[#0f3d35]">Edit</button>
+          <button type="button" onClick={() => setEditing(true)} className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-[var(--brand-primary)]">Edit</button>
           <button type="button" disabled={mutation.isPending} onClick={archiveTask} className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-[#8a4b0f] disabled:opacity-60">Archive</button>
         </div>
       </div>
@@ -5048,7 +5139,7 @@ function ActivityRow({ activity }: { activity: LeadActivity }) {
           <p className="mt-1 text-xs font-semibold text-[#66746f]">{activity.actor?.full_name ?? 'System'} · {formatDateTime(activity.occurred_at)}</p>
         </div>
         {hasDetails && (
-          <button type="button" onClick={() => setExpanded((value) => !value)} className="rounded-full border border-[#dce5df] bg-white px-3 py-1.5 text-xs font-bold text-[#0f3d35]">
+          <button type="button" onClick={() => setExpanded((value) => !value)} className="rounded-full border border-[#dce5df] bg-white px-3 py-1.5 text-xs font-bold text-[var(--brand-primary)]">
             {expanded ? 'Hide details' : 'Details'}
           </button>
         )}
@@ -5219,7 +5310,7 @@ function LeadNotificationPanel({ lead, mutation }: { lead: Lead; mutation: Notif
         </label>
         {sendMode === 'consumer_sms' && <p className="text-xs font-semibold text-[#66746f]">Texts are normalized to Guam +1671 format before ClickSend delivery.</p>}
         {mutation.isError && <p className="text-sm font-semibold text-red-700">{displayErrorMessage(mutation.error, 'Unable to queue notification right now.')}</p>}
-        <button disabled={mutation.isPending || selectedModeUnavailable} className="min-h-12 rounded-2xl bg-[#0f3d35] px-4 text-sm font-bold text-white disabled:opacity-50">
+        <button disabled={mutation.isPending || selectedModeUnavailable} className="min-h-12 rounded-2xl bg-[var(--brand-primary)] px-4 text-sm font-bold text-white disabled:opacity-50">
           {mutation.isPending ? 'Queueing...' : isEmail ? 'Queue email' : 'Queue text'}
         </button>
       </form>
@@ -5246,7 +5337,7 @@ function LeadNotificationPanel({ lead, mutation }: { lead: Lead; mutation: Notif
         {deliveries.length > 3 && (
           <div className="mt-3 flex flex-wrap gap-2">
             {hiddenDeliveryCount > 0 && (
-              <button type="button" onClick={() => setVisibleDeliveryCount((count) => Math.min(count + 3, deliveries.length))} className="min-h-9 rounded-full border border-[#dce5df] px-3 text-xs font-bold text-[#0f3d35]">
+              <button type="button" onClick={() => setVisibleDeliveryCount((count) => Math.min(count + 3, deliveries.length))} className="min-h-9 rounded-full border border-[#dce5df] px-3 text-xs font-bold text-[var(--brand-primary)]">
                 Show {Math.min(3, hiddenDeliveryCount)} more
               </button>
             )}
@@ -5299,7 +5390,7 @@ function ShowingScheduler({ lead, assignableAgents, mutation }: { lead: Lead; as
       <p className="mt-5 text-xs font-bold uppercase tracking-[0.2em] text-[#7b8a84]">Showing schedule</p>
       <h2 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">{showing ? 'Update appointment' : 'Schedule appointment'}</h2>
       {showing && (
-        <p className="mt-2 rounded-2xl bg-[#e9f5ef] p-3 text-sm font-semibold text-[#0f3d35]">
+        <p className="mt-2 rounded-2xl bg-[#e9f5ef] p-3 text-sm font-semibold text-[var(--brand-primary)]">
           Current: {formatDateTime(showing.scheduled_starts_at)} · {showing.status.replaceAll('_', ' ')} · {showing.agent?.name ?? 'Unassigned agent'}
         </p>
       )}
@@ -5345,7 +5436,7 @@ function ShowingScheduler({ lead, assignableAgents, mutation }: { lead: Lead; as
           <textarea name="internal_notes" rows={3} defaultValue={showing?.internal_notes || ''} className="w-full min-w-0 rounded-2xl border border-[#dce5df] px-4 py-3" />
         </label>
         {mutation.isError && <p className="text-sm font-semibold text-red-700">{displayErrorMessage(mutation.error, 'Unable to schedule showing right now.')}</p>}
-        <button disabled={mutation.isPending} className="rounded-2xl bg-[#0f3d35] px-4 py-3 text-sm font-bold text-white disabled:opacity-60">
+        <button disabled={mutation.isPending} className="rounded-2xl bg-[var(--brand-primary)] px-4 py-3 text-sm font-bold text-white disabled:opacity-60">
           {mutation.isPending ? 'Saving...' : showing ? 'Update showing' : 'Schedule showing'}
         </button>
       </form>
@@ -5364,14 +5455,14 @@ function AdminShowingsPage() {
         {isError && <StateCard tone="error">Unable to load showings.</StateCard>}
         <div className="grid gap-4">
           {showings.map((showing) => (
-            <Link key={showing.id} to={`/admin/leads/${showing.lead_id}`} className="rounded-[1.75rem] bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[#0f3d35]/10 sm:rounded-[2rem] sm:p-5">
+            <Link key={showing.id} to={`/admin/leads/${showing.lead_id}`} className="rounded-[1.75rem] bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[var(--brand-primary)]/10 sm:rounded-[2rem] sm:p-5">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
                   <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#0f705e]">{showing.status.replaceAll('_', ' ')}</p>
                   <h2 className="mt-2 text-xl font-semibold tracking-[-0.04em] sm:text-2xl">{showing.listing?.title ?? 'Showing appointment'}</h2>
                   <p className="mt-2 text-sm font-semibold text-[#66746f]">{formatDateTime(showing.scheduled_starts_at)} · {showing.tour_type.replaceAll('_', ' ')}</p>
                 </div>
-                <span className="rounded-full bg-[#f6f1e8] px-4 py-2 text-sm font-bold text-[#0f3d35]">{showing.agent?.name ?? 'Unassigned'}</span>
+                <span className="rounded-full bg-[#f6f1e8] px-4 py-2 text-sm font-bold text-[var(--brand-primary)]">{showing.agent?.name ?? 'Unassigned'}</span>
               </div>
               {showing.location && <p className="mt-4 rounded-2xl bg-[#f6f1e8] p-3 text-sm font-semibold text-[#304942]">{showing.location}</p>}
               {showing.consumer_notes && <p className="mt-3 text-sm leading-6 text-[#66746f]">Customer notes: {showing.consumer_notes}</p>}
@@ -5427,7 +5518,7 @@ function AdminUsersPage() {
                 key={tab.value}
                 type="button"
                 onClick={() => setFilter(tab.value)}
-                className={`inline-flex min-h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-full px-3 text-xs font-bold transition sm:min-h-11 sm:px-4 sm:text-sm ${filter === tab.value ? 'bg-[#0f3d35] text-white' : 'text-[#53645f] hover:bg-[#f6f1e8] hover:text-[#0f3d35]'}`}
+                className={`inline-flex min-h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-full px-3 text-xs font-bold transition sm:min-h-11 sm:px-4 sm:text-sm ${filter === tab.value ? 'bg-[var(--brand-primary)] text-white' : 'text-[#53645f] hover:bg-[#f6f1e8] hover:text-[var(--brand-primary)]'}`}
               >
                 <span>{tab.label}</span>
                 <span className={`rounded-full px-2 py-0.5 text-[10px] sm:text-xs ${filter === tab.value ? 'bg-white/15 text-white' : 'bg-[#f6f1e8] text-[#66746f]'}`}>{tab.count}</span>
@@ -5483,7 +5574,7 @@ function RoleMatrix() {
           <span className="text-xs font-bold uppercase tracking-[0.22em] text-[#0f705e]">Role matrix</span>
           <span className="mt-1 block text-xl font-semibold tracking-[-0.04em] text-[#17211f]">Choose the smallest role that gets the job done.</span>
         </span>
-        <span className="rounded-full border border-[#d7ded9] px-4 py-2 text-sm font-bold text-[#0f3d35]">{expanded ? 'Hide' : 'Show roles'}</span>
+        <span className="rounded-full border border-[#d7ded9] px-4 py-2 text-sm font-bold text-[var(--brand-primary)]">{expanded ? 'Hide' : 'Show roles'}</span>
       </button>
       {expanded && (
         <div className="mt-4 grid gap-2 xl:grid-cols-4">
@@ -5491,7 +5582,7 @@ function RoleMatrix() {
             <article key={item.role} className="rounded-2xl border border-[#dce5df] bg-[#fbfaf7] p-3">
               <h3 className="text-base font-bold tracking-[-0.03em] text-[#17211f]">{item.role}</h3>
               <p className="mt-2 text-sm leading-5 text-[#53645f]">{item.access}</p>
-              <p className="mt-3 rounded-xl bg-[#e9f5ef] px-3 py-2 text-xs font-semibold leading-5 text-[#0f3d35]">{item.notes}</p>
+              <p className="mt-3 rounded-xl bg-[#e9f5ef] px-3 py-2 text-xs font-semibold leading-5 text-[var(--brand-primary)]">{item.notes}</p>
             </article>
           ))}
         </div>
@@ -5529,14 +5620,14 @@ function InviteUserForm({ brokerages, onCreate, saving }: { brokerages: Brokerag
   }
 
   return (
-    <form onSubmit={handleSubmit} className="rounded-[2rem] bg-[#0f3d35] p-5 text-white shadow-xl shadow-[#0f3d35]/15">
+    <form onSubmit={handleSubmit} className="rounded-[2rem] bg-[var(--brand-primary)] p-5 text-white shadow-xl shadow-[var(--brand-primary)]/15">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#bdebdc]">Invite-only access</p>
           <h2 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">Whitelist a user before they sign in.</h2>
           <p className="mt-2 text-sm leading-6 text-white/70">Creating a staff record here lets that email accept a Clerk invite and inherit the correct Hafa Homes role. Agent users also get an assignable agent profile automatically.</p>
         </div>
-        <button disabled={saving} className="rounded-full bg-white px-5 py-3 text-sm font-bold text-[#0f3d35] disabled:opacity-60">{saving ? 'Creating...' : 'Create invite'}</button>
+        <button disabled={saving} className="rounded-full bg-white px-5 py-3 text-sm font-bold text-[var(--brand-primary)] disabled:opacity-60">{saving ? 'Creating...' : 'Create invite'}</button>
       </div>
       <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <label className="grid gap-2 text-sm font-semibold text-white/86">
@@ -5620,7 +5711,7 @@ function UserRoleCard({ user, brokerages, agents, onSave, saving }: { user: Admi
           <h2 className="mt-2 text-xl font-semibold tracking-[-0.04em] sm:text-2xl">{user.full_name || user.email}</h2>
           <p className="mt-1 text-sm font-semibold text-[#66746f]">{user.email}{user.phone ? ` · ${user.phone}` : ''}</p>
         </div>
-        <button disabled={saving} className="w-full rounded-full bg-[#0f3d35] px-5 py-3 text-sm font-bold text-white disabled:opacity-60 sm:w-auto">{saving ? 'Saving...' : 'Save access'}</button>
+        <button disabled={saving} className="w-full rounded-full bg-[var(--brand-primary)] px-5 py-3 text-sm font-bold text-white disabled:opacity-60 sm:w-auto">{saving ? 'Saving...' : 'Save access'}</button>
       </div>
       <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
         <label className="grid gap-2 text-sm font-semibold text-[#304942]">
@@ -5700,7 +5791,7 @@ function AdminAuditPage() {
         {isLoading && <StateCard>Loading audit history...</StateCard>}
         {isError && <StateCard tone="error">Unable to load audit history.</StateCard>}
         <div className="mb-4 flex justify-end">
-          <button type="button" onClick={() => refetch()} className="rounded-full border border-[#d7ded9] bg-white px-4 py-2 text-sm font-bold text-[#0f3d35]">Refresh</button>
+          <button type="button" onClick={() => refetch()} className="rounded-full border border-[#d7ded9] bg-white px-4 py-2 text-sm font-bold text-[var(--brand-primary)]">Refresh</button>
         </div>
         <div className="overflow-hidden rounded-[2rem] bg-white shadow-sm">
           {events.map((event) => (
@@ -5714,7 +5805,7 @@ function AdminAuditPage() {
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2 text-xs font-bold text-[#53645f]">
-                  {event.lead_id && <Link to={`/admin/leads/${event.lead_id}`} className="rounded-full bg-[#e9f5ef] px-3 py-2 text-[#0f3d35]">Lead #{event.lead_id}</Link>}
+                  {event.lead_id && <Link to={`/admin/leads/${event.lead_id}`} className="rounded-full bg-[#e9f5ef] px-3 py-2 text-[var(--brand-primary)]">Lead #{event.lead_id}</Link>}
                   {event.target_type && <span className="rounded-full bg-[#f6f1e8] px-3 py-2">{event.target_type}</span>}
                 </div>
               </div>
@@ -5741,7 +5832,7 @@ function LeadStatusSelect({ value, onChange, disabled }: { value: LeadStatus; on
   return (
     <label className="grid w-full gap-2 text-xs font-bold uppercase tracking-[0.16em] text-[#7b8a84] sm:w-auto">
       Status
-      <select value={value} onChange={(event) => onChange(event.target.value as LeadStatus)} disabled={disabled} className="min-h-11 w-full rounded-full border border-[#dce5df] bg-white px-4 text-sm font-bold normal-case tracking-normal text-[#0f3d35] disabled:opacity-60 sm:min-w-[220px]">
+      <select value={value} onChange={(event) => onChange(event.target.value as LeadStatus)} disabled={disabled} className="min-h-11 w-full rounded-full border border-[#dce5df] bg-white px-4 text-sm font-bold normal-case tracking-normal text-[var(--brand-primary)] disabled:opacity-60 sm:min-w-[220px]">
         {leadStatuses.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
       </select>
     </label>
@@ -5770,7 +5861,7 @@ function MobileMenuDrawer({ open, onClose }: { open: boolean; onClose: () => voi
         onClick={onClose}
         className={`absolute inset-0 bg-black/45 backdrop-blur-sm transition-opacity duration-300 ease-out ${open ? 'opacity-100' : 'opacity-0'}`}
       />
-      <div className={`safe-top absolute bottom-0 right-0 top-0 w-[84vw] max-w-sm bg-[#0f3d35] p-5 text-white shadow-2xl transition-transform duration-300 ease-out ${open ? 'translate-x-0' : 'translate-x-full'}`}>
+      <div className={`safe-top absolute bottom-0 right-0 top-0 w-[84vw] max-w-sm bg-[var(--brand-primary)] p-5 text-white shadow-2xl transition-transform duration-300 ease-out ${open ? 'translate-x-0' : 'translate-x-full'}`}>
         <div className="flex items-center justify-between gap-4">
           <Brand light />
           <button onClick={onClose} className="grid h-11 w-11 place-items-center rounded-full bg-white/10 hover:bg-white/15 active:scale-95"><X size={20} /></button>
@@ -5821,8 +5912,8 @@ function QualificationFields({ compact = false, defaultBudgetMax, searchProfile 
             {buyerStatusOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
         </label>
-        <Input name="budget_min" label="Budget min" type="number" min="0" step="1000" defaultValue={profileDefault(searchProfile, 'budget_min')} placeholder="450000" />
-        <Input name="budget_max" label="Budget max" type="number" min="0" step="1000" defaultValue={profileDefault(searchProfile, 'budget_max', defaultBudgetMax || '')} placeholder="650000" />
+        <Input name="budget_min" label="Budget min" type="number" min="0" step="any" defaultValue={profileDefault(searchProfile, 'budget_min')} placeholder="450000" />
+        <Input name="budget_max" label="Budget max" type="number" min="0" step="any" defaultValue={profileDefault(searchProfile, 'budget_max', defaultBudgetMax || '')} placeholder="650000" />
         {!compact && <Input name="desired_villages" label="Desired villages" defaultValue={profileDefault(searchProfile, 'desired_villages')} placeholder="Dededo, Yigo, Tamuning" />}
         {!compact && <Input name="desired_beds" label="Desired beds" type="number" min="0" step="1" defaultValue={profileDefault(searchProfile, 'desired_beds')} placeholder="3" />}
         {!compact && <Input name="desired_baths" label="Desired baths" type="number" min="0" step="0.5" defaultValue={profileDefault(searchProfile, 'desired_baths')} placeholder="2" />}
@@ -5882,6 +5973,13 @@ function PriceTrackerModal({ listing, open, onClose }: { listing: Listing; open:
     wasOpenRef.current = false
   }, [listing.id, listing.listing_kind, mutation.isSuccess, open])
 
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('hafaHomes:conversionModalState', { detail: { open } }))
+    return () => {
+      if (open) window.dispatchEvent(new CustomEvent('hafaHomes:conversionModalState', { detail: { open: false } }))
+    }
+  }, [open])
+
   if (!open) return null
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -5937,13 +6035,13 @@ function PriceTrackerModal({ listing, open, onClose }: { listing: Listing; open:
 
   return (
     <div className="fixed inset-0 z-[75] grid place-items-end bg-black/50 p-2 backdrop-blur-sm md:place-items-center md:p-5">
-      <div className="safe-bottom max-h-[calc(100svh-1rem)] w-full max-w-4xl overflow-y-auto overscroll-contain rounded-[1.75rem] bg-white/95 p-4 shadow-2xl md:max-h-[calc(100vh-2rem)] md:rounded-[2rem] md:p-8">
+      <div role="dialog" aria-modal="true" aria-label="Price watch request" className="safe-bottom max-h-[calc(100svh-1rem)] w-full max-w-4xl overflow-y-auto overscroll-contain rounded-[1.75rem] bg-white/95 p-4 shadow-2xl md:max-h-[calc(100vh-2rem)] md:rounded-[2rem] md:p-8">
         {mutation.isSuccess ? (
           <div className="mx-auto max-w-lg py-8 text-center">
             <CheckCircle2 className="mx-auto text-[#0f705e]" size={44} />
             <h2 className="mt-4 text-3xl font-semibold tracking-[-0.05em]">Price watch request sent</h2>
             <p className="mt-3 text-sm leading-6 text-[#66746f]">The brokerage team has your target price and can follow up when price activity matters.</p>
-            <button onClick={onClose} className="mt-6 w-full rounded-2xl bg-[#0f3d35] px-4 py-3 text-sm font-bold text-white">Close</button>
+            <button onClick={onClose} className="mt-6 w-full rounded-2xl bg-[var(--brand-primary)] px-4 py-3 text-sm font-bold text-white">Close</button>
           </div>
         ) : (
           <form onSubmit={handleSubmit}>
@@ -5961,7 +6059,16 @@ function PriceTrackerModal({ listing, open, onClose }: { listing: Listing; open:
                 <Input name="email" label="Email" type="email" defaultValue={profile?.email || ''} required />
                 <Input name="name" label="Name" defaultValue={profile?.full_name || 'Hafa Homes user'} />
                 <Input name="phone" label="Phone optional" defaultValue={searchProfile?.phone || profile?.phone || '+1671'} inputMode="tel" />
-                <QualificationFields compact searchProfile={searchProfile} />
+                <details className="rounded-[1.5rem] border border-[#dce5df] bg-[#fbfaf6] md:col-span-2">
+                  <summary className="cursor-pointer list-none px-4 py-4 text-sm font-bold text-[var(--brand-primary)] marker:content-none">
+                    <span className="flex items-center justify-between gap-4">
+                      Tell the team more <span className="text-xs font-semibold text-[#66746f]">Optional readiness details</span>
+                    </span>
+                  </summary>
+                  <div className="border-t border-[#dce5df] p-3">
+                    <QualificationFields compact searchProfile={searchProfile} />
+                  </div>
+                </details>
               </div>
               <aside className="rounded-[1.5rem] bg-[#f6f1e8] p-5">
                 <p className="text-xs font-black uppercase tracking-[0.18em] text-[#0f705e]">Listing context</p>
@@ -5975,7 +6082,7 @@ function PriceTrackerModal({ listing, open, onClose }: { listing: Listing; open:
             </div>
             {mutation.isError && <p className="mt-3 text-sm font-semibold text-red-700">Unable to send price watch request right now.</p>}
             <div className="mt-5 grid gap-3 sm:grid-cols-[1fr_180px]">
-              <button disabled={submitting || mutation.isPending} className="rounded-2xl bg-[#0f3d35] px-4 py-3 text-sm font-bold text-white disabled:opacity-60">{submitting || mutation.isPending ? 'Sending...' : 'Send request'}</button>
+              <button disabled={submitting || mutation.isPending} className="rounded-2xl bg-[var(--brand-primary)] px-4 py-3 text-sm font-bold text-white disabled:opacity-60">{submitting || mutation.isPending ? 'Sending...' : 'Send request'}</button>
               <button type="button" onClick={onClose} className="rounded-2xl bg-[#edf0ec] px-4 py-3 text-sm font-bold text-[#17211f]">Cancel</button>
             </div>
           </form>
@@ -6033,6 +6140,13 @@ function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean
     wasOpenRef.current = false
   }, [listing.id, listing.listing_kind, mutation.isSuccess, open])
 
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('hafaHomes:conversionModalState', { detail: { open } }))
+    return () => {
+      if (open) window.dispatchEvent(new CustomEvent('hafaHomes:conversionModalState', { detail: { open: false } }))
+    }
+  }, [open])
+
   if (!open) return null
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -6086,13 +6200,13 @@ function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean
 
   return (
     <div className="fixed inset-0 z-[70] grid place-items-end bg-black/45 p-2 backdrop-blur-sm md:place-items-center md:p-4">
-      <div className="safe-bottom max-h-[calc(100svh-1rem)] w-full max-w-4xl overflow-y-auto overscroll-contain rounded-[1.5rem] bg-white p-4 shadow-2xl md:max-h-[calc(100vh-2rem)] md:rounded-[2rem] md:p-8">
+      <div role="dialog" aria-modal="true" aria-label="Showing request" className="safe-bottom max-h-[calc(100svh-1rem)] w-full max-w-4xl overflow-y-auto overscroll-contain rounded-[1.5rem] bg-white p-4 shadow-2xl md:max-h-[calc(100vh-2rem)] md:rounded-[2rem] md:p-8">
         {mutation.isSuccess ? (
           <div className="py-8 text-center">
             <CheckCircle2 className="mx-auto text-[#0f705e]" size={44} />
             <h2 className="mt-4 text-3xl font-semibold tracking-[-0.05em]">Inquiry captured</h2>
             <p className="mt-3 text-sm leading-6 text-[#66746f]">Your request has been received. The Hafa Homes team can follow up with next steps.</p>
-            <button onClick={onClose} className="mt-6 w-full rounded-2xl bg-[#0f3d35] px-4 py-3 text-sm font-bold text-white">Close</button>
+            <button onClick={onClose} className="mt-6 w-full rounded-2xl bg-[var(--brand-primary)] px-4 py-3 text-sm font-bold text-white">Close</button>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="pb-4">
@@ -6105,7 +6219,7 @@ function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean
             </div>
             <div className="mt-4 rounded-3xl bg-[#f6f1e8] p-4 md:mt-5">
               <div className="flex items-center gap-4">
-                <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-[#0f3d35] text-sm font-black text-[#f5c16c] md:h-16 md:w-16 md:text-base">
+                <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-[var(--brand-primary)] text-sm font-black text-[#f5c16c] md:h-16 md:w-16 md:text-base">
                   {selectedModalAgent ? agentInitials(selectedModalAgent) : 'HH'}
                 </div>
                 <div className="min-w-0 flex-1">
@@ -6133,18 +6247,18 @@ function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean
             <div className="mt-4 grid grid-cols-2 gap-3 md:mt-5">
               <label className="cursor-pointer">
                 <input type="radio" name="tour_type" value="in_person" defaultChecked className="peer sr-only" />
-                <span className="block rounded-2xl border border-[#d7ded9] px-4 py-3 text-center text-sm font-bold text-[#304942] peer-checked:border-[#17a9df] peer-checked:text-[#17a9df]">In Person</span>
+                <span className="block rounded-2xl border border-[#d7ded9] px-4 py-3 text-center text-sm font-bold text-[#304942] peer-checked:border-[var(--brand-accent)] peer-checked:text-[var(--brand-accent)]">In Person</span>
               </label>
               <label className="cursor-pointer">
                 <input type="radio" name="tour_type" value="virtual" className="peer sr-only" />
-                <span className="block rounded-2xl border border-[#d7ded9] px-4 py-3 text-center text-sm font-bold text-[#304942] peer-checked:border-[#17a9df] peer-checked:text-[#17a9df]">Virtual</span>
+                <span className="block rounded-2xl border border-[#d7ded9] px-4 py-3 text-center text-sm font-bold text-[#304942] peer-checked:border-[var(--brand-accent)] peer-checked:text-[var(--brand-accent)]">Virtual</span>
               </label>
             </div>
             <div className="mt-4 grid grid-cols-4 gap-2 text-center text-xs font-bold text-[#53645f] md:mt-5">
               {tourDateOptions().map((day, index) => (
                 <label key={day.value} className="cursor-pointer">
                   <input type="radio" name="preferred_tour_date" value={day.value} defaultChecked={index === 0} className="peer sr-only" />
-                  <span className="block rounded-2xl border border-[#d7ded9] px-2 py-3 peer-checked:border-[#17a9df] peer-checked:text-[#17a9df]">{day.label}</span>
+                  <span className="block rounded-2xl border border-[#d7ded9] px-2 py-3 peer-checked:border-[var(--brand-accent)] peer-checked:text-[var(--brand-accent)]">{day.label}</span>
                 </label>
               ))}
             </div>
@@ -6164,14 +6278,23 @@ function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean
                   {preferredTimeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                 </select>
               </label>
-              <QualificationFields defaultBudgetMax={String(Math.round(listing.price))} searchProfile={searchProfile} />
+              <details className="rounded-[1.5rem] border border-[#dce5df] bg-[#fbfaf6] md:col-span-2">
+                <summary className="cursor-pointer list-none px-4 py-4 text-sm font-bold text-[var(--brand-primary)] marker:content-none">
+                  <span className="flex items-center justify-between gap-4">
+                    Tell the agent more <span className="text-xs font-semibold text-[#66746f]">Optional search and readiness details</span>
+                  </span>
+                </summary>
+                <div className="border-t border-[#dce5df] p-3">
+                  <QualificationFields defaultBudgetMax={String(Math.round(listing.price))} searchProfile={searchProfile} />
+                </div>
+              </details>
               <label className="grid gap-2 text-sm font-semibold text-[#304942] md:col-span-2">
                 Message
                 <textarea name="message" rows={4} className="rounded-2xl border border-[#dce5df] px-4 py-3" defaultValue={`I'm interested in ${listing.title}.`} />
               </label>
             </div>
             {mutation.isError && <p className="mt-3 text-sm font-semibold text-red-700">Unable to submit right now.</p>}
-            <button disabled={mutation.isPending} className="mt-5 w-full rounded-2xl bg-[#0f3d35] px-4 py-3 text-sm font-bold text-white disabled:opacity-60">
+            <button disabled={mutation.isPending} className="mt-5 w-full rounded-2xl bg-[var(--brand-primary)] px-4 py-3 text-sm font-bold text-white disabled:opacity-60">
               {mutation.isPending ? 'Submitting...' : 'Send showing request'}
             </button>
           </form>
@@ -6184,7 +6307,7 @@ function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean
 function Shell({ children, compact = false, mobileBottomPadding = true }: { children: React.ReactNode; compact?: boolean; mobileBottomPadding?: boolean }) {
   return (
     <main className={`min-h-screen bg-[#f6f1e8] text-[#17211f] md:pb-0 ${mobileBottomPadding ? 'pb-20' : 'pb-0'}`}>
-      {compact && <div className="bg-[#0f3d35] px-5 py-5 text-white"><div className="mx-auto max-w-7xl"><TopNav /></div></div>}
+      {compact && <div className="bg-[var(--brand-primary)] px-5 py-5 text-white"><div className="mx-auto max-w-7xl"><TopNav /></div></div>}
       {children}
       <MobileNav />
     </main>

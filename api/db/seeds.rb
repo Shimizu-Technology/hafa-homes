@@ -8,6 +8,7 @@ Lead.delete_all
 Listing.delete_all
 BrokerageMembership.delete_all
 Agent.delete_all
+BrokerageDomain.delete_all
 Brokerage.delete_all
 Feature.delete_all
 Village.delete_all
@@ -36,6 +37,8 @@ hafa_brokerage = Brokerage.create!(
   app_display_name: "Hafa Homes",
   compliance_disclaimer: "Demo brokerage attribution for product development. Replace with authorized brokerage and MLS attribution before production MLS use."
 )
+
+BrokerageDomain.create!(brokerage: hafa_brokerage, hostname: "hafahomes.com", primary: true, status: "active")
 
 BrokerageMembership.create!(brokerage: hafa_brokerage, user: platform_admin, role: "brokerage_admin", status: "active")
 

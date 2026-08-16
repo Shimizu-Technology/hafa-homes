@@ -5,12 +5,13 @@ module Api
       MAX_LIMIT = 100
 
       def index
-        agents = Agent.active.includes(:brokerage)
-        if params[:brokerage_id].present?
-          agents = agents.where(brokerage_id: params[:brokerage_id])
-        elsif (brokerage = current_routing_brokerage)
-          agents = agents.where(brokerage: brokerage)
+        brokerage = current_routing_brokerage
+        unless brokerage
+          render json: { errors: [ "No brokerage is configured for this domain" ] }, status: :not_found
+          return
         end
+
+        agents = Agent.active.includes(:brokerage).where(brokerage: brokerage)
 
         total_count = agents.count
         limited_agents = agents.order(:name).limit(limit_param).offset(offset_param)
@@ -30,7 +31,7 @@ module Api
       def limit_param
         requested_limit = params[:limit].to_i
         requested_limit = DEFAULT_LIMIT unless requested_limit.positive?
-        [requested_limit, MAX_LIMIT].min
+        [ requested_limit, MAX_LIMIT ].min
       end
 
       def offset_param

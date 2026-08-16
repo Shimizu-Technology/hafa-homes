@@ -17,7 +17,7 @@ module Api
 
       def create
         lead = staff_lead_scope.find(params[:lead_id])
-        task = lead.lead_tasks.build(task_params)
+        task = lead.lead_tasks.build(task_params(lead))
         task.created_by = current_user
         task.assigned_to ||= current_user if current_user.agent? && task.assigned_to.blank?
 
@@ -33,7 +33,7 @@ module Api
 
       def update
         task = LeadTask.where(lead_id: staff_lead_scope.select(:id)).find(params[:id])
-        task.assign_attributes(task_update_params)
+        task.assign_attributes(task_update_params(task.lead))
         task.activity_actor = current_user
         apply_completion_actor(task)
 
@@ -51,21 +51,25 @@ module Api
 
       private
 
-      def task_params
+      def task_params(lead)
         params.require(:lead_task).permit(:title, :notes, :due_at, :assigned_to_id).tap do |permitted|
-          permitted[:assigned_to_id] = assignable_user_id(permitted[:assigned_to_id]) if permitted[:assigned_to_id].present?
+          permitted[:assigned_to_id] = assignable_user_id(permitted[:assigned_to_id], lead) if permitted[:assigned_to_id].present?
         end
       end
 
-      def task_update_params
+      def task_update_params(lead)
         params.require(:lead_task).permit(:title, :notes, :due_at, :status, :assigned_to_id).tap do |permitted|
-          permitted[:assigned_to_id] = assignable_user_id(permitted[:assigned_to_id]) if permitted[:assigned_to_id].present?
+          permitted[:assigned_to_id] = assignable_user_id(permitted[:assigned_to_id], lead) if permitted[:assigned_to_id].present?
         end
       end
 
-      def assignable_user_id(user_id)
-        user = User.find_by(id: user_id)
-        return user.id if user&.staff?
+      def assignable_user_id(user_id, lead)
+        users = User.where(role: User::ADMIN_ROLES, archived_at: nil)
+        unless current_user.platform_admin?
+          users = users.joins(:brokerage_memberships).merge(BrokerageMembership.active).where(brokerage_memberships: { brokerage_id: lead.brokerage_id })
+        end
+        user = users.find_by(id: user_id)
+        return user.id if user
 
         raise ActiveRecord::RecordInvalid, current_user.tap { |current| current.errors.add(:base, "Assigned user is not available") }
       end

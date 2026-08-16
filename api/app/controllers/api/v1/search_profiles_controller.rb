@@ -4,6 +4,7 @@ module Api
       include ClerkAuthenticatable
 
       before_action :authenticate_user!
+      before_action :require_routing_brokerage!
 
       def show
         render json: { search_profile: serialize_profile(current_profile) }
@@ -30,7 +31,7 @@ module Api
       private
 
       def current_profile
-        current_user.buyer_search_profile || current_user.build_buyer_search_profile(
+        current_user.buyer_search_profiles.find_by(brokerage: current_routing_brokerage) || current_user.buyer_search_profiles.build(
           brokerage: current_routing_brokerage,
           phone: current_user.phone,
           preferred_contact_method: current_user.preferred_contact_method
@@ -50,9 +51,15 @@ module Api
         rescue ActiveRecord::RecordNotUnique
           raise if (attempts += 1) > 1
 
-          current_user.association(:buyer_search_profile).reset
+          current_user.association(:buyer_search_profiles).reset
           retry
         end
+      end
+
+      def require_routing_brokerage!
+        return if current_routing_brokerage
+
+        render json: { errors: [ "No brokerage is configured for this domain" ] }, status: :not_found
       end
 
       def serialize_profile(profile)

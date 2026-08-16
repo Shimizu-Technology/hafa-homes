@@ -70,6 +70,7 @@ module Api
             phone: brokerage.phone,
             website_url: brokerage.website_url,
             app_display_name: brokerage.app_display_name,
+            demo_data: brokerage.subscription_tier == "demo",
             compliance_disclaimer: brokerage.compliance_disclaimer
           }
         end

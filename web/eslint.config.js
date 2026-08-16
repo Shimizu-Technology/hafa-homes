@@ -18,5 +18,17 @@ export default defineConfig([
     languageOptions: {
       globals: globals.browser,
     },
+    rules: {
+      // This app intentionally synchronizes modal/editor state from server-backed props.
+      // The exhaustive-deps rule still guards those effects against stale inputs.
+      'react-hooks/set-state-in-effect': 'off',
+    },
+  },
+  {
+    files: ['src/contexts/**/*.tsx', 'src/main.tsx'],
+    rules: {
+      // Context modules export their provider and matching hook as one public unit.
+      'react-refresh/only-export-components': 'off',
+    },
   },
 ])

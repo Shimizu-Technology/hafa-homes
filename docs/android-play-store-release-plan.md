@@ -31,7 +31,7 @@ com.shimizutechnology.hafahomes
 
 Current Android-ready app configuration:
 
-- Expo SDK 56 project.
+- Expo SDK 57 project.
 - Android package name is set.
 - Adaptive icon assets exist.
 - Deep link scheme exists: `hafahomes://`.
@@ -515,7 +515,7 @@ eas build -p android --profile production --auto-submit-with-profile production
 
 ## Target API level note
 
-As of Aug. 31, 2025, new Google Play app submissions and updates must target Android 15 / API level 35 or higher. Expo SDK 56 should be current enough, but confirm during the EAS build/Play upload. If Play Console rejects target SDK level, update Expo/React Native or Android build config before proceeding.
+As of Aug. 31, 2025, new Google Play app submissions and updates must target Android 15 / API level 35 or higher. Expo SDK 57 targets API level 36, but confirm the generated target during the EAS build/Play upload. If Play Console rejects the target level, update Expo/React Native or Android build config before proceeding.
 
 ## Definition of done
 

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_27_120000) do
+ActiveRecord::Schema[8.1].define(version: 2026_07_10_013000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -55,6 +55,19 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_27_120000) do
     t.index ["target_type", "target_id"], name: "index_audit_events_on_target_type_and_target_id"
   end
 
+  create_table "brokerage_domains", force: :cascade do |t|
+    t.bigint "brokerage_id", null: false
+    t.datetime "created_at", null: false
+    t.string "hostname", null: false
+    t.boolean "primary", default: false, null: false
+    t.string "status", default: "active", null: false
+    t.datetime "updated_at", null: false
+    t.index "lower((hostname)::text)", name: "index_brokerage_domains_on_lower_hostname", unique: true
+    t.index ["brokerage_id", "status"], name: "index_brokerage_domains_on_brokerage_id_and_status"
+    t.index ["brokerage_id"], name: "index_brokerage_domains_on_brokerage_id"
+    t.index ["brokerage_id"], name: "index_brokerage_domains_on_primary_brokerage", unique: true, where: "(\"primary\" = true)"
+  end
+
   create_table "brokerage_memberships", force: :cascade do |t|
     t.bigint "brokerage_id", null: false
     t.datetime "created_at", null: false
@@ -92,7 +105,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_27_120000) do
 
   create_table "buyer_search_profiles", force: :cascade do |t|
     t.string "already_working_with_agent"
-    t.bigint "brokerage_id"
+    t.bigint "brokerage_id", null: false
     t.decimal "budget_max", precision: 12, scale: 2
     t.decimal "budget_min", precision: 12, scale: 2
     t.string "buyer_status"
@@ -112,7 +125,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_27_120000) do
     t.bigint "user_id", null: false
     t.index ["brokerage_id", "completed_at"], name: "index_buyer_search_profiles_on_brokerage_id_and_completed_at"
     t.index ["brokerage_id"], name: "index_buyer_search_profiles_on_brokerage_id"
-    t.index ["user_id"], name: "index_buyer_search_profiles_on_user_id", unique: true
+    t.index ["user_id", "brokerage_id"], name: "index_buyer_search_profiles_on_user_and_brokerage", unique: true
   end
 
   create_table "data_sync_runs", force: :cascade do |t|
@@ -401,11 +414,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_27_120000) do
 
   create_table "saved_searches", force: :cascade do |t|
     t.string "alert_frequency"
+    t.bigint "brokerage_id", null: false
     t.datetime "created_at", null: false
     t.string "email"
     t.jsonb "filters"
     t.string "name"
     t.datetime "updated_at", null: false
+    t.index ["brokerage_id", "created_at"], name: "index_saved_searches_on_brokerage_id_and_created_at"
+    t.index ["brokerage_id"], name: "index_saved_searches_on_brokerage_id"
   end
 
   create_table "showing_appointments", force: :cascade do |t|
@@ -479,6 +495,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_27_120000) do
   add_foreign_key "audit_events", "brokerages"
   add_foreign_key "audit_events", "leads"
   add_foreign_key "audit_events", "users", column: "actor_id"
+  add_foreign_key "brokerage_domains", "brokerages", on_delete: :cascade
   add_foreign_key "brokerage_memberships", "brokerages"
   add_foreign_key "brokerage_memberships", "users"
   add_foreign_key "buyer_search_profiles", "brokerages"
@@ -520,6 +537,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_27_120000) do
   add_foreign_key "notification_deliveries", "users", column: "sent_by_id"
   add_foreign_key "saved_listings", "listings"
   add_foreign_key "saved_listings", "users"
+  add_foreign_key "saved_searches", "brokerages"
   add_foreign_key "showing_appointments", "agents"
   add_foreign_key "showing_appointments", "brokerages"
   add_foreign_key "showing_appointments", "leads"

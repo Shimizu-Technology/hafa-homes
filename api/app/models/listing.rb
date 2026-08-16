@@ -20,6 +20,24 @@ class Listing < ApplicationRecord
   scope :max_price, ->(price) { where("price <= ?", price) if price.present? }
   scope :min_beds, ->(beds) { where("beds >= ?", beds) if beds.present? }
   scope :min_baths, ->(baths) { where("baths >= ?", baths) if baths.present? }
+  scope :matching, ->(query) do
+    if query.present?
+      pattern = "%#{sanitize_sql_like(query.to_s.downcase)}%"
+
+      left_joins(:village, :features)
+        .where(
+          <<~SQL.squish,
+            LOWER(listings.title) LIKE :pattern OR
+            LOWER(listings.address) LIKE :pattern OR
+            LOWER(listings.external_id) LIKE :pattern OR
+            LOWER(villages.name) LIKE :pattern OR
+            LOWER(features.name) LIKE :pattern
+          SQL
+          pattern: pattern
+        )
+        .distinct
+    end
+  end
 
   def primary_photo_url
     listing_photos.first&.url

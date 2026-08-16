@@ -15,10 +15,10 @@ module Api
 
       class InsufficientLeadIntentContextError < StandardError; end
 
-      before_action :authenticate_user!, only: [:index, :show, :update, :send_notification]
-      before_action :require_staff!, only: [:index, :show, :update, :send_notification]
-      before_action :authenticate_user_optional, only: [:create]
-      before_action :set_lead, only: [:show, :update, :send_notification]
+      before_action :authenticate_user!, only: [ :index, :show, :update, :send_notification ]
+      before_action :require_staff!, only: [ :index, :show, :update, :send_notification ]
+      before_action :authenticate_user_optional, only: [ :create ]
+      before_action :set_lead, only: [ :show, :update, :send_notification ]
 
       def index
         leads = filtered_staff_leads
@@ -94,16 +94,16 @@ module Api
       def send_notification
         permitted = notification_params
         unless NotificationDelivery::CHANNELS.include?(permitted[:channel]) && NotificationDelivery::RECIPIENT_ROLES.include?(permitted[:recipient_role])
-          return render json: { errors: ["Notification recipient or channel is invalid"] }, status: :unprocessable_entity
+          return render json: { errors: [ "Notification recipient or channel is invalid" ] }, status: :unprocessable_entity
         end
 
         if permitted[:event_name].blank? || permitted[:event_name] == "manual_update"
           if permitted[:body].blank?
-            return render json: { errors: ["Message body is required"] }, status: :unprocessable_entity
+            return render json: { errors: [ "Message body is required" ] }, status: :unprocessable_entity
           end
 
           if permitted[:channel] == "email" && permitted[:subject].blank?
-            return render json: { errors: ["Email subject is required"] }, status: :unprocessable_entity
+            return render json: { errors: [ "Email subject is required" ] }, status: :unprocessable_entity
           end
         end
 
@@ -121,7 +121,7 @@ module Api
         if delivery
           render json: { notification_delivery: NotificationDeliverySerializer.summary(delivery) }, status: :accepted
         else
-          render json: { errors: ["No #{permitted[:recipient_role]} #{permitted[:channel]} recipient is available for this lead"] }, status: :unprocessable_entity
+          render json: { errors: [ "No #{permitted[:recipient_role]} #{permitted[:channel]} recipient is available for this lead" ] }, status: :unprocessable_entity
         end
       end
 
@@ -141,7 +141,7 @@ module Api
           elsif assigned_agent_id.match?(/\A\d+\z/)
             leads = leads.where(assigned_agent_id: assigned_agent_id.to_i)
           else
-            render json: { errors: ["assigned_agent_id must be a numeric id or unassigned"] }, status: :unprocessable_entity
+            render json: { errors: [ "assigned_agent_id must be a numeric id or unassigned" ] }, status: :unprocessable_entity
             return Lead.none
           end
         end
@@ -149,7 +149,7 @@ module Api
         lead_type = params[:lead_type].presence
         if lead_type
           unless lead_type.match?(/\A[a-z_]+\z/)
-            render json: { errors: ["lead_type is invalid"] }, status: :unprocessable_entity
+            render json: { errors: [ "lead_type is invalid" ] }, status: :unprocessable_entity
             return Lead.none
           end
 
@@ -159,7 +159,7 @@ module Api
         status = params[:status].presence
         if status
           unless Lead::STATUSES.include?(status)
-            render json: { errors: ["status is invalid"] }, status: :unprocessable_entity
+            render json: { errors: [ "status is invalid" ] }, status: :unprocessable_entity
             return Lead.none
           end
 
@@ -213,7 +213,7 @@ module Api
         when "quality_asc"
           leads.order(quality_score: :asc, created_at: :desc)
         else
-          render json: { errors: ["sort is invalid"] }, status: :unprocessable_entity
+          render json: { errors: [ "sort is invalid" ] }, status: :unprocessable_entity
           Lead.none
         end
       end
@@ -226,7 +226,7 @@ module Api
           if assigned_agent_id.present?
             assigned_agent = assignable_agents_for(@lead).find_by(id: assigned_agent_id)
             unless assigned_agent
-              render json: { errors: ["Assigned agent is not available for this lead"] }, status: :unprocessable_entity
+              render json: { errors: [ "Assigned agent is not available for this lead" ] }, status: :unprocessable_entity
               return false
             end
 
@@ -242,7 +242,7 @@ module Api
           if requested_agent_id.present?
             requested_agent = assignable_agents_for(@lead).find_by(id: requested_agent_id)
             unless requested_agent
-              render json: { errors: ["Requested agent is not available for this lead"] }, status: :unprocessable_entity
+              render json: { errors: [ "Requested agent is not available for this lead" ] }, status: :unprocessable_entity
               return false
             end
 
@@ -346,7 +346,7 @@ module Api
       def assign_routing_brokerage(lead)
         brokerage = current_routing_brokerage
         unless brokerage
-          render json: { errors: ["No active brokerage is available for lead routing"] }, status: :unprocessable_entity
+          render json: { errors: [ "No active brokerage is available for lead routing" ] }, status: :unprocessable_entity
           return
         end
 
@@ -358,12 +358,12 @@ module Api
 
         agent = Agent.active.includes(:brokerage).find_by(id: requested_agent_id)
         unless agent
-          render json: { errors: ["Requested agent is not available"] }, status: :unprocessable_entity
+          render json: { errors: [ "Requested agent is not available" ] }, status: :unprocessable_entity
           return
         end
 
         if agent.brokerage_id != lead.brokerage_id
-          render json: { errors: ["Requested agent is not available for this brokerage"] }, status: :unprocessable_entity
+          render json: { errors: [ "Requested agent is not available for this brokerage" ] }, status: :unprocessable_entity
           return
         end
 
@@ -375,7 +375,7 @@ module Api
         return nil if permitted[:listing_id].blank?
 
         Listing.active.find_by(id: permitted[:listing_id]).tap do |listing|
-          render json: { errors: ["Listing not found"] }, status: :unprocessable_entity unless listing
+          render json: { errors: [ "Listing not found" ] }, status: :unprocessable_entity unless listing
         end
       end
 
@@ -394,7 +394,7 @@ module Api
 
       def render_intent_session_scope_mismatch(error)
         render json: {
-          errors: [error.message],
+          errors: [ error.message ],
           reset_session: true,
           prompt: { eligible: false, reason: "session_scope_mismatch" }
         }, status: :conflict
@@ -402,7 +402,7 @@ module Api
 
       def render_insufficient_intent_context(error)
         render json: {
-          errors: [error.message],
+          errors: [ error.message ],
           rebuild_intent_context: true,
           prompt: { eligible: false, reason: "insufficient_intent_context" }
         }, status: :conflict
@@ -414,7 +414,7 @@ module Api
       end
 
       def apply_current_user_search_profile(lead)
-        profile = current_user&.buyer_search_profile
+        profile = current_user&.buyer_search_profiles&.find_by(brokerage: lead.brokerage)
         return unless profile
 
         profile.apply_to_lead(lead)

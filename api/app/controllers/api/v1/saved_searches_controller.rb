@@ -2,7 +2,13 @@ module Api
   module V1
     class SavedSearchesController < ApplicationController
       def create
-        saved_search = SavedSearch.new(saved_search_params)
+        brokerage = current_routing_brokerage
+        unless brokerage
+          render json: { errors: [ "No brokerage is configured for this domain" ] }, status: :not_found
+          return
+        end
+
+        saved_search = brokerage.saved_searches.build(saved_search_params)
 
         if saved_search.save
           render json: {

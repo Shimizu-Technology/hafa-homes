@@ -4,7 +4,7 @@ module Api
       include ClerkAuthenticatable
 
       before_action :authenticate_user!
-      before_action :require_staff!
+      before_action :require_platform_admin!
 
       def index
         runs = DataSyncRun.order(started_at: :desc, created_at: :desc).limit(10)

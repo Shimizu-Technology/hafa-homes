@@ -1,0 +1,96 @@
+require "test_helper"
+
+class AdminBrokerageConfigurationTest < ActionDispatch::IntegrationTest
+  setup do
+    @brokerage = create_brokerage(name: "Alpha Realty", slug: "alpha")
+    @admin = create_user(email: "platform@example.com", role: "platform_admin", clerk_id: "clerk-platform")
+    @headers = authorization_headers(@admin)
+  end
+
+  test "platform admin can configure domains and branding" do
+    with_clerk_auth do
+      patch "/api/v1/admin/brokerages/#{@brokerage.id}",
+        headers: @headers,
+        params: { brokerage: { app_display_name: "Alpha Homes", brand_primary_color: "#123456", brand_accent_color: "#abcdef" } }
+    end
+    assert_response :success
+    assert_equal "Alpha Homes", @brokerage.reload.app_display_name
+
+    with_clerk_auth do
+      post "/api/v1/admin/brokerage_domains",
+        headers: @headers,
+        params: { brokerage_domain: { brokerage_id: @brokerage.id, hostname: "alpha.test", primary: true } }
+    end
+    assert_response :created
+    first_domain = BrokerageDomain.find(response.parsed_body.dig("brokerage_domain", "id"))
+    assert first_domain.primary?
+
+    with_clerk_auth do
+      post "/api/v1/admin/brokerage_domains",
+        headers: @headers,
+        params: { brokerage_domain: { brokerage_id: @brokerage.id, hostname: "search.alpha.test", primary: true } }
+    end
+    assert_response :created
+    assert_not first_domain.reload.primary?
+  end
+
+  test "platform admin cannot delete an active brokerage's last active domain" do
+    first_domain = BrokerageDomain.create!(brokerage: @brokerage, hostname: "alpha.test", primary: true)
+
+    with_clerk_auth { delete "/api/v1/admin/brokerage_domains/#{first_domain.id}", headers: @headers }
+
+    assert_response :unprocessable_entity
+    assert BrokerageDomain.exists?(first_domain.id)
+    assert_includes response.parsed_body.fetch("errors").first, "last active domain"
+
+    BrokerageDomain.create!(brokerage: @brokerage, hostname: "search.alpha.test")
+
+    with_clerk_auth { delete "/api/v1/admin/brokerage_domains/#{first_domain.id}", headers: @headers }
+
+    assert_response :no_content
+    assert_not BrokerageDomain.exists?(first_domain.id)
+  end
+
+  test "last active domain deletion reloads stale state after acquiring the brokerage lock" do
+    stale_domain = BrokerageDomain.create!(brokerage: @brokerage, hostname: "alpha.test", status: "inactive")
+    BrokerageDomain.where(id: stale_domain.id).update_all(status: "active", updated_at: Time.current)
+
+    original_find = BrokerageDomain.method(:find)
+    BrokerageDomain.define_singleton_method(:find) { |*| stale_domain }
+
+    begin
+      with_clerk_auth do
+        delete "/api/v1/admin/brokerage_domains/#{stale_domain.id}", headers: @headers
+      end
+    ensure
+      BrokerageDomain.define_singleton_method(:find, original_find)
+    end
+
+    assert_response :unprocessable_entity
+    assert BrokerageDomain.exists?(stale_domain.id)
+    assert_includes response.parsed_body.fetch("errors").first, "last active domain"
+  end
+
+  test "a concurrent domain uniqueness conflict returns a controlled error" do
+    conflicting_domain = BrokerageDomain.new(brokerage: @brokerage, hostname: "alpha.test", primary: true)
+    conflicting_domain.define_singleton_method(:save!) do
+      raise ActiveRecord::RecordNotUnique, "simulated concurrent primary-domain conflict"
+    end
+
+    original_new = BrokerageDomain.method(:new)
+    BrokerageDomain.define_singleton_method(:new) { |*, **| conflicting_domain }
+
+    begin
+      with_clerk_auth do
+        post "/api/v1/admin/brokerage_domains",
+          headers: @headers,
+          params: { brokerage_domain: { brokerage_id: @brokerage.id, hostname: "alpha.test", primary: true } }
+      end
+    ensure
+      BrokerageDomain.define_singleton_method(:new, original_new)
+    end
+
+    assert_response :unprocessable_entity
+    assert_includes response.parsed_body.fetch("errors").first, "changed concurrently"
+  end
+end

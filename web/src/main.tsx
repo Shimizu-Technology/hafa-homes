@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter } from 'react-router-dom'
 import { ClerkProvider } from '@clerk/clerk-react'
 import { AuthProvider } from './contexts/AuthContext'
+import { BrokerageProvider } from './contexts/BrokerageContext'
 import { PostHogProvider } from './providers/PostHogProvider'
 import './index.css'
 import App from './App.tsx'
@@ -21,9 +22,11 @@ function Root() {
     <AuthProvider isClerkEnabled={isClerkEnabled}>
       <PostHogProvider>
         <QueryClientProvider client={queryClient}>
-          <BrowserRouter>
-            <App />
-          </BrowserRouter>
+          <BrokerageProvider>
+            <BrowserRouter>
+              <App />
+            </BrowserRouter>
+          </BrokerageProvider>
         </QueryClientProvider>
       </PostHogProvider>
     </AuthProvider>
