@@ -53,6 +53,15 @@ class BrokerageRoutingTest < ActionDispatch::IntegrationTest
     assert_equal @beta.id, response.parsed_body.dig("brokerage", "id")
   end
 
+  test "does not treat a forged referer as an authoritative storefront" do
+    with_default_brokerage_slug(@alpha.slug) do
+      get "/api/v1/context", headers: { "Referer" => "https://beta.test/listings" }
+    end
+
+    assert_response :success
+    assert_equal @alpha.id, response.parsed_body.dig("brokerage", "id")
+  end
+
   test "does not route explicit unknown or inactive storefronts through a fallback" do
     BrokerageDomain.find_by!(hostname: "beta.test").update!(status: "inactive")
     @beta.update!(status: "inactive")

@@ -46,8 +46,7 @@ class BrokerageResolver
     def explicit_storefront_hosts(request)
       [
         request.headers["X-Brokerage-Host"],
-        host_from_url(request.origin),
-        host_from_url(request.referer)
+        host_from_url(request.origin)
       ].filter_map { |host| BrokerageDomain.normalize_hostname(host) }.uniq
     end
 
