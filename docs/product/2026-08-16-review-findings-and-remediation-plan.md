@@ -267,7 +267,7 @@ The central risk is no longer whether Hafa Homes can be built. It can. The risk 
 
 Local Phase 1 verification completed and repeated with desktop Computer Use plus an iOS Simulator pass on 2026-08-16:
 
-- API: 31 tests and 123 assertions passed; Zeitwerk, RuboCop, Brakeman, Bundler Audit, and the seeded runtime smoke script passed.
+- API: 32 tests and 127 assertions passed; Zeitwerk, RuboCop, Brakeman, Bundler Audit, and the seeded runtime smoke script passed.
 - Web: lint, four Vitest assertions, production build, and the high-severity production dependency audit passed. The build still reports the documented large-bundle warning, which belongs to Phase 5.
 - Mobile: TypeScript, Expo Doctor (21/21), the production dependency gate, and Hermes exports for both iOS and Android passed on Node 22.22.3 and Expo SDK 57.
 - Runtime/browser: desktop and 390-pixel mobile layouts were exercised against the local Rails API with both Computer Use and DOM-level browser inspection. Coverage included sale/rent inventory, real text search, filters, listing-ID search, listing detail, Local Intel, map clusters, agent directory, account gates, and a successful public showing submission. No browser console errors or horizontal overflow remained.

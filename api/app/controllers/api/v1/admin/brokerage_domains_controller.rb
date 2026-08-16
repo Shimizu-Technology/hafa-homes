@@ -25,6 +25,8 @@ module Api
 
         def destroy
           @domain.brokerage.with_lock do
+            @domain.reload
+
             if last_active_domain?
               render json: { errors: [ "Deactivate the brokerage or add another active domain before deleting its last active domain" ] },
                 status: :unprocessable_entity

@@ -51,6 +51,26 @@ class AdminBrokerageConfigurationTest < ActionDispatch::IntegrationTest
     assert_not BrokerageDomain.exists?(first_domain.id)
   end
 
+  test "last active domain deletion reloads stale state after acquiring the brokerage lock" do
+    stale_domain = BrokerageDomain.create!(brokerage: @brokerage, hostname: "alpha.test", status: "inactive")
+    BrokerageDomain.where(id: stale_domain.id).update_all(status: "active", updated_at: Time.current)
+
+    original_find = BrokerageDomain.method(:find)
+    BrokerageDomain.define_singleton_method(:find) { |*| stale_domain }
+
+    begin
+      with_clerk_auth do
+        delete "/api/v1/admin/brokerage_domains/#{stale_domain.id}", headers: @headers
+      end
+    ensure
+      BrokerageDomain.define_singleton_method(:find, original_find)
+    end
+
+    assert_response :unprocessable_entity
+    assert BrokerageDomain.exists?(stale_domain.id)
+    assert_includes response.parsed_body.fetch("errors").first, "last active domain"
+  end
+
   test "a concurrent domain uniqueness conflict returns a controlled error" do
     conflicting_domain = BrokerageDomain.new(brokerage: @brokerage, hostname: "alpha.test", primary: true)
     conflicting_domain.define_singleton_method(:save!) do
