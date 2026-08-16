@@ -37,6 +37,15 @@ class BrokerageRoutingTest < ActionDispatch::IntegrationTest
     assert_equal @alpha.id, response.parsed_body.dig("brokerage", "id")
   end
 
+  test "resolves a native brokerage slug received as a binary encoded header" do
+    binary_slug = @beta.slug.dup.force_encoding(Encoding::BINARY)
+
+    get "/api/v1/context", headers: { "X-Brokerage-Slug" => binary_slug }
+
+    assert_response :success
+    assert_equal @beta.id, response.parsed_body.dig("brokerage", "id")
+  end
+
   test "resolves browser requests from origin when no storefront header is present" do
     get "/api/v1/context", headers: { "Origin" => "https://beta.test" }
 

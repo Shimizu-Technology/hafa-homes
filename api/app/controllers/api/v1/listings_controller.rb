@@ -10,6 +10,7 @@ module Api
         listings = listings.max_price(params[:max_price])
         listings = listings.min_beds(params[:beds])
         listings = listings.min_baths(params[:baths])
+        listings = listings.matching(params[:q])
         listings = filter_by_features(listings)
 
         render json: {

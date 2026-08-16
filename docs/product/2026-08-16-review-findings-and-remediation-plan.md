@@ -265,14 +265,18 @@ The central risk is no longer whether Hafa Homes can be built. It can. The risk 
 
 ## Phase 1 completion record
 
-Local Phase 1 verification completed on 2026-08-16:
+Local Phase 1 verification completed and repeated with desktop Computer Use plus an iOS Simulator pass on 2026-08-16:
 
-- API: 28 tests and 107 assertions passed; Zeitwerk, RuboCop, Brakeman, Bundler Audit, and the seeded runtime smoke script passed.
+- API: 30 tests and 121 assertions passed; Zeitwerk, RuboCop, Brakeman, Bundler Audit, and the seeded runtime smoke script passed.
 - Web: lint, four Vitest assertions, production build, and the high-severity production dependency audit passed. The build still reports the documented large-bundle warning, which belongs to Phase 5.
 - Mobile: TypeScript, Expo Doctor (21/21), the production dependency gate, and Hermes exports for both iOS and Android passed on Node 22.22.3 and Expo SDK 57.
-- Runtime/browser: desktop and 390-pixel mobile layouts were exercised against the local Rails API, including sale/rent inventory, listing detail, Local Intel, map clusters, agent directory, and public lead submission. No browser console errors or horizontal overflow remained, and the synthetic lead was removed afterward.
+- Runtime/browser: desktop and 390-pixel mobile layouts were exercised against the local Rails API with both Computer Use and DOM-level browser inspection. Coverage included sale/rent inventory, real text search, filters, listing-ID search, listing detail, Local Intel, map clusters, agent directory, account gates, and a successful public showing submission. No browser console errors or horizontal overflow remained.
+- Runtime/native: Expo Go was installed in the booted iOS Simulator and the actual SDK 57 app was exercised with Computer Use. Sale/rent switching, text search, map clusters, list/detail navigation, Local Intel, agents, saved/request gates, the More hub, lead-intent events, and a successful showing request were verified. Synthetic web/native leads and their test-only audit records were removed afterward.
+- Device-level defects found and corrected: the web's search-looking controls were inert; a hidden `step=1000` budget field silently blocked many rental inquiries; and Rack delivered the native brokerage slug as `ASCII-8BIT`, causing tenant resolution and native lead submission to raise `ArgumentError`. Search is now functional across title, address, listing ID, village, and features; budget inputs accept valid rental values; and native slug normalization validates ASCII slugs without transliteration.
 - Security: Ruby and web audits are clear. Mobile's production gate allows only the two current, unpatched `image-size` advisories inherited through Metro's build-time asset tooling. The narrow exception expires 2026-11-16 and rejects any other high/critical advisory.
 - Routing/tenancy: automated coverage includes browser-host precedence, conflicting native slugs, unknown/inactive tenant rejection, cross-broker profiles, intent, leads, tasks, and showings, platform-admin access, rollback safety, broker-domain notification links, protection against deleting an active brokerage's last active domain, and controlled handling of concurrent primary-domain conflicts. Native API requests now reassert their build-time brokerage slug after caller headers are applied.
+
+The Simulator reports React Native's upstream `SafeAreaView` deprecation warning, and the web build still reports a large Mapbox/application chunk. Neither affects the verified flows or blocks this hardening PR; both belong in the Phase 5 maintainability/performance work.
 
 The authoritative final head SHA, GitHub check state, Greptile score, and review-thread state are recorded on PR #21 because embedding a commit's own SHA inside that same commit is not possible. Phase 1 is complete only when that PR evidence covers the current head with a fresh explicit 5/5 and no unresolved actionable threads.
 

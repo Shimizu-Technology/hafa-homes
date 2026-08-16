@@ -1689,10 +1689,12 @@ function SearchPage() {
   const features = searchParams.get('features') || ''
   const beds = searchParams.get('beds') || ''
   const maxPrice = searchParams.get('max_price') || ''
+  const query = searchParams.get('q') || ''
+  const [searchInput, setSearchInput] = useState(query)
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['listings', kind, village, propertyType, features, beds, maxPrice],
-    queryFn: () => fetchListings({ kind, village, property_type: propertyType, features, beds, max_price: maxPrice }),
+    queryKey: ['listings', kind, village, propertyType, features, beds, maxPrice, query],
+    queryFn: () => fetchListings({ kind, village, property_type: propertyType, features, beds, max_price: maxPrice, q: query }),
   })
   const { data: villagesData } = useQuery({ queryKey: ['villages'], queryFn: fetchVillages })
 
@@ -1705,6 +1707,10 @@ function SearchPage() {
       setViewMode('map')
     }
   }, [])
+
+  useEffect(() => {
+    setSearchInput(query)
+  }, [query])
 
   useEffect(() => {
     const updateMobileMapHeight = () => {
@@ -1749,6 +1755,11 @@ function SearchPage() {
     setParam('features', nextFeatures.join(','))
   }
 
+  function submitSearch(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setParam('q', searchInput.trim())
+  }
+
   function clearMobileFilters() {
     const next = new URLSearchParams(searchParams)
     ;['village', 'property_type', 'beds', 'max_price', 'features'].forEach((key) => next.delete(key))
@@ -1772,6 +1783,9 @@ function SearchPage() {
           }}
           onFilterClick={() => setShowFilters(true)}
           onMenuClick={() => setMobileMenuOpen(true)}
+          searchInput={searchInput}
+          onSearchInputChange={setSearchInput}
+          onSearch={submitSearch}
         />
       </div>
       <MobileFilterSheet
@@ -1795,10 +1809,18 @@ function SearchPage() {
       <section className="relative z-10 mx-auto hidden max-w-7xl px-5 md:-mt-10 md:block">
         <div className="rounded-[2rem] border border-black/5 bg-white p-4 shadow-2xl shadow-[var(--brand-primary)]/10">
           <div className="grid gap-3 lg:grid-cols-[1fr_auto_auto] lg:items-center">
-            <div className="flex items-center gap-3 rounded-2xl border border-[#dce5df] px-4 py-3 text-[#50625e]">
+            <form onSubmit={submitSearch} role="search" className="flex min-w-0 items-center gap-3 rounded-2xl border border-[#dce5df] px-4 py-2 text-[#50625e] focus-within:border-[#0f705e] focus-within:ring-4 focus-within:ring-[#dff3ec]">
               <Search size={18} />
-              <span className="text-sm">Search village, address, base, or feature</span>
-            </div>
+              <input
+                type="search"
+                aria-label="Search listings"
+                value={searchInput}
+                onChange={(event) => setSearchInput(event.target.value)}
+                placeholder="Village, address, base, feature, or listing ID"
+                className="min-w-0 flex-1 bg-transparent text-sm text-[#304942] outline-none placeholder:text-[#66746f]"
+              />
+              <button type="submit" className="rounded-xl bg-[var(--brand-primary)] px-3 py-2 text-xs font-bold text-white">Search</button>
+            </form>
             <select
               value={village}
               onChange={(event) => setParam('village', event.target.value)}
@@ -1935,6 +1957,9 @@ function MobileAppSearchHeader({
   onViewModeChange,
   onFilterClick,
   onMenuClick,
+  searchInput,
+  onSearchInputChange,
+  onSearch,
 }: {
   kind: 'sale' | 'rent'
   viewMode: 'list' | 'map'
@@ -1943,6 +1968,9 @@ function MobileAppSearchHeader({
   onViewModeChange: (value: 'list' | 'map') => void
   onFilterClick: () => void
   onMenuClick: () => void
+  searchInput: string
+  onSearchInputChange: (value: string) => void
+  onSearch: (event: FormEvent<HTMLFormElement>) => void
 }) {
   return (
     <header className="safe-top sticky top-0 z-40 border-b border-white/10 bg-[var(--brand-primary)] text-white shadow-xl shadow-[var(--brand-primary)]/20 md:hidden">
@@ -1953,13 +1981,20 @@ function MobileAppSearchHeader({
             <Menu size={22} />
           </button>
         </div>
-        <div className="mt-3 grid grid-cols-[1fr_auto] gap-2">
-          <div className="flex min-h-11 items-center gap-2 rounded-2xl bg-white px-3 text-[#53645f]">
+        <form onSubmit={onSearch} role="search" className="mt-3 grid grid-cols-[1fr_auto] gap-2">
+          <div className="flex min-h-11 min-w-0 items-center gap-2 rounded-2xl bg-white px-3 text-[#53645f] focus-within:ring-4 focus-within:ring-[#f5c16c]/35">
             <Search size={17} />
-            <span className="text-sm font-semibold">Address, village, or listing ID</span>
+            <input
+              type="search"
+              aria-label="Search listings"
+              value={searchInput}
+              onChange={(event) => onSearchInputChange(event.target.value)}
+              placeholder="Address, village, or listing ID"
+              className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-[#304942] outline-none placeholder:text-[#53645f]"
+            />
           </div>
-          <button className="rounded-2xl bg-[#e99f3e] px-4 text-sm font-bold text-[#25170b]">Save</button>
-        </div>
+          <button type="submit" className="rounded-2xl bg-[#e99f3e] px-4 text-sm font-bold text-[#25170b]">Search</button>
+        </form>
         <div className="mt-2 grid grid-cols-3 gap-2 text-sm font-bold">
           <button onClick={onFilterClick} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-2xl bg-white/10 text-white/86"><SlidersHorizontal size={17} /> Filter</button>
           <button onClick={() => onViewModeChange('map')} className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-2xl ${viewMode === 'map' ? 'bg-white text-[var(--brand-primary)]' : 'bg-white/10 text-white/86'}`}><Map size={17} /> Map</button>
@@ -5877,8 +5912,8 @@ function QualificationFields({ compact = false, defaultBudgetMax, searchProfile 
             {buyerStatusOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
         </label>
-        <Input name="budget_min" label="Budget min" type="number" min="0" step="1000" defaultValue={profileDefault(searchProfile, 'budget_min')} placeholder="450000" />
-        <Input name="budget_max" label="Budget max" type="number" min="0" step="1000" defaultValue={profileDefault(searchProfile, 'budget_max', defaultBudgetMax || '')} placeholder="650000" />
+        <Input name="budget_min" label="Budget min" type="number" min="0" step="any" defaultValue={profileDefault(searchProfile, 'budget_min')} placeholder="450000" />
+        <Input name="budget_max" label="Budget max" type="number" min="0" step="any" defaultValue={profileDefault(searchProfile, 'budget_max', defaultBudgetMax || '')} placeholder="650000" />
         {!compact && <Input name="desired_villages" label="Desired villages" defaultValue={profileDefault(searchProfile, 'desired_villages')} placeholder="Dededo, Yigo, Tamuning" />}
         {!compact && <Input name="desired_beds" label="Desired beds" type="number" min="0" step="1" defaultValue={profileDefault(searchProfile, 'desired_beds')} placeholder="3" />}
         {!compact && <Input name="desired_baths" label="Desired baths" type="number" min="0" step="0.5" defaultValue={profileDefault(searchProfile, 'desired_baths')} placeholder="2" />}

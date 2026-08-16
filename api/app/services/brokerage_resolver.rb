@@ -26,7 +26,10 @@ class BrokerageResolver
     def by_slug(slug)
       return nil if slug.blank?
 
-      Brokerage.active.find_by(slug: slug.to_s.strip.downcase.parameterize)
+      normalized_slug = slug.to_s.b.strip.downcase
+      return nil unless normalized_slug.match?(/\A[a-z0-9]+(?:-[a-z0-9]+)*\z/n)
+
+      Brokerage.active.find_by(slug: normalized_slug.force_encoding(Encoding::UTF_8))
     end
 
     def by_hosts(hosts)
