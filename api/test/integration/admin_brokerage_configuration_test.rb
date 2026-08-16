@@ -33,4 +33,21 @@ class AdminBrokerageConfigurationTest < ActionDispatch::IntegrationTest
     assert_response :created
     assert_not first_domain.reload.primary?
   end
+
+  test "platform admin cannot delete an active brokerage's last active domain" do
+    first_domain = BrokerageDomain.create!(brokerage: @brokerage, hostname: "alpha.test", primary: true)
+
+    with_clerk_auth { delete "/api/v1/admin/brokerage_domains/#{first_domain.id}", headers: @headers }
+
+    assert_response :unprocessable_entity
+    assert BrokerageDomain.exists?(first_domain.id)
+    assert_includes response.parsed_body.fetch("errors").first, "last active domain"
+
+    BrokerageDomain.create!(brokerage: @brokerage, hostname: "search.alpha.test")
+
+    with_clerk_auth { delete "/api/v1/admin/brokerage_domains/#{first_domain.id}", headers: @headers }
+
+    assert_response :no_content
+    assert_not BrokerageDomain.exists?(first_domain.id)
+  end
 end

@@ -24,7 +24,16 @@ module Api
         end
 
         def destroy
-          @domain.destroy!
+          @domain.brokerage.with_lock do
+            if last_active_domain?
+              render json: { errors: [ "Deactivate the brokerage or add another active domain before deleting its last active domain" ] },
+                status: :unprocessable_entity
+              return
+            end
+
+            @domain.destroy!
+          end
+
           head :no_content
         end
 
@@ -32,6 +41,12 @@ module Api
 
         def set_domain
           @domain = BrokerageDomain.find(params[:id])
+        end
+
+        def last_active_domain?
+          @domain.status == "active" &&
+            @domain.brokerage.status == "active" &&
+            !BrokerageDomain.active.where(brokerage_id: @domain.brokerage_id).where.not(id: @domain.id).exists?
         end
 
         def persist_domain(domain, status: :ok)

@@ -267,12 +267,12 @@ The central risk is no longer whether Hafa Homes can be built. It can. The risk 
 
 Local Phase 1 verification completed on 2026-08-16:
 
-- API: 26 tests and 98 assertions passed; Zeitwerk, RuboCop, Brakeman, Bundler Audit, and the seeded runtime smoke script passed.
+- API: 27 tests and 104 assertions passed; Zeitwerk, RuboCop, Brakeman, Bundler Audit, and the seeded runtime smoke script passed.
 - Web: lint, four Vitest assertions, production build, and the high-severity production dependency audit passed. The build still reports the documented large-bundle warning, which belongs to Phase 5.
 - Mobile: TypeScript, Expo Doctor (21/21), the production dependency gate, and Hermes exports for both iOS and Android passed on Node 22.22.3 and Expo SDK 57.
 - Runtime/browser: desktop and 390-pixel mobile layouts were exercised against the local Rails API, including sale/rent inventory, listing detail, Local Intel, map clusters, agent directory, and public lead submission. No browser console errors or horizontal overflow remained, and the synthetic lead was removed afterward.
 - Security: Ruby and web audits are clear. Mobile's production gate allows only the two current, unpatched `image-size` advisories inherited through Metro's build-time asset tooling. The narrow exception expires 2026-11-16 and rejects any other high/critical advisory.
-- Routing/tenancy: automated coverage includes browser-host precedence, conflicting native slugs, unknown/inactive tenant rejection, cross-broker profiles, intent, leads, tasks, and showings, platform-admin access, rollback safety, and broker-domain notification links.
+- Routing/tenancy: automated coverage includes browser-host precedence, conflicting native slugs, unknown/inactive tenant rejection, cross-broker profiles, intent, leads, tasks, and showings, platform-admin access, rollback safety, broker-domain notification links, and protection against deleting an active brokerage's last active domain. Native API requests now reassert their build-time brokerage slug after caller headers are applied.
 
 The authoritative final head SHA, GitHub check state, Greptile score, and review-thread state are recorded on PR #21 because embedding a commit's own SHA inside that same commit is not possible. Phase 1 is complete only when that PR evidence covers the current head with a fresh explicit 5/5 and no unresolved actionable threads.
 
