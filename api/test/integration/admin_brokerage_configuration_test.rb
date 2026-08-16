@@ -50,4 +50,27 @@ class AdminBrokerageConfigurationTest < ActionDispatch::IntegrationTest
     assert_response :no_content
     assert_not BrokerageDomain.exists?(first_domain.id)
   end
+
+  test "a concurrent domain uniqueness conflict returns a controlled error" do
+    conflicting_domain = BrokerageDomain.new(brokerage: @brokerage, hostname: "alpha.test", primary: true)
+    conflicting_domain.define_singleton_method(:save!) do
+      raise ActiveRecord::RecordNotUnique, "simulated concurrent primary-domain conflict"
+    end
+
+    original_new = BrokerageDomain.method(:new)
+    BrokerageDomain.define_singleton_method(:new) { |*, **| conflicting_domain }
+
+    begin
+      with_clerk_auth do
+        post "/api/v1/admin/brokerage_domains",
+          headers: @headers,
+          params: { brokerage_domain: { brokerage_id: @brokerage.id, hostname: "alpha.test", primary: true } }
+      end
+    ensure
+      BrokerageDomain.define_singleton_method(:new, original_new)
+    end
+
+    assert_response :unprocessable_entity
+    assert_includes response.parsed_body.fetch("errors").first, "changed concurrently"
+  end
 end

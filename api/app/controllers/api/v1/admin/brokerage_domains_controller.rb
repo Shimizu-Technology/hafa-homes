@@ -51,6 +51,10 @@ module Api
 
         def persist_domain(domain, status: :ok)
           BrokerageDomain.transaction do
+            # Serialize primary-domain changes per brokerage so concurrent
+            # admins cannot race the partial unique index.
+            domain.brokerage&.lock!
+
             if domain.primary?
               BrokerageDomain.where(brokerage_id: domain.brokerage_id, primary: true).where.not(id: domain.id).update_all(primary: false, updated_at: Time.current)
             end
@@ -60,6 +64,8 @@ module Api
           render json: { brokerage_domain: domain.as_api_json }, status: status
         rescue ActiveRecord::RecordInvalid => e
           render json: { errors: e.record.errors.full_messages }, status: :unprocessable_entity
+        rescue ActiveRecord::RecordNotUnique
+          render json: { errors: [ "Domain configuration changed concurrently; reload and try again" ] }, status: :unprocessable_entity
         end
 
         def domain_params
