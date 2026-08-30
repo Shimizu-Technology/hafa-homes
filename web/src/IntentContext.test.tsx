@@ -118,7 +118,7 @@ describe('staff intent operational context', () => {
     await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/admin/intent?status=converted&identity=signed_in&sort=views_desc'))
   })
 
-  it('removes non-decimal and unsafe intent page values before querying', async () => {
+  it('removes non-decimal intent page values before querying', async () => {
     const intentRequestUrls: string[] = []
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input)
@@ -134,6 +134,25 @@ describe('staff intent operational context', () => {
 
     await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/admin/intent'))
     expect(intentRequestUrls.every((url) => !url.includes('page=100'))).toBe(true)
+    expect(intentRequestUrls.at(-1)).toContain('page=1')
+  })
+
+  it('removes intent page values outside JavaScript safe integer range before querying', async () => {
+    const intentRequestUrls: string[] = []
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes('/api/v1/admin/lead_intent_sessions')) {
+        intentRequestUrls.push(url)
+        return response(intentPayload)
+      }
+      if (url.includes('/api/v1/admin/brokerages')) return response({ brokerages: [] })
+      return response({})
+    }))
+
+    renderRoute(<AdminIntentPage />, '/admin/intent?page=9007199254740992', '/admin/intent')
+
+    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/admin/intent'))
+    expect(intentRequestUrls.every((url) => !url.includes('page=9007199254740992'))).toBe(true)
     expect(intentRequestUrls.at(-1)).toContain('page=1')
   })
 
