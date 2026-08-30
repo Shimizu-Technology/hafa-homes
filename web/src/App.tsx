@@ -46,6 +46,7 @@ import {
 import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query'
 import { apiFetch, authHeaders } from './lib/api'
 import { routes, safeInternalPath as safeReturnPath } from './lib/routes'
+import { datetimeLocalValue, zonedDateTimeToIso } from './lib/dateTime'
 import { useAuthContext } from './contexts/AuthContext'
 import type { Brokerage } from './contexts/BrokerageContext'
 import { groupListingsByVillage } from './lib/mapClusters'
@@ -426,9 +427,11 @@ type ShowingAppointment = {
   internal_notes?: string
   created_at: string
   updated_at?: string
+  lead?: Pick<Lead, 'id' | 'lead_type' | 'name' | 'email' | 'phone' | 'status'> | null
   listing?: { id: number; title: string; address?: string; price?: number; listing_kind?: 'sale' | 'rent'; village?: string; primary_photo_url?: string } | null
   brokerage?: Brokerage | null
   agent?: Agent | null
+  created_by?: Pick<CurrentUser, 'id' | 'full_name' | 'email' | 'role'> | null
 }
 
 type LeadIntentSummary = {
@@ -587,6 +590,7 @@ type LeadActivitiesPageResponse = { lead_activities: LeadActivity[]; pagination:
 type MyLeadsResponse = { leads: Lead[]; pagination: PaginationMeta }
 type MyLeadResponse = { lead: Lead }
 type ShowingAppointmentsResponse = { showing_appointments: ShowingAppointment[]; pagination: PaginationMeta }
+type ShowingAppointmentResponse = { showing_appointment: ShowingAppointment }
 type AdminDashboardResponse = {
   metrics: { total_open_leads: number; new_leads: number; unassigned_leads: number; upcoming_showings: number; overdue_followups: number }
   recent_leads: Lead[]
@@ -886,6 +890,12 @@ async function fetchAdminLeadIntentSessions(params: { status?: string; identity?
 async function fetchShowingAppointments(page = 1): Promise<ShowingAppointmentsResponse> {
   const response = await apiFetch(`${API_URL}/api/v1/showing_appointments?page=${page}&per_page=25`, { headers: await authHeaders() })
   if (!response.ok) throw new Error('Unable to load showing schedule')
+  return response.json()
+}
+
+async function fetchShowingAppointment(id: string): Promise<ShowingAppointmentResponse> {
+  const response = await apiFetch(`${API_URL}/api/v1/showing_appointments/${encodeURIComponent(id)}`, { headers: await authHeaders() })
+  if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to load this showing'), response.status)
   return response.json()
 }
 
@@ -1411,6 +1421,7 @@ function App() {
         <Route path="/admin/intent" element={<RequireStaff><AdminIntentPage /></RequireStaff>} />
         <Route path="/admin/leads/:id" element={<RequireStaff><LeadDetailPage /></RequireStaff>} />
         <Route path="/admin/showings" element={<RequireStaff><AdminShowingsPage /></RequireStaff>} />
+        <Route path="/admin/showings/:id" element={<RequireStaff><ShowingDetailPage /></RequireStaff>} />
         <Route path="/admin/users" element={<RequireStaff><AdminUsersPage /></RequireStaff>} />
         <Route path="/admin/audit" element={<RequireStaff><AdminAuditPage /></RequireStaff>} />
         <Route path="*" element={<NotFoundPage />} />
@@ -2271,7 +2282,9 @@ function ListingDetailPage() {
   const listingBackPath = fromAdmin ? adminBackPath : safeReturnPath(detailParams.get('return_to'), '/')
   const listingBackLabel = fromAdmin
     ? 'Back to lead'
-    : listingBackPath.startsWith('/account/requests/')
+    : listingBackPath.startsWith('/admin/showings/')
+      ? 'Back to showing'
+      : listingBackPath.startsWith('/account/requests/')
       ? 'Back to request'
       : listingBackPath.startsWith('/account/requests')
         ? 'Back to requests'
@@ -4341,9 +4354,9 @@ function LeadCompactRow({ lead }: { lead: Lead }) {
 
 function ShowingCompactRow({ showing }: { showing: ShowingAppointment }) {
   return (
-    <Link to={`/admin/leads/${showing.lead_id}`} className="block rounded-2xl bg-[#f6f1e8] p-4 transition hover:bg-[#efe6d7]">
+    <Link to={routes.adminShowing(showing.id, '/admin')} className="block rounded-2xl bg-[#f6f1e8] p-4 transition hover:bg-[#efe6d7]">
       <p className="text-sm font-bold text-[#17211f]">{showing.listing?.title ?? 'Showing appointment'}</p>
-      <p className="mt-1 text-xs font-semibold text-[#66746f]">{formatDateTime(showing.scheduled_starts_at)} · {showing.agent?.name ?? 'Unassigned agent'}</p>
+      <p className="mt-1 text-xs font-semibold text-[#66746f]">{formatDateTime(showing.scheduled_starts_at, showing.timezone)} · {showing.agent?.name ?? 'Unassigned agent'}</p>
     </Link>
   )
 }
@@ -4491,6 +4504,9 @@ function LeadsPage() {
 function LeadDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const returnPath = safeReturnPath(searchParams.get('return_to'), '/admin/leads')
+  const leadReturnLabel = returnPath.startsWith('/admin/showings/') ? 'Back to showing' : returnPath.startsWith('/admin/showings') ? 'Back to showings' : 'Back to leads'
   const { data, isLoading, isError, refetch } = useQuery({ queryKey: ['lead', id], queryFn: () => fetchLead(id || ''), enabled: Boolean(id) })
   const mutation = useMutation({
     mutationFn: (payload: LeadUpdatePayload) => updateLead(data!.lead.id, payload),
@@ -4526,7 +4542,7 @@ function LeadDetailPage() {
   return (
     <AdminShell>
       <section className="mx-auto max-w-7xl px-4 pb-10 pt-6 sm:px-5">
-        <button onClick={() => navigate('/admin/leads')} className="mb-6 inline-flex min-h-11 items-center gap-2 rounded-full bg-white px-5 text-sm font-bold text-[#304942]"><ArrowLeft size={16} /> Back to leads</button>
+        <button onClick={() => navigate(returnPath)} className="mb-6 inline-flex min-h-11 items-center gap-2 rounded-full bg-white px-5 text-sm font-bold text-[#304942]"><ArrowLeft size={16} /> {leadReturnLabel}</button>
         {isLoading && <StateCard>Loading lead...</StateCard>}
         {isError && <StateCard tone="error">Unable to load this lead.</StateCard>}
         {mutation.isError && <StateCard tone="error">{displayErrorMessage(mutation.error, 'Unable to update lead right now.')}</StateCard>}
@@ -5562,28 +5578,21 @@ function LeadNotificationPanel({ lead, mutation }: { lead: Lead; mutation: Notif
   )
 }
 
-function datetimeLocalValue(value?: string) {
-  if (!value) return ''
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return ''
-  const offset = date.getTimezoneOffset()
-  const local = new Date(date.getTime() - offset * 60 * 1000)
-  return local.toISOString().slice(0, 16)
-}
-
 function ShowingScheduler({ lead, assignableAgents, mutation }: { lead: Lead; assignableAgents: Agent[]; mutation: ShowingMutation }) {
   const showing = lead.latest_showing_appointment ?? lead.showing_appointments?.[0] ?? null
+  const effectiveTimezone = showing?.timezone || 'Pacific/Guam'
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const form = new FormData(event.currentTarget)
+    const timezone = String(form.get('timezone') || effectiveTimezone)
     const payload: Partial<ShowingAppointment> & { lead_id: number; id?: number } = {
       lead_id: lead.id,
       id: showing?.id,
       agent_id: form.get('agent_id') ? Number(form.get('agent_id')) : null,
-      scheduled_starts_at: String(form.get('scheduled_starts_at') || ''),
-      scheduled_ends_at: String(form.get('scheduled_ends_at') || ''),
-      timezone: String(form.get('timezone') || 'Pacific/Guam'),
+      scheduled_starts_at: zonedDateTimeToIso(String(form.get('scheduled_starts_at') || ''), timezone, showing?.scheduled_starts_at),
+      scheduled_ends_at: zonedDateTimeToIso(String(form.get('scheduled_ends_at') || ''), timezone, showing?.scheduled_ends_at),
+      timezone,
       tour_type: String(form.get('tour_type') || 'in_person') as ShowingAppointment['tour_type'],
       status: String(form.get('status') || 'proposed') as ShowingAppointment['status'],
       location: String(form.get('location') || ''),
@@ -5599,9 +5608,10 @@ function ShowingScheduler({ lead, assignableAgents, mutation }: { lead: Lead; as
       <p className="mt-5 text-xs font-bold uppercase tracking-[0.2em] text-[#7b8a84]">Showing schedule</p>
       <h2 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">{showing ? 'Update appointment' : 'Schedule appointment'}</h2>
       {showing && (
-        <p className="mt-2 rounded-2xl bg-[#e9f5ef] p-3 text-sm font-semibold text-[var(--brand-primary)]">
-          Current: {formatDateTime(showing.scheduled_starts_at)} · {showing.status.replaceAll('_', ' ')} · {showing.agent?.name ?? 'Unassigned agent'}
-        </p>
+        <div className="mt-2 rounded-2xl bg-[#e9f5ef] p-3 text-sm font-semibold text-[var(--brand-primary)]">
+          <p>Current: {formatDateTime(showing.scheduled_starts_at, showing.timezone)} · {showing.status.replaceAll('_', ' ')} · {showing.agent?.name ?? 'Unassigned agent'}</p>
+          <Link to={routes.adminShowing(showing.id, `/admin/leads/${lead.id}`)} className="mt-2 inline-flex items-center gap-1 text-xs font-black uppercase tracking-[0.12em]">Open showing record <ChevronRight size={14} /></Link>
+        </div>
       )}
       <form onSubmit={handleSubmit} className="mt-5 grid gap-3">
         <label className="grid gap-2 text-sm font-semibold text-[#304942]">
@@ -5612,8 +5622,8 @@ function ShowingScheduler({ lead, assignableAgents, mutation }: { lead: Lead; as
           </select>
         </label>
         <div className="grid gap-3 2xl:grid-cols-2">
-          <Input name="scheduled_starts_at" label="Starts" type="datetime-local" defaultValue={datetimeLocalValue(showing?.scheduled_starts_at)} required />
-          <Input name="scheduled_ends_at" label="Ends" type="datetime-local" defaultValue={datetimeLocalValue(showing?.scheduled_ends_at)} />
+          <Input name="scheduled_starts_at" label={`Starts (${effectiveTimezone})`} type="datetime-local" defaultValue={datetimeLocalValue(showing?.scheduled_starts_at, effectiveTimezone)} required />
+          <Input name="scheduled_ends_at" label={`Ends (${effectiveTimezone})`} type="datetime-local" defaultValue={datetimeLocalValue(showing?.scheduled_ends_at, effectiveTimezone)} />
         </div>
         <div className="grid gap-3 2xl:grid-cols-2">
           <label className="grid gap-2 text-sm font-semibold text-[#304942]">
@@ -5634,7 +5644,7 @@ function ShowingScheduler({ lead, assignableAgents, mutation }: { lead: Lead; as
             </select>
           </label>
         </div>
-        <input type="hidden" name="timezone" value="Pacific/Guam" />
+        <input type="hidden" name="timezone" value={effectiveTimezone} />
         <Input name="location" label="Location or meeting point" defaultValue={showing?.location || lead.listing?.address || ''} />
         <label className="grid gap-2 text-sm font-semibold text-[#304942]">
           Notes for customer
@@ -5654,9 +5664,20 @@ function ShowingScheduler({ lead, assignableAgents, mutation }: { lead: Lead; as
 }
 
 function AdminShowingsPage() {
-  const [page, setPage] = useState(1)
-  const { data, isLoading, isError } = useQuery({ queryKey: ['showing-appointments', page], queryFn: () => fetchShowingAppointments(page), placeholderData: keepPreviousData })
+  const { userId } = useAuthContext()
+  const location = useLocation()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const requestedPage = Number(searchParams.get('page') || '1')
+  const page = Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1
+  const { data, isLoading, isError } = useQuery({ queryKey: ['showing-appointments', userId, page], queryFn: () => fetchShowingAppointments(page), placeholderData: keepPreviousData })
   const showings = data?.showing_appointments ?? []
+
+  function selectPage(nextPage: number) {
+    const next = new URLSearchParams(searchParams)
+    if (nextPage <= 1) next.delete('page')
+    else next.set('page', String(nextPage))
+    setSearchParams(next)
+  }
 
   return (
     <AdminShell kicker="Showings" title="Showing schedule">
@@ -5665,12 +5686,12 @@ function AdminShowingsPage() {
         {isError && <StateCard tone="error">Unable to load showings.</StateCard>}
         <div className="grid gap-4">
           {showings.map((showing) => (
-            <Link key={showing.id} to={`/admin/leads/${showing.lead_id}`} className="rounded-[1.75rem] bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[var(--brand-primary)]/10 sm:rounded-[2rem] sm:p-5">
+            <Link key={showing.id} to={routes.adminShowing(showing.id, `${location.pathname}${location.search}`)} className="rounded-[1.75rem] bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[var(--brand-primary)]/10 sm:rounded-[2rem] sm:p-5">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
                   <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#0f705e]">{showing.status.replaceAll('_', ' ')}</p>
                   <h2 className="mt-2 text-xl font-semibold tracking-[-0.04em] sm:text-2xl">{showing.listing?.title ?? 'Showing appointment'}</h2>
-                  <p className="mt-2 text-sm font-semibold text-[#66746f]">{formatDateTime(showing.scheduled_starts_at)} · {showing.tour_type.replaceAll('_', ' ')}</p>
+                  <p className="mt-2 text-sm font-semibold text-[#66746f]">{formatDateTime(showing.scheduled_starts_at, showing.timezone)} · {showing.tour_type.replaceAll('_', ' ')}</p>
                 </div>
                 <span className="rounded-full bg-[#f6f1e8] px-4 py-2 text-sm font-bold text-[var(--brand-primary)]">{showing.agent?.name ?? 'Unassigned'}</span>
               </div>
@@ -5682,9 +5703,110 @@ function AdminShowingsPage() {
         </div>
         {data?.pagination && data.pagination.total_pages > 1 && (
           <div className="mt-5 rounded-[1.5rem] bg-white p-4 shadow-sm">
-            <PaginationControls pagination={data.pagination} onPageChange={setPage} />
+            <PaginationControls pagination={data.pagination} onPageChange={selectPage} />
           </div>
         )}
+      </section>
+    </AdminShell>
+  )
+}
+
+export function ShowingDetailPage() {
+  const { id = '' } = useParams()
+  const { userId } = useAuthContext()
+  const [searchParams] = useSearchParams()
+  const returnPath = safeReturnPath(searchParams.get('return_to'), '/admin/showings')
+  const returnLabel = returnPath === '/admin' ? 'Back to dashboard' : returnPath.startsWith('/admin/leads/') ? 'Back to lead' : 'Back to showing schedule'
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['showing-appointment', userId, id],
+    queryFn: () => fetchShowingAppointment(id),
+    enabled: Boolean(id),
+    retry: (attempts, showingError) => !(showingError instanceof ApiFetchError && showingError.status === 404) && attempts < 2,
+  })
+
+  if (isLoading) return <AdminShell><section className="mx-auto max-w-7xl px-4 py-10 sm:px-5"><StateCard>Loading showing...</StateCard></section></AdminShell>
+
+  if (error || !data?.showing_appointment) {
+    const notFound = error instanceof ApiFetchError && error.status === 404
+    return (
+      <AdminShell>
+        <section className="mx-auto max-w-7xl px-4 py-10 sm:px-5">
+          <Link to={returnPath} className="mb-6 inline-flex min-h-11 items-center gap-2 rounded-full bg-white px-5 text-sm font-bold text-[#304942] shadow-sm"><ArrowLeft size={16} /> {returnLabel}</Link>
+          <StateCard tone="error">{notFound ? 'This showing is not available in your staff workspace.' : displayErrorMessage(error, 'Unable to load this showing.')}</StateCard>
+        </section>
+      </AdminShell>
+    )
+  }
+
+  const showing = data.showing_appointment
+  const showingPath = routes.adminShowing(showing.id, returnPath)
+  const leadPath = routes.adminLead(showing.lead_id, showingPath)
+  const listingPath = showing.listing ? routes.listing(showing.listing.id, showingPath) : null
+
+  return (
+    <AdminShell>
+      <section className="mx-auto max-w-7xl px-4 pb-12 pt-6 sm:px-5">
+        <Link to={returnPath} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-white px-5 text-sm font-bold text-[#304942] shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"><ArrowLeft size={16} /> {returnLabel}</Link>
+
+        <header className="relative mt-5 overflow-hidden rounded-[2.25rem] bg-[var(--brand-primary)] p-6 text-white shadow-2xl shadow-[var(--brand-primary)]/20 md:p-9">
+          <div className="absolute -right-16 -top-20 h-64 w-64 rounded-full bg-[#f5c16c]/15 blur-3xl" />
+          <div className="relative flex flex-col gap-7 md:flex-row md:items-end md:justify-between">
+            <div className="max-w-3xl">
+              <p className="text-xs font-bold uppercase tracking-[0.2em] text-white/58">Showing #{showing.id}</p>
+              <h1 className="mt-4 text-3xl font-semibold leading-tight tracking-[-0.05em] md:text-5xl">{showing.listing?.title ?? `Appointment for ${showing.lead?.name ?? 'customer'}`}</h1>
+              <p className="mt-4 text-base leading-7 text-white/72">{formatDateTime(showing.scheduled_starts_at, showing.timezone)}{showing.scheduled_ends_at ? ` to ${formatDateTime(showing.scheduled_ends_at, showing.timezone)}` : ''}</p>
+            </div>
+            <span className="w-fit rounded-2xl bg-white/10 px-5 py-4 text-lg font-semibold capitalize backdrop-blur-sm">{showing.status.replaceAll('_', ' ')}</span>
+          </div>
+        </header>
+
+        <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="grid gap-6">
+            <section className="rounded-[2rem] bg-white p-6 shadow-sm md:p-7">
+              <div className="flex items-center gap-3"><div className="grid h-11 w-11 place-items-center rounded-2xl bg-[#e9f5ef] text-[#0f705e]"><Clock3 size={21} /></div><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#7b8a84]">Appointment record</p><h2 className="mt-1 text-2xl font-semibold tracking-[-0.04em]">Schedule and coordination</h2></div></div>
+              <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <LeadMeta icon={<Clock3 size={16} />} label="Starts" value={formatDateTime(showing.scheduled_starts_at, showing.timezone)} />
+                <LeadMeta icon={<Clock3 size={16} />} label="Ends" value={showing.scheduled_ends_at ? formatDateTime(showing.scheduled_ends_at, showing.timezone) : 'Not recorded'} />
+                <LeadMeta icon={<MapPin size={16} />} label="Tour" value={`${showing.tour_type.replaceAll('_', ' ')} · ${showing.timezone}`} />
+              </div>
+              {showing.location && <p className="mt-4 flex items-start gap-2 rounded-2xl bg-[#f6f1e8] p-4 text-sm font-semibold text-[#304942]"><MapPin className="mt-0.5 shrink-0 text-[#0f705e]" size={16} /> {showing.location}</p>}
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
+                <div className="rounded-2xl border border-[#e3e9e5] p-4"><p className="text-xs font-bold uppercase tracking-[0.16em] text-[#0f705e]">Customer-visible notes</p><p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[#53645f]">{showing.consumer_notes || 'No customer note recorded.'}</p></div>
+                <div className="rounded-2xl border border-[#e3e9e5] p-4"><p className="text-xs font-bold uppercase tracking-[0.16em] text-[#7b8a84]">Internal staff notes</p><p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[#53645f]">{showing.internal_notes || 'No internal note recorded.'}</p></div>
+              </div>
+            </section>
+
+            {showing.listing && listingPath && (
+              <article className="overflow-hidden rounded-[2rem] bg-white shadow-sm md:grid md:grid-cols-[240px_1fr]">
+                <Link to={listingPath} className="group block overflow-hidden"><img src={showing.listing.primary_photo_url || FALLBACK_LISTING_IMAGE} alt="" className="h-56 w-full object-cover transition duration-700 group-hover:scale-105 md:h-full" /></Link>
+                <div className="p-6"><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#0f705e]">Related listing</p><h2 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">{showing.listing.title}</h2>{showing.listing.address && <p className="mt-2 text-sm font-semibold text-[#66746f]">{showing.listing.address}{showing.listing.village ? ` · ${showing.listing.village}` : ''}</p>}<Link to={listingPath} className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-full border border-[#d7ded9] px-5 text-sm font-bold text-[var(--brand-primary)]">Open listing <ChevronRight size={16} /></Link></div>
+              </article>
+            )}
+          </div>
+
+          <aside className="grid content-start gap-5 lg:sticky lg:top-6">
+            <section className="rounded-[2rem] bg-white p-6 shadow-sm">
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#7b8a84]">Connected customer</p>
+              <h2 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">{showing.lead?.name ?? `Lead #${showing.lead_id}`}</h2>
+              <div className="mt-4 grid gap-2 text-sm text-[#53645f]">
+                {showing.lead?.email && <p className="flex items-center gap-2"><Mail size={15} /> {showing.lead.email}</p>}
+                {showing.lead?.phone && <p className="flex items-center gap-2"><Phone size={15} /> {showing.lead.phone}</p>}
+                <p className="capitalize">{leadTypeLabel(showing.lead?.lead_type)} · {showing.lead?.status?.replaceAll('_', ' ') || 'Open'}</p>
+              </div>
+              <Link to={leadPath} className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-full bg-[var(--brand-primary)] px-5 text-sm font-bold text-white">Open lead workspace <ChevronRight size={16} /></Link>
+            </section>
+
+            <section className="rounded-[2rem] bg-[#101f1c] p-6 text-white shadow-xl shadow-[var(--brand-primary)]/15">
+              <UsersRound className="text-[#f5c16c]" size={24} />
+              <h2 className="mt-4 text-xl font-semibold">Coordination team</h2>
+              <div className="mt-4 grid gap-3 text-sm leading-6 text-white/70">
+                <p><span className="block text-xs font-bold uppercase tracking-[0.14em] text-white/42">Assigned agent</span>{showing.agent?.name ?? 'Unassigned'}</p>
+                <p><span className="block text-xs font-bold uppercase tracking-[0.14em] text-white/42">Brokerage</span>{showing.brokerage?.name ?? 'Not recorded'}</p>
+                <p><span className="block text-xs font-bold uppercase tracking-[0.14em] text-white/42">Created by</span>{showing.created_by?.full_name ?? 'Not recorded'}</p>
+              </div>
+            </section>
+          </aside>
+        </div>
       </section>
     </AdminShell>
   )

@@ -57,13 +57,23 @@ The consumer projection does not include staff notes, internal showing notes, de
 - Incoming link handling ignores stale asynchronous listing results after a newer link or navigation target takes precedence.
 - Mobile CI exercises exact request/listing targets, both custom-scheme path forms, request-vs-account routing order, navigation-generation invalidation, and per-request remount keys.
 
+## Implemented staff slice
+
+### Staff showing slice
+
+- Staff showing: `/admin/showings/:id`, authorized through the existing brokerage-and-assignment-aware staff showing scope.
+- The schedule and dashboard link to the exact showing. Schedule pagination is URL-backed and preserved as return context.
+- The record separates customer-visible notes from internal notes and presents the appointment timezone, coordination roles, customer summary, and related listing.
+- The lead scheduler renders existing datetime inputs in the appointment's saved timezone and preserves that timezone on update.
+- Related lead and listing links carry a validated return path to the exact showing; the lead workspace honors that return path.
+- Only the exact staff detail serializer adds a bounded lead summary; collection and consumer projections never construct that nested PII. The consumer serializer also removes internal notes and creator data.
+
 ## Planned slices
 
-1. Stable staff showing records with reciprocal lead and listing journeys.
-2. URL-backed non-PII operational filters and safe return context in the CRM.
-3. A brokerage-scoped customer workspace that joins the customer's authorized requests and profile context without crossing brokerage boundaries.
-4. A storefront-scoped public agent record, linked only when the agent belongs to the active routing brokerage.
-5. Bounded related-record summaries with separately pageable collections as volume grows.
+1. URL-backed non-PII operational filters and safe return context in the CRM.
+2. A brokerage-scoped customer workspace that joins the customer's authorized requests and profile context without crossing brokerage boundaries.
+3. A storefront-scoped public agent record, linked only when the agent belongs to the active routing brokerage.
+4. Bounded related-record summaries with separately pageable collections as volume grows.
 
 ## Deliberate deferrals
 
