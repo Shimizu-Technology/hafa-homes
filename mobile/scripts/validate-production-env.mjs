@@ -1,11 +1,16 @@
 const PRIVATE_HOST_PATTERNS = [
   /^localhost$/i,
+  /\.localhost$/i,
   /^127\./,
   /^0\.0\.0\.0$/,
-  /^::1$/,
+  /^\[?::1\]?$/,
   /^10\./,
+  /^100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./,
+  /^169\.254\./,
   /^192\.168\./,
   /^172\.(?:1[6-9]|2\d|3[01])\./,
+  /^\[?f[cd][0-9a-f]{2}:/i,
+  /^\[?fe[89ab][0-9a-f]:/i,
   /\.local$/i,
 ]
 
@@ -19,6 +24,7 @@ export function productionEnvironmentErrors(env) {
       const parsed = new URL(apiUrl)
       if (parsed.protocol !== 'https:') errors.push('EXPO_PUBLIC_API_URL must use HTTPS')
       if (parsed.username || parsed.password) errors.push('EXPO_PUBLIC_API_URL must not contain credentials')
+      if (!['', '/'].includes(parsed.pathname) || parsed.search || parsed.hash) errors.push('EXPO_PUBLIC_API_URL must be an origin without a path, query, or fragment')
       if (PRIVATE_HOST_PATTERNS.some((pattern) => pattern.test(parsed.hostname))) errors.push('EXPO_PUBLIC_API_URL must use a public production host')
     } catch {
       errors.push('EXPO_PUBLIC_API_URL must be a valid absolute URL')

@@ -33,4 +33,18 @@ describe('production mobile environment validation', () => {
       'EXPO_PUBLIC_MAPBOX_TOKEN must be a public Mapbox token',
     ]))
   })
+
+  it('rejects API base paths and non-public network ranges', () => {
+    for (const apiUrl of [
+      'https://api.example.com/base',
+      'https://api.example.com/?tenant=alpha',
+      'https://api.example.com/#config',
+      'https://169.254.169.254',
+      'https://100.64.0.1',
+      'https://[::1]',
+      'https://service.localhost',
+    ]) {
+      expect(productionEnvironmentErrors({ ...valid, EXPO_PUBLIC_API_URL: apiUrl }).some((error) => error.includes('API_URL'))).toBe(true)
+    }
+  })
 })
