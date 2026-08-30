@@ -313,6 +313,7 @@ type Listing = {
 type ListingsResponse = { listings: Listing[] }
 type ListingResponse = { listing: Listing }
 type VillagesResponse = { villages: Village[] }
+type VillageResponse = { village: Village }
 type AgentsResponse = { agents: Agent[] }
 type AgentDetailResponse = { agent: Agent; attributed_listings: Listing[]; pagination: PaginationMeta }
 type SyncRun = {
@@ -810,6 +811,12 @@ async function fetchListing(id: string): Promise<ListingResponse> {
 async function fetchVillages(): Promise<VillagesResponse> {
   const response = await apiFetch(`${API_URL}/api/v1/villages`)
   if (!response.ok) throw new Error('Unable to load villages')
+  return response.json()
+}
+
+async function fetchVillage(slug: string): Promise<VillageResponse> {
+  const response = await apiFetch(`${API_URL}/api/v1/villages/${encodeURIComponent(slug)}`)
+  if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to load this village'), response.status)
   return response.json()
 }
 
@@ -1747,10 +1754,9 @@ function NotFoundPage() {
   )
 }
 
-function SearchPage() {
+export function SearchPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [showFilters, setShowFilters] = useState(false)
-  const [viewMode, setViewMode] = useState<'list' | 'map'>('list')
   const [saveSearchOpen, setSaveSearchOpen] = useState(false)
   const [fullMapOpen, setFullMapOpen] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
@@ -1763,6 +1769,9 @@ function SearchPage() {
   const beds = searchParams.get('beds') || ''
   const maxPrice = searchParams.get('max_price') || ''
   const query = searchParams.get('q') || ''
+  const viewParam = searchParams.get('view')
+  const viewMode: 'list' | 'map' = viewParam === 'map' ? 'map' : 'list'
+  const searchReturnPath = routes.search(searchParams)
   const [searchInput, setSearchInput] = useState(query)
 
   const { data, isLoading, isError } = useQuery({
@@ -1776,10 +1785,12 @@ function SearchPage() {
   const featureList = features ? features.split(',').filter(Boolean) : []
 
   useEffect(() => {
-    if (window.matchMedia('(max-width: 767px)').matches) {
-      setViewMode('map')
-    }
-  }, [])
+    if (viewParam === 'list' || viewParam === 'map') return
+
+    const next = new URLSearchParams(searchParams)
+    next.set('view', window.matchMedia('(max-width: 767px)').matches ? 'map' : 'list')
+    setSearchParams(next, { replace: true })
+  }, [searchParams, setSearchParams, viewParam])
 
   useEffect(() => {
     setSearchInput(query)
@@ -1821,6 +1832,14 @@ function SearchPage() {
     recordLeadIntentEvent('search_filter_changed', { source: 'web', metadata: { filter: key, value: value || '', listing_kind: kind, surface: 'search_page' } })
   }
 
+  function changeViewMode(value: 'list' | 'map', surface: string) {
+    const next = new URLSearchParams(searchParams)
+    next.set('view', value)
+    setSearchParams(next)
+    captureAnalyticsEvent('search_view_changed', { view_mode: value, surface })
+    recordLeadIntentEvent('search_view_changed', { source: 'web', metadata: { view_mode: value, surface } })
+  }
+
   function toggleFeature(slug: string) {
     const nextFeatures = featureList.includes(slug)
       ? featureList.filter((item) => item !== slug)
@@ -1849,11 +1868,7 @@ function SearchPage() {
           viewMode={viewMode}
           listingsCount={listings.length}
           onKindChange={(value) => setParam('kind', value)}
-          onViewModeChange={(value) => {
-            setViewMode(value)
-            captureAnalyticsEvent('search_view_changed', { view_mode: value, surface: 'mobile_header' })
-            recordLeadIntentEvent('search_view_changed', { source: 'web', metadata: { view_mode: value, surface: 'mobile_header' } })
-          }}
+          onViewModeChange={(value) => changeViewMode(value, 'mobile_header')}
           onFilterClick={() => setShowFilters(true)}
           onMenuClick={() => setMobileMenuOpen(true)}
           searchInput={searchInput}
@@ -1977,9 +1992,7 @@ function SearchPage() {
                   <button onClick={() => { setSaveSearchOpen(true); recordLeadIntentEvent('saved_search_opened', { source: 'web', metadata: { surface: 'desktop_toolbar', listing_kind: kind } }) }} className="inline-flex items-center gap-2 rounded-full border border-[#d7ded9] bg-white px-4 py-2 text-sm font-semibold"><Bell size={16} /> Save search</button>
                   <button onClick={() => {
                     const nextViewMode = viewMode === 'list' ? 'map' : 'list'
-                    setViewMode(nextViewMode)
-                    captureAnalyticsEvent('search_view_changed', { view_mode: nextViewMode, surface: 'desktop_toolbar' })
-                    recordLeadIntentEvent('search_view_changed', { source: 'web', metadata: { view_mode: nextViewMode, surface: 'desktop_toolbar' } })
+                    changeViewMode(nextViewMode, 'desktop_toolbar')
                   }} className="inline-flex items-center gap-2 rounded-full border border-[#d7ded9] bg-white px-4 py-2 text-sm font-semibold"><Map size={16} /> {viewMode === 'list' ? 'Map view' : 'List view'}</button>
                   <Link to="/account/requests" className="inline-flex items-center gap-2 rounded-full border border-[#d7ded9] bg-white px-4 py-2 text-sm font-semibold"><MessageSquare size={16} /> My requests</Link>
                 </div>
@@ -1996,11 +2009,11 @@ function SearchPage() {
             fullMapOpen ? (
               <div style={mobileMapHeight ? { height: mobileMapHeight } : undefined} className="h-[calc(100svh-330px)] rounded-none border border-black/5 bg-[#dbe8df] md:h-auto md:min-h-[760px] md:rounded-[2rem]" />
             ) : (
-              <MapPanel listings={listings} onExpand={() => setFullMapOpen(true)} mobileMapHeight={mobileMapHeight} />
+              <MapPanel listings={listings} returnTo={searchReturnPath} onExpand={() => setFullMapOpen(true)} mobileMapHeight={mobileMapHeight} />
             )
           ) : (
             <div className="grid gap-4">
-              {listings.map((listing) => <ListingCard key={listing.id} listing={listing} />)}
+              {listings.map((listing) => <ListingCard key={listing.id} listing={listing} returnTo={searchReturnPath} />)}
             </div>
           )}
 
@@ -2016,7 +2029,7 @@ function SearchPage() {
         onClose={() => setSaveSearchOpen(false)}
         filters={{ kind, village, property_type: propertyType, features, beds, max_price: maxPrice }}
       />
-      <FullMapModal open={fullMapOpen} onClose={() => setFullMapOpen(false)} listings={listings} />
+      <FullMapModal open={fullMapOpen} onClose={() => setFullMapOpen(false)} listings={listings} returnTo={searchReturnPath} />
       <MobileMenuDrawer open={mobileMenuOpen} onClose={() => setMobileMenuOpen(false)} />
     </Shell>
   )
@@ -2314,13 +2327,15 @@ function ListingCard({ listing, returnTo }: { listing: Listing; returnTo?: strin
   )
 }
 
-function ListingDetailPage() {
+export function ListingDetailPage() {
   const { id = '' } = useParams()
+  const location = useLocation()
   const [detailParams] = useSearchParams()
   const fromAdmin = detailParams.get('from') === 'admin'
   const adminLeadId = detailParams.get('lead_id')
   const adminBackPath = adminLeadId ? `/admin/leads/${adminLeadId}` : '/admin/leads'
   const listingBackPath = fromAdmin ? adminBackPath : safeReturnPath(detailParams.get('return_to'), '/')
+  const listingPath = `${location.pathname}${location.search}`
   const listingBackLabel = fromAdmin
     ? 'Back to lead'
     : listingBackPath.startsWith('/admin/showings/')
@@ -2457,7 +2472,7 @@ function ListingDetailPage() {
                     <div>
                       <p className="text-4xl font-semibold tracking-[-0.06em] md:text-5xl">{currency(listing.price, listing.listing_kind)}</p>
                       <h1 className="mt-2 text-xl font-semibold leading-snug tracking-[-0.03em] md:text-4xl">{listing.address}</h1>
-                      <p className="mt-1 text-sm font-semibold text-[#66746f]">{listing.village.name} · {listing.property_type}</p>
+                      <p className="mt-1 text-sm font-semibold text-[#66746f]"><Link to={routes.village(listing.village.slug, listingPath)} className="underline decoration-[#b6ccc3] underline-offset-4 transition hover:text-[#0f705e]">{listing.village.name}</Link> · {listing.property_type}</p>
                     </div>
                     <span className="inline-flex shrink-0 items-center gap-2 rounded-full bg-[#e9f5ef] px-3 py-2 text-sm font-bold text-[#0f705e]"><span className="h-3 w-3 rounded-full bg-[#32aa42]" /> {listing.status}</span>
                   </div>
@@ -2653,6 +2668,7 @@ function WebMortgageCalculator({ listing }: { listing: Listing }) {
 }
 
 function LocalIntelPanel({ listing }: { listing: Listing }) {
+  const location = useLocation()
   const intel = listing.village.local_intel
   if (!intel || Object.keys(intel).length === 0) return null
 
@@ -2666,6 +2682,7 @@ function LocalIntelPanel({ listing }: { listing: Listing }) {
         {listing.village.region && <span className="rounded-full bg-white px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] text-[var(--brand-primary)]">{listing.village.region}</span>}
       </div>
       {intel.summary && <p className="mt-4 text-base font-semibold leading-7 text-[#53645f]">{intel.summary}</p>}
+      <Link to={routes.village(listing.village.slug, `${location.pathname}${location.search}`)} className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-full bg-white px-4 text-sm font-bold text-[var(--brand-primary)]">Explore {listing.village.name} <ChevronRight size={16} /></Link>
       {Boolean(intel.lifestyle_tags?.length) && <div className="mt-4 flex flex-wrap gap-2">{intel.lifestyle_tags?.slice(0, 5).map((tag) => <span key={tag} className="rounded-full bg-white px-3 py-1 text-xs font-bold text-[#0f705e]">{tag}</span>)}</div>}
       <div className="mt-5 grid gap-3 md:grid-cols-2">
         <LocalIntelGroup title="Nearby schools" items={intel.nearby_schools} note={intel.schools_note} />
@@ -2911,24 +2928,51 @@ export function AgentDetailPage() {
   )
 }
 
-function VillageDetailPage() {
+export function VillageDetailPage() {
   const { slug = '' } = useParams()
-  const { data: villagesData } = useQuery({ queryKey: ['villages'], queryFn: fetchVillages })
-  const { data: listingsData } = useQuery({ queryKey: ['listings', slug], queryFn: () => fetchListings({ village: slug }) })
-  const village = villagesData?.villages.find((item) => item.slug === slug)
+  const location = useLocation()
+  const [searchParams] = useSearchParams()
+  const returnPath = safeReturnPath(searchParams.get('return_to'), '/villages')
+  const villagePath = `${location.pathname}${location.search}`
+  const { data: villageData, isLoading, error } = useQuery({
+    queryKey: ['village', slug],
+    queryFn: () => fetchVillage(slug),
+    enabled: Boolean(slug),
+    retry: false,
+  })
+  const { data: listingsData, isLoading: listingsLoading, isError: listingsError } = useQuery({
+    queryKey: ['listings', 'village-record', slug],
+    queryFn: () => fetchListings({ village: slug }),
+    enabled: Boolean(villageData?.village),
+  })
+  const village = villageData?.village
+  const listings = listingsData?.listings ?? []
+  const isUnavailable = error instanceof ApiFetchError && error.status === 404
+
   return (
     <Shell compact>
-      <ContentHeader kicker={village?.region || 'Village'} title={village?.name || 'Guam village'} description={village?.description || 'Village detail and matching listings.'} />
-      <section className="mx-auto grid max-w-7xl gap-4 px-5 pb-10 lg:grid-cols-[1fr_360px]">
-        <div className="grid gap-4">
-          {listingsData?.listings.map((listing) => <ListingCard key={listing.id} listing={listing} />)}
-        </div>
-        <div className="rounded-[2rem] bg-[#173f38] p-6 text-white lg:self-start">
-          <Compass className="text-[#bdebdc]" />
-          <h2 className="mt-4 text-2xl font-semibold tracking-[-0.04em]">Market snapshot placeholder</h2>
-          <p className="mt-3 text-sm leading-6 text-white/75">Explore price trends, rental activity, commute notes, and nearby listings for this village.</p>
-        </div>
-      </section>
+      <section className="mx-auto max-w-7xl px-5 pt-6"><Link to={returnPath} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-white px-5 text-sm font-bold text-[#304942]"><ArrowLeft size={16} /> Back to {returnPath.startsWith('/listings/') ? 'listing' : 'villages'}</Link></section>
+      {isLoading && <section className="mx-auto max-w-7xl px-5 py-10"><StateCard>Loading village...</StateCard></section>}
+      {isUnavailable && <section className="mx-auto max-w-7xl px-5 py-10"><StateCard tone="error">This village is not available.</StateCard></section>}
+      {error && !isUnavailable && <section className="mx-auto max-w-7xl px-5 py-10"><StateCard tone="error">{displayErrorMessage(error, 'Unable to load this village.')}</StateCard></section>}
+      {village && (
+        <>
+          <ContentHeader kicker={village.region || 'Village'} title={village.name} description={village.description || 'Village detail and matching listings.'} />
+          <section className="mx-auto grid max-w-7xl gap-4 px-5 pb-10 lg:grid-cols-[1fr_360px]">
+            <div className="grid content-start gap-4">
+              {listingsLoading && <StateCard>Loading village listings...</StateCard>}
+              {listingsError && <StateCard tone="error">Unable to load this village's listings.</StateCard>}
+              {listings.map((listing) => <ListingCard key={listing.id} listing={listing} returnTo={villagePath} />)}
+              {!listingsLoading && !listingsError && listings.length === 0 && <StateCard>No active listings are published for this village.</StateCard>}
+            </div>
+            <div className="rounded-[2rem] bg-[#173f38] p-6 text-white lg:self-start">
+              <Compass className="text-[#bdebdc]" />
+              <h2 className="mt-4 text-2xl font-semibold tracking-[-0.04em]">{village.active_listings_count ?? listings.length} active listings</h2>
+              <p className="mt-3 text-sm leading-6 text-white/75">Explore current homes alongside local context for {village.name}. Availability and pricing should be verified with the listing brokerage.</p>
+            </div>
+          </section>
+        </>
+      )}
     </Shell>
   )
 }
@@ -2956,7 +3000,7 @@ function MilitaryPage() {
   )
 }
 
-function SavedPage() {
+export function SavedPage() {
   const { isClerkEnabled, isSignedIn, isLoading, userId } = useAuthContext()
   const { data, isLoading: savesLoading, refetch } = useQuery({ queryKey: ['saved-listings', userId], queryFn: fetchSavedListings, enabled: isClerkEnabled && isSignedIn })
   const removeMutation = useMutation({ mutationFn: removeSavedListingForUser, onSuccess: () => refetch() })
@@ -2982,13 +3026,13 @@ function SavedPage() {
         <div className="grid gap-4 md:grid-cols-2">
           {savedListings.map((listing) => (
             <article key={listing.id} className="overflow-hidden rounded-[2rem] bg-white shadow-sm md:grid md:grid-cols-[220px_1fr]">
-              <Link to={`/listings/${listing.id}`}><img src={listing.primary_photo_url || FALLBACK_LISTING_IMAGE} alt="" className="h-52 w-full object-cover md:h-full" /></Link>
+              <Link to={routes.listing(listing.id, '/saved')}><img src={listing.primary_photo_url || FALLBACK_LISTING_IMAGE} alt="" className="h-52 w-full object-cover md:h-full" /></Link>
               <div className="p-5">
                 <p className="text-2xl font-bold tracking-[-0.04em]">{currency(listing.price, listing.listing_kind)}</p>
-                <Link to={`/listings/${listing.id}`} className="mt-1 block text-xl font-semibold tracking-[-0.04em] text-[#17211f] hover:text-[#0f705e]">{listing.title}</Link>
+                <Link to={routes.listing(listing.id, '/saved')} className="mt-1 block text-xl font-semibold tracking-[-0.04em] text-[#17211f] hover:text-[#0f705e]">{listing.title}</Link>
                 <p className="mt-2 text-sm font-semibold text-[#66746f]">{listing.village.name} · {listing.address}</p>
                 <div className="mt-5 flex flex-wrap gap-3">
-                  <Link to={`/listings/${listing.id}`} className="rounded-full bg-[var(--brand-primary)] px-4 py-2 text-sm font-bold text-white">View details</Link>
+                  <Link to={routes.listing(listing.id, '/saved')} className="rounded-full bg-[var(--brand-primary)] px-4 py-2 text-sm font-bold text-white">View details</Link>
                   <button onClick={() => removeMutation.mutate(listing.id)} className="rounded-full border border-[#d7ded9] px-4 py-2 text-sm font-bold text-[var(--brand-primary)]">Remove</button>
                 </div>
               </div>
@@ -3535,18 +3579,18 @@ function SyncPage() {
 }
 
 
-function MapPanel({ listings, onExpand, immersive = false, mobileMapHeight }: { listings: Listing[]; onExpand?: () => void; immersive?: boolean; mobileMapHeight?: number }) {
+function MapPanel({ listings, returnTo, onExpand, immersive = false, mobileMapHeight }: { listings: Listing[]; returnTo: string; onExpand?: () => void; immersive?: boolean; mobileMapHeight?: number }) {
   const points = listings.filter((listing) => listing.latitude && listing.longitude)
   const mapHeight = immersive ? 'h-[100svh]' : 'h-[calc(100svh-330px)] md:h-auto md:min-h-[760px]'
   const mapStyle = !immersive && mobileMapHeight ? { height: mobileMapHeight } : undefined
 
   if (!MAPBOX_TOKEN) {
-    return <FallbackMapPanel listings={listings} onExpand={onExpand} immersive={immersive} mapStyle={mapStyle} />
+    return <FallbackMapPanel listings={listings} returnTo={returnTo} onExpand={onExpand} immersive={immersive} mapStyle={mapStyle} />
   }
 
   return (
     <div className={`hafa-map-panel ${!immersive ? 'hafa-map-panel--standard' : ''} relative overflow-hidden border border-black/5 bg-[#dbe8df] shadow-sm ${immersive ? 'h-[100svh] rounded-none' : 'rounded-none md:rounded-[2rem]'}`}>
-      <RealMap listings={points} immersive={immersive} className={mapHeight} style={mapStyle} />
+      <RealMap listings={points} returnTo={returnTo} immersive={immersive} className={mapHeight} style={mapStyle} />
       <MapOverlayHeader listingsCount={points.length} onExpand={onExpand} realMap />
       {!immersive && (
         <div className="absolute bottom-5 left-5 z-10 hidden max-w-md rounded-3xl bg-white/92 p-4 text-sm leading-6 text-[#53645f] shadow-xl shadow-[var(--brand-primary)]/10 backdrop-blur md:block">
@@ -3557,7 +3601,7 @@ function MapPanel({ listings, onExpand, immersive = false, mobileMapHeight }: { 
   )
 }
 
-function RealMap({ listings, className, immersive, style }: { listings: Listing[]; className: string; immersive: boolean; style?: React.CSSProperties }) {
+function RealMap({ listings, returnTo, className, immersive, style }: { listings: Listing[]; returnTo: string; className: string; immersive: boolean; style?: React.CSSProperties }) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<MapboxMap | null>(null)
   const mapboxRef = useRef<typeof import('mapbox-gl').default | null>(null)
@@ -3639,7 +3683,7 @@ function RealMap({ listings, className, immersive, style }: { listings: Listing[
       markerElement.addEventListener('click', () => {
         captureAnalyticsEvent('map_marker_clicked', { listing_id: listing.id, listing_kind: listing.listing_kind })
         recordLeadIntentEvent('map_marker_clicked', { listing_id: listing.id, source: 'web', metadata: { surface: 'map_marker', listing_kind: listing.listing_kind } })
-        navigate(`/listings/${listing.id}`)
+        navigate(routes.listing(listing.id, returnTo))
       })
 
       const marker = new mapbox.Marker({ element: markerElement, anchor: 'center' })
@@ -3696,7 +3740,7 @@ function RealMap({ listings, className, immersive, style }: { listings: Listing[
     }
 
     return () => { map.off('zoom', updateMarkerVisibility) }
-  }, [listings, immersive, navigate, mapReady])
+  }, [listings, returnTo, immersive, navigate, mapReady])
 
   useEffect(() => {
     const map = mapRef.current
@@ -3739,7 +3783,7 @@ function MapOverlayHeader({ listingsCount, onExpand, realMap = false }: { listin
   )
 }
 
-function FallbackMapPanel({ listings, onExpand, immersive = false, mapStyle }: { listings: Listing[]; onExpand?: () => void; immersive?: boolean; mapStyle?: React.CSSProperties }) {
+function FallbackMapPanel({ listings, returnTo, onExpand, immersive = false, mapStyle }: { listings: Listing[]; returnTo: string; onExpand?: () => void; immersive?: boolean; mapStyle?: React.CSSProperties }) {
   const points = listings.filter((listing) => listing.latitude && listing.longitude)
   const mapHeight = immersive ? 'h-[100svh]' : 'h-[calc(100svh-330px)] md:h-auto md:min-h-[760px]'
 
@@ -3754,7 +3798,7 @@ function FallbackMapPanel({ listings, onExpand, immersive = false, mapStyle }: {
           return (
             <Link
               key={listing.id}
-              to={`/listings/${listing.id}`}
+              to={routes.listing(listing.id, returnTo)}
               style={{ left: `${left}%`, top: `${top}%` }}
               className="absolute z-20 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[var(--brand-primary)] px-3 py-2 text-xs font-bold text-white shadow-xl shadow-[var(--brand-primary)]/30 transition hover:scale-105 md:px-4 md:text-sm"
             >
@@ -3772,7 +3816,7 @@ function FallbackMapPanel({ listings, onExpand, immersive = false, mapStyle }: {
   )
 }
 
-function FullMapModal({ open, onClose, listings }: { open: boolean; onClose: () => void; listings: Listing[] }) {
+function FullMapModal({ open, onClose, listings, returnTo }: { open: boolean; onClose: () => void; listings: Listing[]; returnTo: string }) {
   if (!open) return null
 
   return (
@@ -3786,7 +3830,7 @@ function FullMapModal({ open, onClose, listings }: { open: boolean; onClose: () 
           <X size={16} /> Close
         </button>
       </div>
-      <MapPanel listings={listings} immersive />
+      <MapPanel listings={listings} returnTo={returnTo} immersive />
     </div>
   )
 }

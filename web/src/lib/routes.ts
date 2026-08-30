@@ -27,6 +27,10 @@ const routeId = (id: number | string) => encodeURIComponent(String(id))
 
 export const routes = {
   home: () => '/',
+  search: (params?: URLSearchParams | string) => {
+    const query = typeof params === 'string' ? params : params?.toString()
+    return `/${query ? `?${query}` : ''}`
+  },
   listing: (listingId: number | string, returnTo?: string | null) => withReturnTo(`/listings/${routeId(listingId)}`, returnTo),
   village: (slug: string, returnTo?: string | null) => withReturnTo(`/villages/${encodeURIComponent(slug)}`, returnTo),
   agent: (agentId: number | string, returnTo?: string | null) => withReturnTo(`/agents/${routeId(agentId)}`, returnTo),
