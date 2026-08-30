@@ -1226,9 +1226,16 @@ function leadTypeBadgeClasses(value?: string) {
   return 'bg-[#edf0ec] text-[#53645f]'
 }
 
-function formatDateTime(value?: string) {
+function formatDateTime(value?: string, timeZone?: string) {
   if (!value) return 'Not recorded'
-  return new Date(value).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+  const options: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }
+  if (!timeZone) return new Date(value).toLocaleString('en-US', options)
+
+  try {
+    return new Date(value).toLocaleString('en-US', { ...options, timeZone })
+  } catch {
+    return new Date(value).toLocaleString('en-US', options)
+  }
 }
 
 function currency(value: number, kind: string) {
@@ -3158,7 +3165,7 @@ function ConsumerRequestCard({ lead, returnTo }: { lead: Lead; returnTo: string 
   )
 }
 
-function RequestDetailPage() {
+export function RequestDetailPage() {
   const { id = '' } = useParams()
   const [searchParams] = useSearchParams()
   const { isClerkEnabled, isSignedIn, isLoading: authLoading, userId } = useAuthContext()
@@ -3270,7 +3277,7 @@ function RequestDetailPage() {
                 <div className="mt-5 grid gap-4">
                   {appointments.map((showing) => (
                     <article key={showing.id} className="rounded-2xl border border-[#e3e9e5] p-5">
-                      <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-lg font-semibold">{formatDateTime(showing.scheduled_starts_at)}</p><p className="mt-1 text-sm text-[#66746f]">{showing.tour_type.replaceAll('_', ' ')}{showing.timezone ? ` · ${showing.timezone}` : ''}</p></div><span className="rounded-full bg-[#e9f5ef] px-3 py-1 text-xs font-bold uppercase tracking-wide text-[#0f705e]">{showing.status.replaceAll('_', ' ')}</span></div>
+                      <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-lg font-semibold">{formatDateTime(showing.scheduled_starts_at, showing.timezone)}</p><p className="mt-1 text-sm text-[#66746f]">{showing.tour_type.replaceAll('_', ' ')}{showing.timezone ? ` · ${showing.timezone}` : ''}</p></div><span className="rounded-full bg-[#e9f5ef] px-3 py-1 text-xs font-bold uppercase tracking-wide text-[#0f705e]">{showing.status.replaceAll('_', ' ')}</span></div>
                       {showing.location && <p className="mt-4 flex items-start gap-2 text-sm text-[#3d4d48]"><MapPin className="mt-0.5 shrink-0 text-[#0f705e]" size={16} /> {showing.location}</p>}
                       {showing.consumer_notes && <p className="mt-3 rounded-xl bg-[#f6f1e8] p-3 text-sm leading-6 text-[#66746f]">{showing.consumer_notes}</p>}
                     </article>
