@@ -26,6 +26,7 @@ class User < ApplicationRecord
   has_many :archived_lead_tasks, class_name: "LeadTask", foreign_key: :archived_by_id, dependent: :nullify, inverse_of: :archived_by
   has_many :sent_notification_deliveries, class_name: "NotificationDelivery", foreign_key: :sent_by_id, dependent: :nullify, inverse_of: :sent_by
   has_many :audit_events_as_actor, class_name: "AuditEvent", foreign_key: :actor_id, dependent: :nullify, inverse_of: :actor
+  has_one :account_deletion, dependent: :nullify
 
   normalizes :email, with: ->(email) { email.to_s.strip.downcase }
 

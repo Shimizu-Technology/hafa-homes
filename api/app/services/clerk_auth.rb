@@ -1,6 +1,9 @@
+require "timeout"
+
 class ClerkAuth
   JWKS_CACHE_KEY = "clerk_jwks"
   JWKS_CACHE_TTL = 1.hour
+  DELETE_USER_TOTAL_TIMEOUT = 20
 
   class << self
     def verify(token, refreshed_jwks: false)
@@ -97,11 +100,13 @@ class ClerkAuth
         return { success: false, status: :invalid_user, message: "Missing Clerk user ID" }
       end
 
-      response = HTTParty.delete(
-        "https://api.clerk.com/v1/users/#{clerk_user_id}",
-        headers: clerk_api_headers(secret_key),
-        timeout: 8
-      )
+      response = Timeout.timeout(DELETE_USER_TOTAL_TIMEOUT) do
+        HTTParty.delete(
+          "https://api.clerk.com/v1/users/#{clerk_user_id}",
+          headers: clerk_api_headers(secret_key),
+          timeout: 8
+        )
+      end
 
       if response.success? || response.code == 404
         return { success: true, status: response.code }

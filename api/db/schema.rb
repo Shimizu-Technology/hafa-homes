@@ -10,9 +10,30 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_08_30_131000) do
+ActiveRecord::Schema[8.1].define(version: 2026_08_31_060500) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
+
+  create_table "account_deletions", force: :cascade do |t|
+    t.integer "attempt_count", default: 0, null: false
+    t.string "clerk_id"
+    t.string "clerk_id_digest", null: false
+    t.datetime "completed_at"
+    t.datetime "created_at", null: false
+    t.datetime "last_attempt_at"
+    t.text "last_error"
+    t.datetime "lease_expires_at"
+    t.string "processing_token"
+    t.datetime "provider_deleted_at"
+    t.datetime "requested_at", null: false
+    t.string "status", default: "pending", null: false
+    t.datetime "updated_at", null: false
+    t.bigint "user_id"
+    t.index ["clerk_id_digest"], name: "index_account_deletions_on_clerk_id_digest", unique: true
+    t.index ["status", "lease_expires_at"], name: "index_account_deletions_on_status_and_lease_expires_at"
+    t.index ["status", "updated_at"], name: "index_account_deletions_on_status_and_updated_at"
+    t.index ["user_id"], name: "index_account_deletions_on_user_id"
+  end
 
   create_table "agents", force: :cascade do |t|
     t.text "bio"
@@ -614,6 +635,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_30_131000) do
     t.index ["slug"], name: "index_villages_on_slug", unique: true
   end
 
+  add_foreign_key "account_deletions", "users", on_delete: :nullify
   add_foreign_key "agents", "brokerages"
   add_foreign_key "agents", "users"
   add_foreign_key "audit_events", "brokerages"
