@@ -22,7 +22,7 @@ These distinctions are product rules, not presentation details:
 - `Lead.assigned_agent` is the staff member coordinating the CRM relationship.
 - `Lead.brokerage` owns the storefront conversation and its private request history.
 - Consumer request history is scoped by both the signed-in user and the active routing brokerage.
-- A future staff customer workspace must use the composite identity `(brokerage_id, user_id)`. It must not expose a global user record to brokerage staff.
+- The staff customer workspace uses the composite identity `(brokerage_id, user_id)`. It does not expose a global user record to brokerage staff.
 - Anonymous leads must not be merged into a signed-in customer workspace by email alone.
 
 The UI must keep listing attribution separate from requested and assigned agents. External attribution agents must not automatically become links to storefront agent records or choices in request forms.
@@ -34,6 +34,7 @@ The UI must keep listing attribution separate from requested and assigned agents
 - Listing: `/listings/:id`
 - Village: `/villages/:slug`
 - Staff lead: `/admin/leads/:id`
+- Brokerage customer workspace: `/admin/brokerages/:brokerage_id/customers/:user_id`
 - Consumer request API: `GET /api/v1/me/leads/:id`, scoped to the signed-in user and active storefront brokerage
 - Validated internal `return_to` route helpers for listings, requests, agents, staff leads, and showings
 
@@ -68,12 +69,20 @@ The consumer projection does not include staff notes, internal showing notes, de
 - Related lead and listing links carry a validated return path to the exact showing; the lead workspace honors that return path.
 - Only the exact staff detail serializer adds a bounded lead summary; collection and consumer projections never construct that nested PII. The consumer serializer also removes internal notes and creator data.
 
+### Brokerage customer workspace slice
+
+- The customer workspace uses the composite identity `(brokerage_id, user_id)` and is available only when the current staff lead scope contains at least one request for that exact pair.
+- Brokerage administrators see that brokerage's customer requests. Agents see only requests assigned inside their existing lead scope. Platform administrators retain explicit cross-broker access while the route still names the brokerage context.
+- The workspace composes the signed-in customer identity, brokerage-scoped buyer search profile, bounded request summaries, and counts derived from the same authorized request relation.
+- Anonymous requests remain lead records and are never joined to an account because an email address happens to match.
+- Lead inbox status, type, assigned-agent, sort, and pagination state are URL-backed and survive exact-record navigation. Free-text CRM search stays in memory and is removed from canonical/return URLs because it can contain names, emails, and phone numbers.
+- Lead inbox, lead detail, and customer workspace link in both directions through centralized route builders. Nested validated `return_to` values preserve the original filtered inbox when staff move through a customer and multiple related requests.
+- Customer request collections are independently paginated at ten records per page. The workspace does not serialize lead notes, tasks, activities, notifications, or showing collections into its related-request summaries.
+
 ## Planned slices
 
-1. URL-backed non-PII operational filters and safe return context in the CRM.
-2. A brokerage-scoped customer workspace that joins the customer's authorized requests and profile context without crossing brokerage boundaries.
-3. A storefront-scoped public agent record, linked only when the agent belongs to the active routing brokerage.
-4. Bounded related-record summaries with separately pageable collections as volume grows.
+1. A storefront-scoped public agent record, linked only when the agent belongs to the active routing brokerage.
+2. Additional bounded related-record summaries with separately pageable collections as volume grows.
 
 ## Deliberate deferrals
 

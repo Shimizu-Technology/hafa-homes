@@ -35,6 +35,7 @@ Rails.application.routes.draw do
 
       namespace :admin do
         get "dashboard", to: "dashboard#show"
+        get "brokerages/:brokerage_id/customers/:user_id", to: "customer_workspaces#show", as: :brokerage_customer_workspace
         resources :brokerages, only: [ :index, :update ]
         resources :brokerage_domains, only: [ :index, :create, :update, :destroy ]
         resources :agents, only: [ :index ]

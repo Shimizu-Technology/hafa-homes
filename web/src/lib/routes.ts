@@ -32,7 +32,12 @@ export const routes = {
   agent: (agentId: number | string, returnTo?: string | null) => withReturnTo(`/agents/${routeId(agentId)}`, returnTo),
   requests: () => '/account/requests',
   request: (requestId: number | string, returnTo?: string | null) => withReturnTo(`/account/requests/${routeId(requestId)}`, returnTo),
+  adminLeads: (params?: URLSearchParams | string) => {
+    const query = typeof params === 'string' ? params : params?.toString()
+    return `/admin/leads${query ? `?${query}` : ''}`
+  },
   adminLead: (leadId: number | string, returnTo?: string | null) => withReturnTo(`/admin/leads/${routeId(leadId)}`, returnTo),
+  adminCustomer: (brokerageId: number | string, userId: number | string, returnTo?: string | null) => withReturnTo(`/admin/brokerages/${routeId(brokerageId)}/customers/${routeId(userId)}`, returnTo),
   adminShowing: (showingId: number | string, returnTo?: string | null) => withReturnTo(`/admin/showings/${routeId(showingId)}`, returnTo),
 }
 

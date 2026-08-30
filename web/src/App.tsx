@@ -583,6 +583,21 @@ type LeadsResponse = {
   pagination: PaginationMeta
 }
 type LeadResponse = { lead: Lead; assignable_agents: Agent[] }
+type AdminCustomerWorkspaceResponse = {
+  customer: {
+    id: number
+    full_name: string
+    email: string
+    phone?: string
+    preferred_contact_method?: 'phone' | 'text' | 'email'
+    account_created_at: string
+  }
+  brokerage: Brokerage
+  search_profile: SearchProfile | null
+  requests: Lead[]
+  metrics: { total_requests: number; open_requests: number; upcoming_showings: number; last_request_at?: string }
+  pagination: PaginationMeta
+}
 type PaginationMeta = { page: number; per_page: number; total_count: number; total_pages: number; previous_page?: number | null; next_page?: number | null }
 type LeadNotesPageResponse = { lead_notes: LeadNote[]; pagination: PaginationMeta }
 type LeadTasksPageResponse = { lead_tasks: LeadTask[]; pagination: PaginationMeta }
@@ -859,6 +874,12 @@ async function fetchLeads(params: { assigned_agent_id?: string; lead_type?: stri
 async function fetchLead(id: string): Promise<LeadResponse> {
   const response = await apiFetch(`${API_URL}/api/v1/leads/${id}`, { headers: await authHeaders() })
   if (!response.ok) throw new Error('Unable to load lead')
+  return response.json()
+}
+
+async function fetchAdminCustomerWorkspace(brokerageId: string, userId: string, page = 1): Promise<AdminCustomerWorkspaceResponse> {
+  const response = await apiFetch(`${API_URL}/api/v1/admin/brokerages/${encodeURIComponent(brokerageId)}/customers/${encodeURIComponent(userId)}?page=${page}&per_page=10`, { headers: await authHeaders() })
+  if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to load this customer workspace'), response.status)
   return response.json()
 }
 
@@ -1248,6 +1269,17 @@ function formatDateTime(value?: string, timeZone?: string) {
   }
 }
 
+function formatDate(value?: string, timeZone = 'Pacific/Guam') {
+  if (!value) return 'Not recorded'
+  const options: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric', year: 'numeric', timeZone }
+
+  try {
+    return new Date(value).toLocaleDateString('en-US', options)
+  } catch {
+    return new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  }
+}
+
 function currency(value: number, kind: string) {
   const formatted = new Intl.NumberFormat('en-US', {
     style: 'currency',
@@ -1420,6 +1452,7 @@ function App() {
         <Route path="/admin/leads" element={<RequireStaff><LeadsPage /></RequireStaff>} />
         <Route path="/admin/intent" element={<RequireStaff><AdminIntentPage /></RequireStaff>} />
         <Route path="/admin/leads/:id" element={<RequireStaff><LeadDetailPage /></RequireStaff>} />
+        <Route path="/admin/brokerages/:brokerageId/customers/:customerId" element={<RequireStaff><CustomerWorkspacePage /></RequireStaff>} />
         <Route path="/admin/showings" element={<RequireStaff><AdminShowingsPage /></RequireStaff>} />
         <Route path="/admin/showings/:id" element={<RequireStaff><ShowingDetailPage /></RequireStaff>} />
         <Route path="/admin/users" element={<RequireStaff><AdminUsersPage /></RequireStaff>} />
@@ -4361,14 +4394,41 @@ function ShowingCompactRow({ showing }: { showing: ShowingAppointment }) {
   )
 }
 
-function LeadsPage() {
-  const [agentFilter, setAgentFilter] = useState('')
-  const [leadTypeFilter, setLeadTypeFilter] = useState('')
-  const [statusFilter, setStatusFilter] = useState('')
+export function LeadsPage() {
+  const { userId } = useAuthContext()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [searchFilter, setSearchFilter] = useState('')
-  const [sortFilter, setSortFilter] = useState('newest')
-  const [page, setPage] = useState(1)
-  useEffect(() => setPage(1), [agentFilter, leadTypeFilter, statusFilter, searchFilter, sortFilter])
+  const rawAgentFilter = searchParams.get('assigned_agent_id') || ''
+  const agentFilter = rawAgentFilter === 'unassigned' || /^\d+$/.test(rawAgentFilter) ? rawAgentFilter : ''
+  const rawLeadTypeFilter = searchParams.get('lead_type') || ''
+  const leadTypeFilter = leadTypeOptions.some((option) => option.value === rawLeadTypeFilter) ? rawLeadTypeFilter : ''
+  const rawStatusFilter = searchParams.get('status') || ''
+  const statusFilter = leadStatuses.some((option) => option.value === rawStatusFilter) ? rawStatusFilter : ''
+  const rawSortFilter = searchParams.get('sort') || 'newest'
+  const sortFilter = leadSortOptions.some((option) => option.value === rawSortFilter) ? rawSortFilter : 'newest'
+  const rawPage = Number(searchParams.get('page') || '1')
+  const page = Number.isInteger(rawPage) && rawPage > 0 ? rawPage : 1
+  const canonicalParams = new URLSearchParams()
+  if (agentFilter) canonicalParams.set('assigned_agent_id', agentFilter)
+  if (leadTypeFilter) canonicalParams.set('lead_type', leadTypeFilter)
+  if (statusFilter) canonicalParams.set('status', statusFilter)
+  if (sortFilter !== 'newest') canonicalParams.set('sort', sortFilter)
+  if (page > 1) canonicalParams.set('page', String(page))
+  const canonicalQuery = canonicalParams.toString()
+  const currentQuery = searchParams.toString()
+
+  useEffect(() => {
+    if (currentQuery !== canonicalQuery) setSearchParams(new URLSearchParams(canonicalQuery), { replace: true })
+  }, [canonicalQuery, currentQuery, setSearchParams])
+
+  const setOperationalParams = (updates: Record<string, string>, resetPage = true) => {
+    const next = new URLSearchParams(canonicalParams)
+    Object.entries(updates).forEach(([key, value]) => value ? next.set(key, value) : next.delete(key))
+    if (resetPage) next.delete('page')
+    setSearchParams(next)
+  }
+  const setPage = (nextPage: number) => setOperationalParams({ page: nextPage > 1 ? String(nextPage) : '' }, false)
+  const leadInboxPath = routes.adminLeads(canonicalParams)
   const leadQueryParams = {
     assigned_agent_id: agentFilter || undefined,
     lead_type: leadTypeFilter || undefined,
@@ -4378,7 +4438,7 @@ function LeadsPage() {
     page: String(page),
     per_page: '25',
   }
-  const { data, isLoading, isError, refetch } = useQuery({ queryKey: ['leads', leadQueryParams], queryFn: () => fetchLeads(leadQueryParams), placeholderData: keepPreviousData })
+  const { data, isLoading, isError, refetch } = useQuery({ queryKey: ['leads', userId, leadQueryParams], queryFn: () => fetchLeads(leadQueryParams), placeholderData: keepPreviousData })
   const statusMutation = useMutation({
     mutationFn: ({ id, status }: { id: number; status: LeadStatus }) => updateLead(id, { status }),
     onSuccess: () => refetch(),
@@ -4391,11 +4451,8 @@ function LeadsPage() {
   const priceWatchLeads = data?.metrics.price_watch_leads ?? 0
   const hasActiveFilters = Boolean(agentFilter || leadTypeFilter || statusFilter || searchFilter.trim() || sortFilter !== 'newest')
   const resetFilters = () => {
-    setAgentFilter('')
-    setLeadTypeFilter('')
-    setStatusFilter('')
     setSearchFilter('')
-    setSortFilter('newest')
+    setSearchParams(new URLSearchParams())
   }
 
   return (
@@ -4414,8 +4471,9 @@ function LeadsPage() {
                 Search leads
                 <div className="relative">
                   <Search size={17} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[#7b8a84]" />
-                  <input value={searchFilter} onChange={(event) => setSearchFilter(event.target.value)} placeholder="Name, email, phone, listing..." className="min-h-12 w-full min-w-0 rounded-2xl border border-[#dce5df] bg-white pl-11 pr-4" />
+                  <input value={searchFilter} onChange={(event) => { setSearchFilter(event.target.value); if (page > 1) setPage(1) }} placeholder="Name, email, phone, listing..." className="min-h-12 w-full min-w-0 rounded-2xl border border-[#dce5df] bg-white pl-11 pr-4" />
                 </div>
+                <span className="text-xs font-medium leading-5 text-[#7b8a84]">Private search text stays out of the page URL. Operational filters and pagination are shareable.</span>
               </label>
               <div className="flex flex-wrap items-center gap-3">
                 <p className="text-sm font-semibold text-[#66746f]">Showing {leads.length} of {data?.pagination.total_count ?? 0} lead{data?.pagination.total_count === 1 ? '' : 's'}{isLoading ? '...' : ''}</p>
@@ -4425,21 +4483,21 @@ function LeadsPage() {
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(150px,0.9fr)_minmax(150px,0.9fr)_minmax(220px,1.2fr)_minmax(160px,0.9fr)]">
               <label className="grid min-w-0 gap-2 text-sm font-semibold text-[#304942]">
                 Type
-                <select value={leadTypeFilter} onChange={(event) => setLeadTypeFilter(event.target.value)} className="min-h-12 w-full min-w-0 rounded-2xl border border-[#dce5df] bg-white px-4">
+                <select value={leadTypeFilter} onChange={(event) => setOperationalParams({ lead_type: event.target.value })} className="min-h-12 w-full min-w-0 rounded-2xl border border-[#dce5df] bg-white px-4">
                   <option value="">All lead types</option>
                   {leadTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                 </select>
               </label>
               <label className="grid min-w-0 gap-2 text-sm font-semibold text-[#304942]">
                 Status
-                <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="min-h-12 w-full min-w-0 rounded-2xl border border-[#dce5df] bg-white px-4">
+                <select value={statusFilter} onChange={(event) => setOperationalParams({ status: event.target.value })} className="min-h-12 w-full min-w-0 rounded-2xl border border-[#dce5df] bg-white px-4">
                   <option value="">All statuses</option>
                   {leadStatuses.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
                 </select>
               </label>
               <label className="grid min-w-0 gap-2 text-sm font-semibold text-[#304942]">
                 Assigned agent
-                <select value={agentFilter} onChange={(event) => setAgentFilter(event.target.value)} className="min-h-12 w-full min-w-0 rounded-2xl border border-[#dce5df] bg-white px-4">
+                <select value={agentFilter} onChange={(event) => setOperationalParams({ assigned_agent_id: event.target.value })} className="min-h-12 w-full min-w-0 rounded-2xl border border-[#dce5df] bg-white px-4">
                   <option value="">All agents</option>
                   <option value="unassigned">Unassigned leads</option>
                   {assignableAgents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name} · {agent.brokerage?.name}</option>)}
@@ -4447,7 +4505,7 @@ function LeadsPage() {
               </label>
               <label className="grid min-w-0 gap-2 text-sm font-semibold text-[#304942]">
                 Sort
-                <select value={sortFilter} onChange={(event) => setSortFilter(event.target.value)} className="min-h-12 w-full min-w-0 rounded-2xl border border-[#dce5df] bg-white px-4">
+                <select value={sortFilter} onChange={(event) => setOperationalParams({ sort: event.target.value === 'newest' ? '' : event.target.value })} className="min-h-12 w-full min-w-0 rounded-2xl border border-[#dce5df] bg-white px-4">
                   {leadSortOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                 </select>
               </label>
@@ -4463,7 +4521,7 @@ function LeadsPage() {
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
                   <p className={`inline-flex rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.16em] ${leadTypeBadgeClasses(lead.lead_type)}`}>{leadTypeLabel(lead.lead_type)}</p>
-                  <Link to={`/admin/leads/${lead.id}`} className="mt-3 block text-2xl font-semibold tracking-[-0.04em] hover:text-[#0f705e]">{lead.name}</Link>
+                  <Link to={routes.adminLead(lead.id, leadInboxPath)} className="mt-3 block text-2xl font-semibold tracking-[-0.04em] hover:text-[#0f705e]">{lead.name}</Link>
                   <div className="mt-2 flex flex-wrap gap-3 text-sm font-semibold text-[#53645f]">
                     <span className="inline-flex items-center gap-1"><Mail size={15} /> {lead.email}</span>
                     {lead.phone && <span className="inline-flex items-center gap-1"><Phone size={15} /> {lead.phone}</span>}
@@ -4486,7 +4544,12 @@ function LeadsPage() {
               </div>
               {lead.listing && <p className="mt-4 rounded-2xl bg-[#f6f1e8] p-3 text-sm font-semibold text-[#304942]">Interested in {lead.listing.title} · {lead.listing.village} · {currency(lead.listing.price, lead.listing.listing_kind)}</p>}
               {lead.message && <p className="mt-4 line-clamp-2 text-sm leading-6 text-[#66746f]">{lead.message}</p>}
-              <div className="mt-4 flex justify-end"><Link to={`/admin/leads/${lead.id}`} className="inline-flex items-center gap-2 rounded-full bg-[var(--brand-primary)] px-4 py-2 text-sm font-bold text-white">Open lead <ChevronRight size={16} /></Link></div>
+              <div className="mt-4 flex flex-wrap justify-end gap-2">
+                {lead.user_id && lead.brokerage_id && (
+                  <Link to={routes.adminCustomer(lead.brokerage_id, lead.user_id, leadInboxPath)} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-[#edf0ec] px-4 text-sm font-bold text-[#304942]">Customer workspace <UsersRound size={16} /></Link>
+                )}
+                <Link to={routes.adminLead(lead.id, leadInboxPath)} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-[var(--brand-primary)] px-4 text-sm font-bold text-white">Open lead <ChevronRight size={16} /></Link>
+              </div>
             </article>
           ))}
           {leads.length === 0 && !isLoading && <StateCard>No matching leads. New tour requests and price watch requests will appear here.</StateCard>}
@@ -4501,13 +4564,158 @@ function LeadsPage() {
   )
 }
 
+export function CustomerWorkspacePage() {
+  const { brokerageId, customerId } = useParams()
+  const { userId: staffUserId } = useAuthContext()
+  const location = useLocation()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const returnPath = safeReturnPath(searchParams.get('return_to'), routes.adminLeads())
+  const returnLabel = returnPath.startsWith('/admin/leads/') ? 'Back to lead' : 'Back to lead inbox'
+  const rawPage = Number(searchParams.get('page') || '1')
+  const page = Number.isInteger(rawPage) && rawPage > 0 ? rawPage : 1
+  const workspacePath = `${location.pathname}${location.search}`
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['admin-customer-workspace', staffUserId, brokerageId, customerId, page],
+    queryFn: () => fetchAdminCustomerWorkspace(brokerageId || '', customerId || '', page),
+    enabled: Boolean(staffUserId && brokerageId && customerId),
+    placeholderData: keepPreviousData,
+    retry: false,
+  })
+
+  const setPage = (nextPage: number) => {
+    const next = new URLSearchParams(searchParams)
+    if (nextPage > 1) next.set('page', String(nextPage))
+    else next.delete('page')
+    setSearchParams(next)
+  }
+
+  const customer = data?.customer
+  const metrics = data?.metrics
+  const isUnavailable = error instanceof ApiFetchError && error.status === 404
+
+  return (
+    <AdminShell>
+      <section className="mx-auto max-w-7xl px-4 pb-10 pt-6 sm:px-5">
+        <Link to={returnPath} className="mb-6 inline-flex min-h-11 items-center gap-2 rounded-full bg-white px-5 text-sm font-bold text-[#304942]"><ArrowLeft size={16} /> {returnLabel}</Link>
+        {isLoading && <StateCard>Loading customer workspace...</StateCard>}
+        {isUnavailable && <StateCard tone="error">This customer is not available in this brokerage workspace.</StateCard>}
+        {error && !isUnavailable && <StateCard tone="error">{displayErrorMessage(error, 'Unable to load this customer workspace.')}</StateCard>}
+        {customer && metrics && (
+          <div className="grid gap-5">
+            <header className="overflow-hidden rounded-[2rem] bg-[#101f1c] text-white shadow-2xl shadow-[var(--brand-primary)]/15">
+              <div className="grid gap-6 p-5 sm:p-7 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-black uppercase tracking-[0.16em] text-[#bdebdc]">Customer workspace</span>
+                    <span className="rounded-full bg-[#f5c16c]/15 px-3 py-1 text-xs font-bold text-[#f5c16c]">{data.brokerage.name}</span>
+                  </div>
+                  <h1 className="mt-5 break-words text-4xl font-semibold tracking-[-0.06em] sm:text-5xl">{customer.full_name}</h1>
+                  <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-sm font-semibold text-white/72">
+                    <a href={`mailto:${customer.email}`} className="inline-flex min-h-11 items-center gap-2 hover:text-white"><Mail size={16} /> {customer.email}</a>
+                    {customer.phone && <a href={`tel:${customer.phone}`} className="inline-flex min-h-11 items-center gap-2 hover:text-white"><Phone size={16} /> {customer.phone}</a>}
+                  </div>
+                </div>
+                <div className="rounded-[1.5rem] border border-white/10 bg-white/8 p-4 lg:min-w-64">
+                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-white/48">Account relationship</p>
+                  <p className="mt-2 text-sm font-semibold leading-6 text-white/82">Signed-in customer #{customer.id}</p>
+                  <p className="text-sm leading-6 text-white/62">Preferred contact: {customer.preferred_contact_method || 'Not provided'}</p>
+                  <p className="text-sm leading-6 text-white/62">Since {formatDate(customer.account_created_at)}</p>
+                </div>
+              </div>
+              <div className="grid border-t border-white/10 sm:grid-cols-2 lg:grid-cols-4">
+                <CustomerMetric label="Visible requests" value={String(metrics.total_requests)} />
+                <CustomerMetric label="Open requests" value={String(metrics.open_requests)} />
+                <CustomerMetric label="Upcoming showings" value={String(metrics.upcoming_showings)} />
+                <CustomerMetric label="Latest request" value={metrics.last_request_at ? formatDate(metrics.last_request_at) : 'None'} />
+              </div>
+            </header>
+
+            <div className="grid gap-5 xl:grid-cols-[minmax(320px,0.72fr)_minmax(0,1.28fr)]">
+              <aside className="grid content-start gap-5">
+                {data.search_profile ? <LeadSearchProfileSnapshot profile={data.search_profile} /> : (
+                  <section className="rounded-[1.75rem] border border-[#dfe8e2] bg-white p-5 shadow-sm">
+                    <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#0f705e]">Current search profile</p>
+                    <h2 className="mt-2 text-xl font-semibold tracking-[-0.03em]">No brokerage profile yet</h2>
+                    <p className="mt-3 text-sm leading-6 text-[#66746f]">This signed-in customer has not saved buyer criteria in {data.brokerage.name}. Request-specific qualification stays on each lead.</p>
+                  </section>
+                )}
+                <section className="rounded-[1.75rem] bg-white p-5 shadow-sm">
+                  <ShieldCheck className="text-[#0f705e]" />
+                  <h2 className="mt-4 text-xl font-semibold tracking-[-0.03em]">Brokerage-scoped relationship</h2>
+                  <p className="mt-3 text-sm leading-6 text-[#66746f]">This workspace uses the customer account plus {data.brokerage.name}. It includes only requests your current staff role can open and never joins anonymous requests by matching email.</p>
+                </section>
+              </aside>
+
+              <section className="min-w-0 rounded-[1.75rem] bg-white p-4 shadow-sm sm:p-6">
+                <div className="flex flex-wrap items-end justify-between gap-3 border-b border-[#edf0ec] pb-5">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#0f705e]">Related records</p>
+                    <h2 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">Customer requests</h2>
+                  </div>
+                  <p className="text-sm font-semibold text-[#66746f]">{data.pagination.total_count} visible request{data.pagination.total_count === 1 ? '' : 's'}</p>
+                </div>
+                <div className="mt-4 grid gap-3">
+                  {data.requests.map((request) => (
+                    <article key={request.id} className="rounded-[1.5rem] border border-[#dfe8e2] bg-[#fbfaf6] p-4 transition hover:border-[#bdd8cc] hover:bg-white">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] ${leadTypeBadgeClasses(request.lead_type)}`}>{leadTypeLabel(request.lead_type)}</span>
+                            <span className="rounded-full bg-white px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-[#53645f]">{request.status.replaceAll('_', ' ')}</span>
+                          </div>
+                          <h3 className="mt-3 text-lg font-semibold tracking-[-0.03em]">Request HH-{request.id}</h3>
+                          <p className="mt-1 text-sm font-semibold text-[#66746f]">{formatDateTime(request.created_at, 'Pacific/Guam')}</p>
+                        </div>
+                        <Link to={routes.adminLead(request.id, workspacePath)} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-[var(--brand-primary)] px-4 text-sm font-bold text-white">Open lead <ChevronRight size={16} /></Link>
+                      </div>
+                      <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                        <LeadMeta icon={<Home size={16} />} label="Listing" value={request.listing?.title ?? 'General request'} />
+                        <LeadMeta icon={<ClipboardList size={16} />} label="Assigned agent" value={request.assigned_agent?.name ?? 'Needs assignment'} />
+                      </div>
+                    </article>
+                  ))}
+                  {data.requests.length === 0 && <StateCard>No authorized requests are available for this customer.</StateCard>}
+                </div>
+                {data.pagination.total_pages > 1 && (
+                  <div className="mt-5 border-t border-[#edf0ec] pt-5">
+                    <PaginationControls pagination={data.pagination} onPageChange={setPage} />
+                  </div>
+                )}
+              </section>
+            </div>
+          </div>
+        )}
+      </section>
+    </AdminShell>
+  )
+}
+
+function CustomerMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="border-white/10 p-5 sm:border-r sm:last:border-r-0">
+      <p className="text-[10px] font-black uppercase tracking-[0.16em] text-white/45">{label}</p>
+      <p className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-white">{value}</p>
+    </div>
+  )
+}
+
 function LeadDetailPage() {
   const { id } = useParams()
+  const { userId } = useAuthContext()
+  const location = useLocation()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const returnPath = safeReturnPath(searchParams.get('return_to'), '/admin/leads')
-  const leadReturnLabel = returnPath.startsWith('/admin/showings/') ? 'Back to showing' : returnPath.startsWith('/admin/showings') ? 'Back to showings' : 'Back to leads'
-  const { data, isLoading, isError, refetch } = useQuery({ queryKey: ['lead', id], queryFn: () => fetchLead(id || ''), enabled: Boolean(id) })
+  const returnsToCustomer = /^\/admin\/brokerages\/[^/?]+\/customers\/[^/?]+(?:[/?]|$)/.test(returnPath)
+  const leadReturnLabel = returnPath.startsWith('/admin/showings/')
+    ? 'Back to showing'
+    : returnPath.startsWith('/admin/showings')
+      ? 'Back to showings'
+      : returnsToCustomer
+        ? 'Back to customer'
+        : 'Back to leads'
+  const leadPath = `${location.pathname}${location.search}`
+  const { data, isLoading, isError, refetch } = useQuery({ queryKey: ['lead', userId, id], queryFn: () => fetchLead(id || ''), enabled: Boolean(userId && id) })
   const mutation = useMutation({
     mutationFn: (payload: LeadUpdatePayload) => updateLead(data!.lead.id, payload),
     onSuccess: () => refetch(),
@@ -4555,6 +4763,9 @@ function LeadDetailPage() {
                     <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#0f705e]">Lead detail</p>
                     <h1 className="mt-3 text-3xl font-semibold tracking-[-0.06em] sm:text-4xl md:text-5xl">{lead.name}</h1>
                     <p className="mt-3 text-sm font-semibold text-[#66746f]">Created {formatDateTime(lead.created_at)} · Source {lead.lead_source?.replaceAll('_', ' ') ?? 'Hafa Homes'}</p>
+                    {lead.user_id && lead.brokerage_id && (
+                      <Link to={returnsToCustomer ? returnPath : routes.adminCustomer(lead.brokerage_id, lead.user_id, leadPath)} className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-full bg-[#edf4ef] px-4 text-sm font-bold text-[var(--brand-primary)]">Open customer workspace <UsersRound size={16} /></Link>
+                    )}
                   </div>
                   <LeadStatusSelect value={lead.status} onChange={(status) => mutation.mutate({ status })} disabled={mutation.isPending} />
                 </div>
