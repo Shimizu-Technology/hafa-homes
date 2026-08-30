@@ -142,6 +142,7 @@ type ConsumerLead = {
   budget_range_label?: string
   has_qualification_details?: boolean
   qualification_summary?: string
+  showing_appointments?: ShowingAppointment[]
   latest_showing_appointment?: ShowingAppointment | null
 }
 
@@ -690,6 +691,14 @@ async function fetchMyLeads(getToken: GetAuthToken): Promise<{ leads: ConsumerLe
   return { leads: [...leads.values()] }
 }
 
+async function fetchMyLead(leadId: number, getToken: GetAuthToken): Promise<{ lead: ConsumerLead }> {
+  const response = await apiFetch(`${API_URL}/api/v1/me/leads/${leadId}`, {
+    headers: await authHeaders(getToken),
+  })
+  if (!response.ok) throw new ApiRequestError(await apiErrorMessage(response, 'Unable to load this request'), response.status)
+  return response.json()
+}
+
 async function fetchMe(getToken: GetAuthToken): Promise<{ user: CurrentUser }> {
   const response = await apiFetch(`${API_URL}/api/v1/me`, {
     headers: await authHeaders(getToken),
@@ -781,6 +790,7 @@ function AppContent({ auth }: { auth: AppAuth }) {
   const [selectedAgentId, setSelectedAgentId] = useState<number | null>(null)
   const [listingCache, setListingCache] = useState<Record<number, Listing>>({})
   const [selectedListing, setSelectedListing] = useState<Listing | null>(null)
+  const [selectedRequestId, setSelectedRequestId] = useState<number | null>(null)
   const [savedListingIds, setSavedListingIds] = useState<number[]>([])
   const [savedListingsLoading, setSavedListingsLoading] = useState(false)
   const [pendingSaveListingId, setPendingSaveListingId] = useState<number | null>(null)
@@ -798,19 +808,65 @@ function AppContent({ auth }: { auth: AppAuth }) {
   }, [activeTab, fullMapOpen])
 
   useEffect(() => {
-    function handleUrl(url: string | null) {
+    let active = true
+    let linkSequence = 0
+
+    async function handleUrl(url: string | null) {
       if (!url) return
+      const sequence = ++linkSequence
       const parsed = Linking.parse(url)
-      const path = parsed.path ? `/${parsed.path}` : '/'
+      const pathParts = [parsed.scheme === 'hafahomes' ? parsed.hostname : null, parsed.path]
+        .filter((part): part is string => Boolean(part))
+        .map((part) => part.replace(/^\/+|\/+$/g, ''))
+        .filter(Boolean)
+      const path = `/${pathParts.join('/')}`
+      const exactRequest = path.match(/^\/(?:account\/)?requests\/(\d+)\/?$/)
+      const exactListing = path.match(/^\/listings\/(\d+)\/?$/)
+
+      if (exactRequest) {
+        const requestId = Number(exactRequest[1])
+        if (!Number.isSafeInteger(requestId) || requestId <= 0) return
+        setSelectedListing(null)
+        setSelectedRequestId(requestId)
+        setActiveTab('requests')
+        return
+      }
+
+      if (exactListing) {
+        const listingId = Number(exactListing[1])
+        if (!Number.isSafeInteger(listingId) || listingId <= 0) return
+        setSelectedRequestId(null)
+        setSelectedListing(null)
+        setActiveTab('search')
+        try {
+          const listing = await fetchListing(listingId)
+          if (!active || sequence !== linkSequence) return
+          setKind(listing.listing_kind)
+          setListingCache((current) => ({ ...current, [listing.id]: listing }))
+          setSelectedListing(listing)
+        } catch (linkError) {
+          console.warn('Unable to open linked listing', linkError)
+          if (active && sequence === linkSequence) Alert.alert('Listing unavailable', 'This listing is no longer available to open.')
+        }
+        return
+      }
+
+      setSelectedListing(null)
+      setSelectedRequestId(null)
       if (path.startsWith('/agents')) setActiveTab('agents')
-      if (path.startsWith('/account/requests') || path.startsWith('/requests')) setActiveTab('requests')
-      if (path.startsWith('/saved')) setActiveTab('saved')
-      if (path.startsWith('/account')) setActiveTab('more')
+      else if (path.startsWith('/account/requests') || path.startsWith('/requests')) setActiveTab('requests')
+      else if (path.startsWith('/saved')) setActiveTab('saved')
+      else if (path.startsWith('/account')) setActiveTab('more')
     }
 
     Linking.getInitialURL().then(handleUrl).catch((linkError) => console.warn('Unable to parse initial link', linkError))
-    const subscription = Linking.addEventListener('url', ({ url }) => handleUrl(url))
-    return () => subscription.remove()
+    const subscription = Linking.addEventListener('url', ({ url }) => {
+      handleUrl(url).catch((linkError) => console.warn('Unable to handle incoming link', linkError))
+    })
+    return () => {
+      active = false
+      subscription.remove()
+    }
   }, [])
 
   useEffect(() => {
@@ -1145,6 +1201,24 @@ function AppContent({ auth }: { auth: AppAuth }) {
     ensureSaved(listingId)
   }, [auth.getToken, auth.isSignedIn, pendingSaveListingId])
 
+  function openListingFromBrowse(listing: Listing) {
+    setSelectedRequestId(null)
+    setSelectedListing(listing)
+  }
+
+  async function openListingFromRequest(listingId: number) {
+    const listing = listingCache[listingId] ?? await fetchListing(listingId)
+    setKind(listing.listing_kind)
+    setListingCache((current) => ({ ...current, [listing.id]: listing }))
+    setSelectedListing(listing)
+  }
+
+  function navigateToTab(tab: TabKey) {
+    setSelectedListing(null)
+    setSelectedRequestId(null)
+    setActiveTab(tab)
+  }
+
   if (selectedListing) {
     return (
       <>
@@ -1189,7 +1263,7 @@ function AppContent({ auth }: { auth: AppAuth }) {
               <Text style={styles.brandSubtitle}>Guam real estate app</Text>
             </View>
           </View>
-          <HeaderAuthButton auth={auth} onOpenAccount={() => setActiveTab('more')} onOpenAuth={() => openAuthPrompt()} />
+          <HeaderAuthButton auth={auth} onOpenAccount={() => navigateToTab('more')} onOpenAuth={() => openAuthPrompt()} />
         </View>
         <View style={styles.searchBar}>
           <Text style={styles.searchIcon}>⌕</Text>
@@ -1218,7 +1292,7 @@ function AppContent({ auth }: { auth: AppAuth }) {
             ? <CenteredState label="Loading Guam listings..." loading />
             : error
               ? <CenteredState label={error} />
-              : <SearchScreen listings={filteredListings} savedIds={savedListingIds} onOpen={setSelectedListing} onToggleSaved={toggleSaved} />
+              : <SearchScreen listings={filteredListings} savedIds={savedListingIds} onOpen={openListingFromBrowse} onToggleSaved={toggleSaved} />
         )}
         {activeTab === 'map' && (
           loading
@@ -1228,7 +1302,7 @@ function AppContent({ auth }: { auth: AppAuth }) {
               : <MapScreen
                 listings={filteredListings}
                 savedIds={savedListingIds}
-                onOpen={setSelectedListing}
+                onOpen={openListingFromBrowse}
                 onToggleSaved={toggleSaved}
                 fullMap={fullMapOpen}
                 initialCamera={mapCamera}
@@ -1244,19 +1318,21 @@ function AppContent({ auth }: { auth: AppAuth }) {
             ? <SavedSignInScreen clerkEnabled={auth.clerkEnabled} onOpenAuth={() => openAuthPrompt({ title: 'Sign in to view saved homes', copy: 'Saved homes are tied to your Hafa Homes account so they stay with you across devices.' })} />
             : savedListingsLoading
               ? <CenteredState label="Loading saved homes..." loading />
-              : <SavedScreen listings={savedListings} onOpen={setSelectedListing} onToggleSaved={toggleSaved} />
+              : <SavedScreen listings={savedListings} onOpen={openListingFromBrowse} onToggleSaved={toggleSaved} />
         )}
         {activeTab === 'requests' && (
           !auth.isSignedIn
             ? <RequestsSignInScreen clerkEnabled={auth.clerkEnabled} onOpenAuth={() => openAuthPrompt({ title: 'Sign in to view your requests', copy: 'Signed-in showing and price watch requests can show status, agent, and scheduled appointment details.' })} />
-            : <RequestsScreen auth={auth} />
+            : selectedRequestId
+              ? <RequestDetailScreen requestId={selectedRequestId} auth={auth} onBack={() => setSelectedRequestId(null)} onOpenListing={openListingFromRequest} />
+              : <RequestsScreen auth={auth} onSelectRequest={setSelectedRequestId} />
         )}
-        {activeTab === 'more' && <MoreScreen auth={auth} onOpenAuth={openAuthPrompt} onNavigateTab={setActiveTab} />}
+        {activeTab === 'more' && <MoreScreen auth={auth} onOpenAuth={openAuthPrompt} onNavigateTab={navigateToTab} />}
       </View>
 
       {!(activeTab === 'map' && fullMapOpen) && <View style={styles.tabBar}>
         {tabs.map((tab) => (
-          <Pressable key={tab.key} onPress={() => setActiveTab(tab.key)} style={[styles.tabButton, activeTab === tab.key && styles.tabButtonActive]}>
+          <Pressable key={tab.key} onPress={() => navigateToTab(tab.key)} style={[styles.tabButton, activeTab === tab.key && styles.tabButtonActive]}>
             <View style={[styles.tabIndicator, activeTab === tab.key && styles.tabIndicatorActive]} />
             <Text style={[styles.tabIcon, activeTab === tab.key && styles.tabActive]}>{tab.icon}</Text>
             <Text style={[styles.tabLabel, activeTab === tab.key && styles.tabActive]}>{tab.label}</Text>
@@ -2082,7 +2158,7 @@ function RequestsSignInScreen({ clerkEnabled, onOpenAuth }: { clerkEnabled: bool
   )
 }
 
-function RequestsScreen({ auth }: { auth: AppAuth }) {
+function RequestsScreen({ auth, onSelectRequest }: { auth: AppAuth; onSelectRequest: (requestId: number) => void }) {
   const [requests, setRequests] = useState<ConsumerLead[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -2120,14 +2196,93 @@ function RequestsScreen({ auth }: { auth: AppAuth }) {
         </View>
       )}
       ListEmptyComponent={loading ? <CenteredState label="Loading your requests..." loading /> : <CenteredState label="No requests yet. Request a showing or send a price watch request from any listing." />}
-      renderItem={({ item }) => <RequestHistoryCard request={item} />}
+      renderItem={({ item }) => <RequestHistoryCard request={item} onOpen={() => onSelectRequest(item.id)} />}
       ListFooterComponent={error ? <Text style={styles.requestError}>{error}</Text> : null}
     />
   )
 }
 
-function RequestHistoryCard({ request }: { request: ConsumerLead }) {
-  const showing = request.latest_showing_appointment
+function RequestDetailScreen({ requestId, auth, onBack, onOpenListing }: { requestId: number; auth: AppAuth; onBack: () => void; onOpenListing: (listingId: number) => Promise<void> }) {
+  const [request, setRequest] = useState<ConsumerLead | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [openingListing, setOpeningListing] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadRequest() {
+      if (!auth.getToken) return
+      setLoading(true)
+      setError(null)
+      try {
+        const result = await fetchMyLead(requestId, auth.getToken)
+        if (!cancelled) setRequest(result.lead)
+      } catch (requestError) {
+        console.warn('Unable to load exact Hafa Homes request', requestError)
+        if (!cancelled) {
+          const unavailable = requestError instanceof ApiRequestError && requestError.status === 404
+          setError(unavailable ? 'This request is not available in this brokerage storefront.' : requestError instanceof Error ? requestError.message : 'Unable to load this request')
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    loadRequest()
+    return () => { cancelled = true }
+  }, [auth.getToken, requestId])
+
+  async function openRelatedListing() {
+    if (!request?.listing?.id || openingListing) return
+    setOpeningListing(true)
+    setError(null)
+    try {
+      await onOpenListing(request.listing.id)
+    } catch (listingError) {
+      console.warn('Unable to open request listing', listingError)
+      setError(listingError instanceof Error ? listingError.message : 'Unable to open this listing')
+    } finally {
+      setOpeningListing(false)
+    }
+  }
+
+  return (
+    <ScrollView contentContainerStyle={styles.listContent}>
+      <View style={styles.requestDetailHeader}>
+        <Pressable style={styles.profileBackButton} onPress={onBack} accessibilityRole="button">
+          <Text style={styles.profileBackText}>Back to requests</Text>
+        </Pressable>
+        <Text style={styles.kicker}>Private request record</Text>
+        <Text style={styles.screenTitle}>Request HH-{requestId}</Text>
+        <Text style={styles.screenCopy}>Status, brokerage ownership, agent roles, and showing details stay scoped to this storefront.</Text>
+      </View>
+
+      {loading && <CenteredState label="Loading request details..." loading />}
+      {!loading && error && !request && <CenteredState label={error} />}
+      {!loading && request && (
+        <>
+          <RequestHistoryCard request={request} detailed />
+          {request.listing?.id && (
+            <Pressable style={styles.primaryCta} onPress={openRelatedListing} disabled={openingListing} accessibilityRole="button">
+              <Text style={styles.primaryCtaText}>{openingListing ? 'Opening listing...' : `Open related listing · ${request.listing.title}`}</Text>
+            </Pressable>
+          )}
+          {error && <Text style={styles.requestError}>{error}</Text>}
+          <View style={styles.requestPrivacyCard}>
+            <Text style={styles.requestHistoryStatus}>Private to this storefront</Text>
+            <Text style={styles.requestHistoryMeta}>This record is connected only to your signed-in account and the brokerage storefront where it was submitted. Listing attribution remains separate from requested and coordinating agents.</Text>
+          </View>
+        </>
+      )}
+    </ScrollView>
+  )
+}
+
+function RequestHistoryCard({ request, detailed = false, onOpen }: { request: ConsumerLead; detailed?: boolean; onOpen?: () => void }) {
+  const showings = detailed
+    ? (request.showing_appointments ?? (request.latest_showing_appointment ? [request.latest_showing_appointment] : []))
+    : (request.latest_showing_appointment ? [request.latest_showing_appointment] : [])
   return (
     <View style={styles.requestHistoryCard}>
       {request.listing?.primary_photo_url && <Image source={{ uri: request.listing.primary_photo_url }} style={styles.requestHistoryImage} />}
@@ -2154,15 +2309,20 @@ function RequestHistoryCard({ request }: { request: ConsumerLead }) {
             <Text style={styles.requestHistoryMeta}>{request.qualification_summary}</Text>
           </View>
         )}
-        {showing && (
-          <View style={styles.showingSummaryCard}>
+        {showings.map((showing) => (
+          <View key={showing.id} style={styles.showingSummaryCard}>
             <Text style={styles.requestHistoryStatus}>Showing appointment</Text>
             <Text style={styles.requestHistoryMeta}>{formatRequestDate(showing.scheduled_starts_at)} · {showing.status.replace(/_/g, ' ')} · {showing.tour_type.replace(/_/g, ' ')}</Text>
             {showing.location && <Text style={styles.requestHistoryMeta}>{showing.location}</Text>}
             {showing.consumer_notes && <Text style={styles.requestHistoryMeta}>{showing.consumer_notes}</Text>}
           </View>
-        )}
+        ))}
         {request.message && <Text style={styles.requestHistoryMessage}>{request.message}</Text>}
+        {onOpen && (
+          <Pressable style={styles.secondaryCta} onPress={onOpen} accessibilityRole="button" accessibilityLabel={`View request HH-${request.id}`}>
+            <Text style={styles.secondaryCtaText}>View request details</Text>
+          </Pressable>
+        )}
       </View>
     </View>
   )
@@ -3771,6 +3931,7 @@ const styles = StyleSheet.create({
   requestError: { color: '#a33b2f', fontSize: 13, fontWeight: '800', lineHeight: 19, marginTop: 12 },
   requestWarning: { backgroundColor: '#fff7ed', borderColor: '#fed7aa', borderRadius: 16, borderWidth: 1, color: '#9a3412', fontSize: 13, fontWeight: '800', lineHeight: 19, marginTop: 12, padding: 12 },
   requestSuccess: { paddingVertical: 20 },
+  requestDetailHeader: { gap: 8, marginBottom: 4 },
   requestHistoryCard: { backgroundColor: 'white', borderRadius: 26, marginTop: 12, overflow: 'hidden', shadowColor: colors.green, shadowOpacity: 0.08, shadowRadius: 18, shadowOffset: { width: 0, height: 8 } },
   requestHistoryImage: { backgroundColor: '#dbe8df', height: 170, width: '100%' },
   requestHistoryBody: { padding: 16 },
@@ -3781,5 +3942,6 @@ const styles = StyleSheet.create({
   requestHistoryTitle: { color: colors.ink, fontSize: 20, fontWeight: '900', letterSpacing: -0.4, marginTop: 5 },
   requestHistoryMeta: { color: colors.muted, fontSize: 13, fontWeight: '700', lineHeight: 20, marginTop: 4 },
   requestHistoryMessage: { color: colors.muted, fontSize: 13, fontWeight: '700', lineHeight: 20, marginTop: 12 },
+  requestPrivacyCard: { backgroundColor: colors.mint, borderColor: '#cfe2d9', borderRadius: 20, borderWidth: 1, marginTop: 12, padding: 16 },
   showingSummaryCard: { backgroundColor: colors.sand, borderRadius: 16, marginTop: 10, padding: 12 },
 })

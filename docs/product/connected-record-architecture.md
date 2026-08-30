@@ -48,14 +48,21 @@ The UI must keep listing attribution separate from requested and assigned agents
 
 The consumer projection does not include staff notes, internal showing notes, delivery logs, lead scores, source campaigns, audit evidence, or staff activity history.
 
+### Native connected consumer slice
+
+- The native app accepts exact cold-start and warm links for `/account/requests/:id`, `/requests/:id`, and `/listings/:id` through the `hafahomes` scheme.
+- Signed-out request links stop at the request-history sign-in boundary. After authentication, the exact request is loaded through the same user-and-storefront-scoped API as the web record.
+- The native request record shows consumer-safe status, all consumer-visible showing appointments, requested and assigned agent roles, the conversation-owning brokerage, and a reciprocal related-listing action.
+- Exact listing links fetch the requested record independently of the current search page and show a bounded unavailable notice when the listing cannot be opened.
+- Incoming link handling ignores stale asynchronous listing results after a newer link or navigation target takes precedence.
+
 ## Planned slices
 
-1. Native mobile request detail and exact cold/warm deep links for requests and listings.
-2. Stable staff showing records with reciprocal lead and listing journeys.
-3. URL-backed non-PII operational filters and safe return context in the CRM.
-4. A brokerage-scoped customer workspace that joins the customer's authorized requests and profile context without crossing brokerage boundaries.
-5. A storefront-scoped public agent record, linked only when the agent belongs to the active routing brokerage.
-6. Bounded related-record summaries with separately pageable collections as volume grows.
+1. Stable staff showing records with reciprocal lead and listing journeys.
+2. URL-backed non-PII operational filters and safe return context in the CRM.
+3. A brokerage-scoped customer workspace that joins the customer's authorized requests and profile context without crossing brokerage boundaries.
+4. A storefront-scoped public agent record, linked only when the agent belongs to the active routing brokerage.
+5. Bounded related-record summaries with separately pageable collections as volume grows.
 
 ## Deliberate deferrals
 
