@@ -210,6 +210,13 @@ use a common pagination contract after their authorization and tenancy scopes.
 - `Agent`: agent/realtor profile tied to brokerage.
 - `BrokerageMembership`: user-to-brokerage role membership.
 
+Membership status is the authoritative staff-access switch. An agent needs both an
+active `BrokerageMembership` with the `agent` role and an active `Agent` profile in
+that same brokerage. Revoking or removing the membership removes access across
+lead, customer, showing, intent, and audit records without relying on profile cleanup.
+Lead and showing validations also prevent assigned/requested agents, listings, or
+brokerages from crossing the lead's routing tenant.
+
 ### DataSyncRun
 
 Tracks future MLS/import sync activity.

@@ -10,7 +10,7 @@ Use Clerk for authentication across web and native mobile, with Rails as the sou
 
 - `platform_admin` — Hafa Homes/Shimizu Technology operator with full platform access.
 - `brokerage_admin` — brokerage admin role, scoped through active brokerage memberships.
-- `agent` — agent/realtor role, scoped to assigned/scoped leads through linked agent profiles.
+- `agent` — agent/realtor role, scoped to assigned/scoped leads only when an active brokerage membership and an active linked agent profile agree on the brokerage.
 - `consumer` — public buyer/renter account.
 
 Default admin bootstrap email:
@@ -113,7 +113,7 @@ Still future:
 
 - Keep consumer browsing public to reduce friction.
 - Do not rely only on Clerk metadata for authorization; use Rails roles.
-- Brokerage roles are scoped by active brokerage membership and linked agent profiles.
+- Brokerage roles are scoped by active brokerage membership. Agent authorization requires both that active membership and an active linked profile in the same brokerage; revoking or removing the membership immediately removes staff access even if the profile still exists.
 - Saved homes require auth because they are user-owned and server-backed.
 - Showing requests stay public for lead conversion, but attach `user_id` when submitted by a signed-in user.
 - Add Sign in with Apple before enabling Apple/Google social auth in the public iOS app.

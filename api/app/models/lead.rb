@@ -34,6 +34,7 @@ class Lead < ApplicationRecord
   validates :desired_beds, numericality: { only_integer: true, greater_than_or_equal_to: 0 }, allow_nil: true
   validates :quality_score, numericality: { only_integer: true, greater_than_or_equal_to: 0, less_than_or_equal_to: 100 }
   validate :requested_agent_matches_routing_brokerage
+  validate :assigned_agent_matches_routing_brokerage
   validate :budget_range_is_ordered
 
   before_validation :set_defaults
@@ -225,16 +226,24 @@ class Lead < ApplicationRecord
   end
 
   def requested_agent_matches_routing_brokerage
-    return unless requested_agent
+    agent_matches_routing_brokerage(requested_agent, :requested_agent)
+  end
+
+  def assigned_agent_matches_routing_brokerage
+    agent_matches_routing_brokerage(assigned_agent, :assigned_agent)
+  end
+
+  def agent_matches_routing_brokerage(agent, attribute)
+    return unless agent
 
     if brokerage_id.blank?
-      errors.add(:brokerage, "must be set before assigning a requested agent")
+      errors.add(:brokerage, "must be set before assigning an agent")
       return
     end
 
-    return if requested_agent.brokerage_id == brokerage_id
+    return if agent.brokerage_id == brokerage_id
 
-    errors.add(:requested_agent, "is not available for this brokerage")
+    errors.add(attribute, "is not available for this brokerage")
   end
 
   def queue_request_received_notification?

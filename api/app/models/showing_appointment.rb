@@ -16,6 +16,9 @@ class ShowingAppointment < ApplicationRecord
   validates :tour_type, inclusion: { in: TOUR_TYPES }
   validates :timezone, presence: true
   validate :ends_after_start
+  validate :brokerage_matches_lead
+  validate :agent_matches_brokerage
+  validate :listing_matches_lead
 
   before_validation :set_defaults
   before_validation :infer_context_from_lead
@@ -53,12 +56,38 @@ class ShowingAppointment < ApplicationRecord
     errors.add(:scheduled_ends_at, "must be after the start time")
   end
 
+  def brokerage_matches_lead
+    return unless lead
+    return if brokerage_id == lead.brokerage_id
+
+    errors.add(:brokerage, "must match the lead brokerage")
+  end
+
+  def agent_matches_brokerage
+    return unless agent
+
+    if brokerage_id.blank?
+      errors.add(:brokerage, "must be set before assigning an agent")
+      return
+    end
+
+    return if agent.brokerage_id == brokerage_id
+
+    errors.add(:agent, "is not available for this brokerage")
+  end
+
+  def listing_matches_lead
+    return unless lead&.listing && listing
+    return if listing_id == lead.listing_id
+
+    errors.add(:listing, "must match the lead listing")
+  end
+
   def sync_lead_from_schedule
     return unless lead
 
     updates = {}
     updates[:assigned_agent] = agent if agent && lead.assigned_agent_id != agent_id
-    updates[:brokerage] = brokerage if brokerage && lead.brokerage_id != brokerage_id
     if scheduled_starts_at.present? && %w[proposed confirmed].include?(status)
       updates[:status] = "showing_scheduled"
       updates[:last_contacted_at] = Time.current

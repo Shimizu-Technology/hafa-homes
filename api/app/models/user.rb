@@ -60,7 +60,18 @@ class User < ApplicationRecord
   end
 
   def staff?
-    ADMIN_ROLES.include?(role) && !archived?
+    return false if archived?
+
+    case role
+    when "platform_admin"
+      true
+    when "brokerage_admin"
+      active_brokerage_admin_ids.any?
+    when "agent"
+      active_agent_ids.any?
+    else
+      false
+    end
   end
 
   def archived?
@@ -96,15 +107,30 @@ class User < ApplicationRecord
   end
 
   def active_brokerage_admin_ids
-    brokerage_memberships.active.where(role: "brokerage_admin").pluck(:brokerage_id)
+    if brokerage_memberships.loaded?
+      brokerage_memberships.select { |membership| membership.active? && membership.role == "brokerage_admin" }.map(&:brokerage_id)
+    else
+      brokerage_memberships.active.where(role: "brokerage_admin").pluck(:brokerage_id)
+    end
   end
 
   def active_agent_member_brokerage_ids
-    brokerage_memberships.active.where(role: "agent").pluck(:brokerage_id)
+    if brokerage_memberships.loaded?
+      brokerage_memberships.select { |membership| membership.active? && membership.role == "agent" }.map(&:brokerage_id)
+    else
+      brokerage_memberships.active.where(role: "agent").pluck(:brokerage_id)
+    end
   end
 
   def active_agent_ids
-    agent_profiles.active.pluck(:id)
+    brokerage_ids = active_agent_member_brokerage_ids
+    return [] if brokerage_ids.empty?
+
+    if agent_profiles.loaded?
+      agent_profiles.select { |agent| agent.status == "active" && brokerage_ids.include?(agent.brokerage_id) }.map(&:id)
+    else
+      agent_profiles.active.where(brokerage_id: brokerage_ids).pluck(:id)
+    end
   end
 
   def as_api_json
