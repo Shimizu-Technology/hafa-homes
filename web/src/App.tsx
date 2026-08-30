@@ -4097,8 +4097,9 @@ export function AdminIntentPage() {
   const identityFilter = ['', 'signed_in', 'anonymous'].includes(rawIdentityFilter) ? rawIdentityFilter : ''
   const rawSortBy = searchParams.get('sort') || 'last_seen'
   const sortBy = ['last_seen', 'oldest', 'views_desc', 'saved_desc', 'forms_desc'].includes(rawSortBy) ? rawSortBy : 'last_seen'
-  const rawPage = Number(searchParams.get('page') || '1')
-  const page = Number.isInteger(rawPage) && rawPage > 0 ? rawPage : 1
+  const rawPage = searchParams.get('page') || '1'
+  const parsedPage = Number(rawPage)
+  const page = /^\d+$/.test(rawPage) && Number.isSafeInteger(parsedPage) && parsedPage > 0 ? parsedPage : 1
   const canonicalParams = new URLSearchParams()
   if (statusFilter) canonicalParams.set('status', statusFilter)
   if (identityFilter) canonicalParams.set('identity', identityFilter)
