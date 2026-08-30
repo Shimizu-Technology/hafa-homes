@@ -151,24 +151,38 @@ describe('staff intent operational context', () => {
   it('does not retain another staff user\'s intent records during an auth switch', async () => {
     let resolveSecondRequest: ((value: Response) => void) | undefined
     const secondRequest = new Promise<Response>((resolve) => { resolveSecondRequest = resolve })
+    let resolveSecondBrokeragesRequest: ((value: Response) => void) | undefined
+    const secondBrokeragesRequest = new Promise<Response>((resolve) => { resolveSecondBrokeragesRequest = resolve })
     let intentRequestCount = 0
+    let brokeragesRequestCount = 0
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       if (String(input).includes('/api/v1/admin/lead_intent_sessions')) {
         intentRequestCount += 1
         return intentRequestCount === 1 ? response(intentPayload) : secondRequest
       }
-      return response({ brokerages: [] })
+      if (String(input).includes('/api/v1/admin/brokerages')) {
+        brokeragesRequestCount += 1
+        return brokeragesRequestCount === 1
+          ? response({ brokerages: [{ id: 2, name: 'Alpha Realty', slug: 'alpha', settings: {} }] })
+          : secondBrokeragesRequest
+      }
+      return response({})
     }))
 
     const view = renderRoute(<AdminIntentPage />, intentPath, '/admin/intent')
     expect(await screen.findByText('Kai Buyer')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Prompt settings' }))
+    expect(await screen.findByText('Alpha Realty')).toBeTruthy()
 
     authState.userId = 'staff_99'
     view.rerenderRoute()
 
     await waitFor(() => expect(intentRequestCount).toBe(2))
+    await waitFor(() => expect(brokeragesRequestCount).toBe(2))
     expect(screen.queryByText('Kai Buyer')).toBeNull()
+    expect(screen.queryByText('Alpha Realty')).toBeNull()
     resolveSecondRequest?.(response({ ...intentPayload, lead_intent_sessions: [] }))
+    resolveSecondBrokeragesRequest?.(response({ brokerages: [] }))
   })
 
   it('preserves the intent return through a converted lead and its listing', async () => {

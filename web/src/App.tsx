@@ -4122,7 +4122,11 @@ export function AdminIntentPage() {
     queryKey: ['admin-lead-intent-sessions', userId, statusFilter, identityFilter, sortBy, searchQuery, page],
     queryFn: () => fetchAdminLeadIntentSessions({ status: statusFilter || undefined, identity: identityFilter || undefined, sort: sortBy || undefined, q: searchQuery || undefined, page: String(page), per_page: '10' }),
   })
-  const { data: brokeragesData, refetch: refetchBrokerages } = useQuery({ queryKey: ['admin-brokerages', 'prompt-settings'], queryFn: fetchAdminBrokerages })
+  const { data: brokeragesData, refetch: refetchBrokerages } = useQuery({
+    queryKey: ['admin-brokerages', 'prompt-settings', userId],
+    queryFn: fetchAdminBrokerages,
+    enabled: Boolean(userId),
+  })
   const promptSettingsMutation = useMutation({
     mutationFn: ({ id, payload }: { id: number; payload: Record<string, unknown> }) => updateAdminBrokerage(id, payload),
     onSuccess: () => refetchBrokerages(),
