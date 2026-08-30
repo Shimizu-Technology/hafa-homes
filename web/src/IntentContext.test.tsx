@@ -129,11 +129,29 @@ describe('staff intent operational context', () => {
     returnLinks.forEach((link) => expect(link.getAttribute('href')).toBe(intentPath))
   })
 
-  it('labels a converted lead detour with the exact intent return', () => {
-    vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(() => undefined)))
+  it('preserves the intent return through a converted lead and its listing', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).includes('/api/v1/leads/42')) {
+        return response({
+          lead: {
+            id: 42,
+            lead_type: 'contact',
+            name: 'Kai Buyer',
+            email: 'kai@example.test',
+            status: 'contacted',
+            created_at: '2026-08-30T23:00:00Z',
+            listing: { id: 27, title: 'Top home', village: 'Yigo', price: 775000, listing_kind: 'sale' },
+          },
+          assignable_agents: [],
+        })
+      }
+      return response({})
+    }))
 
     renderRoute(<LeadDetailPage />, `/admin/leads/42?return_to=${encodedIntentPath}`, '/admin/leads/:id')
 
     expect(screen.getByRole('button', { name: 'Back to intent' })).toBeTruthy()
+    const leadPath = `/admin/leads/42?return_to=${encodedIntentPath}`
+    expect((await screen.findByRole('link', { name: 'View public listing' })).getAttribute('href')).toBe(`/listings/27?from=admin&return_to=${encodeURIComponent(leadPath)}`)
   })
 })

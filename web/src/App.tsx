@@ -5000,7 +5000,7 @@ export function LeadDetailPage() {
                   <h2 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">{lead.listing.title}</h2>
                   <p className="mt-2 text-sm font-semibold text-[#66746f]">{lead.listing.village} · {currency(lead.listing.price, lead.listing.listing_kind)}</p>
                   {lead.listing.address && <p className="mt-3 text-sm leading-6 text-[#304942]">{lead.listing.address}</p>}
-                  <Link to={`/listings/${lead.listing.id}?from=admin&lead_id=${lead.id}`} className="mt-5 inline-flex items-center gap-2 rounded-full bg-[#f6f1e8] px-4 py-2 text-sm font-bold text-[#304942]">View public listing <ChevronRight size={16} /></Link>
+                  <Link to={routes.adminListing(lead.listing.id, leadPath)} className="mt-5 inline-flex items-center gap-2 rounded-full bg-[#f6f1e8] px-4 py-2 text-sm font-bold text-[#304942]">View public listing <ChevronRight size={16} /></Link>
                 </div>
               )}
             </aside>
