@@ -3,11 +3,13 @@ module PaginatedResponse
 
   private
 
-  def paginated_response(scope, collection_key)
-    page = [params.fetch(:page, 1).to_i, 1].max
-    per_page = [[params.fetch(:per_page, 10).to_i, 1].max, 50].min
+  def paginated_response(scope, collection_key, default_per_page: 10, max_per_page: 50)
+    per_page = [[integer_pagination_param(params[:per_page], fallback: default_per_page), 1].max, max_per_page].min
     total_count = scope.count
-    records = scope.offset((page - 1) * per_page).limit(per_page)
+    total_pages = (total_count.to_f / per_page).ceil
+    page = integer_pagination_param(params[:page], fallback: 1).clamp(1, [ total_pages, 1 ].max)
+    primary_key = scope.klass.arel_table[scope.klass.primary_key]
+    records = scope.order(primary_key.asc).offset((page - 1) * per_page).limit(per_page)
 
     {
       collection_key => records.map { |record| yield(record) },
@@ -15,8 +17,16 @@ module PaginatedResponse
         page: page,
         per_page: per_page,
         total_count: total_count,
-        total_pages: (total_count.to_f / per_page).ceil
+        total_pages: total_pages,
+        previous_page: page > 1 ? page - 1 : nil,
+        next_page: page < total_pages ? page + 1 : nil
       }
     }
+  end
+
+  def integer_pagination_param(value, fallback:)
+    return fallback unless value.is_a?(String) || value.is_a?(Numeric)
+
+    Integer(value, exception: false) || fallback
   end
 end

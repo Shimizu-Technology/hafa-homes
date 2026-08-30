@@ -70,4 +70,43 @@ Operational requirements:
 - after enabling the Puma queue in production, watch Render memory/CPU and Neon
   compute for 24–48 hours before changing concurrency or splitting out a worker.
 
+### API abuse controls
+
+Rack::Attack is enabled by default in production and can be exercised elsewhere
+with `ENABLE_RATE_LIMITING=true`. It limits only mutation paths that are public,
+high-frequency, or provider-cost-bearing:
+
+- lead submissions: 10 per client IP per 10 minutes;
+- saved searches: 10 per client IP per hour;
+- lead-intent events: 300 per client IP per minute;
+- lead-intent dismissals: 60 per client IP per minute;
+- staff lead notifications: 30 per bearer-token fingerprint and per client IP
+  per five minutes.
+
+The corresponding `*_RATE_LIMIT` environment variables can adjust limits without
+changing the fixed windows. Throttled clients receive JSON, HTTP 429,
+`Cache-Control: no-store`, and an accurate `Retry-After` value. Protected routes
+include their optional Rails format suffixes, such as `.json`. Bearer credentials
+are SHA-256 fingerprinted for the counter key and are never stored raw; the
+parallel IP limit also covers callers that rotate invalid credentials.
+
+Counters use `Rails.cache`. The current one-process Puma topology therefore has one
+authoritative in-memory counter store. Before setting `WEB_CONCURRENCY` above one
+or adding another web instance, configure a shared cache store so every process
+enforces the same aggregate limits. Edge/CDN protection and CAPTCHA escalation are
+still separate launch-readiness layers; application throttles do not replace them.
+
+### Collection pagination
+
+Lead inbox, showing schedule, consumer request history, and audit-history responses
+include `pagination` with `page`, `per_page`, `total_count`, `total_pages`,
+`previous_page`, and `next_page`. The web clients request explicit page sizes and
+render navigation controls. Limits are applied after authorization, tenant scoping,
+filters, and deterministic ordering.
+
+Anonymous intent context is optional for ordinary showing, contact, and price-watch
+requests: sparse context is ignored instead of blocking the inquiry. The dedicated
+`search_assist` conversion still requires two meaningful current-session events
+before the API links intent history to the new lead.
+
 The staging/deploy-preview environment is intentionally deferred as of the 2026-08-16 Phase 1 refresh. A Netlify preview badge is not an end-to-end API/auth check.

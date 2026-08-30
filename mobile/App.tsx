@@ -667,11 +667,27 @@ async function createLead(payload: CreateLeadPayload, getToken?: GetAuthToken, r
 }
 
 async function fetchMyLeads(getToken: GetAuthToken): Promise<{ leads: ConsumerLead[] }> {
-  const response = await apiFetch(`${API_URL}/api/v1/me/leads`, {
-    headers: await authHeaders(getToken),
-  })
-  if (!response.ok) throw new ApiRequestError(await apiErrorMessage(response, 'Unable to load your requests'), response.status)
-  return response.json()
+  const leads = new Map<number, ConsumerLead>()
+  let page = 1
+
+  while (true) {
+    const response = await apiFetch(`${API_URL}/api/v1/me/leads?page=${page}&per_page=100`, {
+      headers: await authHeaders(getToken),
+    })
+    if (!response.ok) throw new ApiRequestError(await apiErrorMessage(response, 'Unable to load your requests'), response.status)
+
+    const result = await response.json() as {
+      leads?: ConsumerLead[]
+      pagination?: { next_page?: number | null }
+    }
+    for (const lead of result.leads ?? []) leads.set(lead.id, lead)
+
+    const nextPage = result.pagination?.next_page
+    if (!nextPage || nextPage <= page) break
+    page = nextPage
+  }
+
+  return { leads: [...leads.values()] }
 }
 
 async function fetchMe(getToken: GetAuthToken): Promise<{ user: CurrentUser }> {

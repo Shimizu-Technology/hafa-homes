@@ -3,6 +3,7 @@ module Api
     class ShowingAppointmentsController < ApplicationController
       include ClerkAuthenticatable
       include StaffLeadScoping
+      include PaginatedResponse
 
       before_action :authenticate_user!
       before_action :require_staff!
@@ -12,9 +13,11 @@ module Api
         showings = staff_showing_appointment_scope
           .includes(:lead, :listing, :brokerage, :agent, :created_by)
           .order(Arel.sql("scheduled_starts_at DESC NULLS LAST"), created_at: :desc)
-          .limit(100)
 
-        render json: { showing_appointments: showings.map { |showing| ShowingAppointmentSerializer.summary(showing) } }
+        response = paginated_response(showings, :showing_appointments, default_per_page: 100, max_per_page: 100) do |showing|
+          ShowingAppointmentSerializer.summary(showing)
+        end
+        render json: response
       end
 
       def show

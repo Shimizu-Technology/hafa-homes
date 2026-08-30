@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import type { Map as MapboxMap, Marker as MapboxMarker } from 'mapbox-gl'
 import { Link, Route, Routes, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { SignedIn, SignedOut, SignInButton, UserButton } from '@clerk/clerk-react'
+import { SignedIn, SignedOut, SignInButton, UserButton } from './components/AuthControls'
 import { Brand } from './components/Brand'
 import { PostHogPageView, captureAnalyticsEvent } from './providers/PostHogProvider'
 import {
@@ -43,7 +43,7 @@ import {
   Waves,
   X,
 } from 'lucide-react'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query'
 import { apiFetch, authHeaders } from './lib/api'
 import { useAuthContext } from './contexts/AuthContext'
 import type { Brokerage } from './contexts/BrokerageContext'
@@ -572,14 +572,19 @@ type Lead = {
   assigned_agent?: Agent | null
 }
 
-type LeadsResponse = { leads: Lead[]; assignable_agents: Agent[] }
+type LeadsResponse = {
+  leads: Lead[]
+  assignable_agents: Agent[]
+  metrics: { open_leads: number; new_leads: number; showing_leads: number; price_watch_leads: number }
+  pagination: PaginationMeta
+}
 type LeadResponse = { lead: Lead; assignable_agents: Agent[] }
-type PaginationMeta = { page: number; per_page: number; total_count: number; total_pages: number }
+type PaginationMeta = { page: number; per_page: number; total_count: number; total_pages: number; previous_page?: number | null; next_page?: number | null }
 type LeadNotesPageResponse = { lead_notes: LeadNote[]; pagination: PaginationMeta }
 type LeadTasksPageResponse = { lead_tasks: LeadTask[]; pagination: PaginationMeta }
 type LeadActivitiesPageResponse = { lead_activities: LeadActivity[]; pagination: PaginationMeta }
-type MyLeadsResponse = { leads: Lead[] }
-type ShowingAppointmentsResponse = { showing_appointments: ShowingAppointment[] }
+type MyLeadsResponse = { leads: Lead[]; pagination: PaginationMeta }
+type ShowingAppointmentsResponse = { showing_appointments: ShowingAppointment[]; pagination: PaginationMeta }
 type AdminDashboardResponse = {
   metrics: { total_open_leads: number; new_leads: number; unassigned_leads: number; upcoming_showings: number; overdue_followups: number }
   recent_leads: Lead[]
@@ -624,7 +629,7 @@ type AuditEvent = {
   user_agent?: string
   created_at: string
 }
-type AuditEventsResponse = { audit_events: AuditEvent[] }
+type AuditEventsResponse = { audit_events: AuditEvent[]; pagination: PaginationMeta }
 type SavedListingsResponse = { listing_ids: number[]; listings: Listing[] }
 type SaveListingResponse = { listing: Listing; listing_id: number; saved: boolean }
 
@@ -838,7 +843,7 @@ async function fetchSyncRuns(): Promise<SyncRunsResponse> {
   return response.json()
 }
 
-async function fetchLeads(params: { assigned_agent_id?: string; lead_type?: string; status?: string; q?: string; sort?: string } = {}): Promise<LeadsResponse> {
+async function fetchLeads(params: { assigned_agent_id?: string; lead_type?: string; status?: string; q?: string; sort?: string; page?: string; per_page?: string } = {}): Promise<LeadsResponse> {
   const query = buildQuery(params)
   const response = await apiFetch(`${API_URL}/api/v1/leads${query ? `?${query}` : ''}`, { headers: await authHeaders() })
   if (!response.ok) throw new Error('Unable to load leads')
@@ -851,8 +856,8 @@ async function fetchLead(id: string): Promise<LeadResponse> {
   return response.json()
 }
 
-async function fetchMyLeads(): Promise<MyLeadsResponse> {
-  const response = await apiFetch(`${API_URL}/api/v1/me/leads`, { headers: await authHeaders() })
+async function fetchMyLeads(page = 1): Promise<MyLeadsResponse> {
+  const response = await apiFetch(`${API_URL}/api/v1/me/leads?page=${page}&per_page=10`, { headers: await authHeaders() })
   if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to load your requests'), response.status)
   return response.json()
 }
@@ -870,8 +875,8 @@ async function fetchAdminLeadIntentSessions(params: { status?: string; identity?
   return response.json()
 }
 
-async function fetchShowingAppointments(): Promise<ShowingAppointmentsResponse> {
-  const response = await apiFetch(`${API_URL}/api/v1/showing_appointments`, { headers: await authHeaders() })
+async function fetchShowingAppointments(page = 1): Promise<ShowingAppointmentsResponse> {
+  const response = await apiFetch(`${API_URL}/api/v1/showing_appointments?page=${page}&per_page=25`, { headers: await authHeaders() })
   if (!response.ok) throw new Error('Unable to load showing schedule')
   return response.json()
 }
@@ -898,8 +903,8 @@ async function updateAdminBrokerage(id: number, payload: Record<string, unknown>
   return response.json()
 }
 
-async function fetchAuditEvents(): Promise<AuditEventsResponse> {
-  const response = await apiFetch(`${API_URL}/api/v1/admin/audit_events`, { headers: await authHeaders() })
+async function fetchAuditEvents(page = 1): Promise<AuditEventsResponse> {
+  const response = await apiFetch(`${API_URL}/api/v1/admin/audit_events?page=${page}&per_page=50`, { headers: await authHeaders() })
   if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to load audit history'), response.status)
   return response.json()
 }
@@ -3044,7 +3049,8 @@ function SearchProfileCard({ profile, user, mutation, isLoading = false, error =
 
 function RequestsPage() {
   const { isClerkEnabled, isSignedIn, isLoading, userId } = useAuthContext()
-  const { data, isLoading: requestsLoading, isError } = useQuery({ queryKey: ['my-leads', userId], queryFn: fetchMyLeads, enabled: isClerkEnabled && isSignedIn })
+  const [page, setPage] = useState(1)
+  const { data, isLoading: requestsLoading, isError } = useQuery({ queryKey: ['my-leads', userId, page], queryFn: () => fetchMyLeads(page), enabled: isClerkEnabled && isSignedIn, placeholderData: keepPreviousData })
 
   if (isLoading) return <Shell compact><StateCard>Checking account...</StateCard></Shell>
 
@@ -3069,6 +3075,11 @@ function RequestsPage() {
           {requests.map((lead) => <ConsumerRequestCard key={lead.id} lead={lead} />)}
         </div>
         {requests.length === 0 && !requestsLoading && <StateCard>No requests yet. Request a showing or send a price watch request from any listing.</StateCard>}
+        {data?.pagination && data.pagination.total_pages > 1 && (
+          <div className="mt-5 rounded-[1.5rem] bg-white p-4 shadow-sm">
+            <PaginationControls pagination={data.pagination} onPageChange={setPage} />
+          </div>
+        )}
       </section>
     </Shell>
   )
@@ -3691,6 +3702,7 @@ function AdminIntentPage() {
   const { data, isLoading, isError } = useQuery({
     queryKey: ['admin-lead-intent-sessions', statusFilter, identityFilter, sortBy, searchQuery, page],
     queryFn: () => fetchAdminLeadIntentSessions({ status: statusFilter || undefined, identity: identityFilter || undefined, sort: sortBy || undefined, q: searchQuery || undefined, page: String(page), per_page: '10' }),
+    placeholderData: keepPreviousData,
   })
   const { data: brokeragesData, refetch: refetchBrokerages } = useQuery({ queryKey: ['admin-brokerages', 'prompt-settings'], queryFn: fetchAdminBrokerages })
   const promptSettingsMutation = useMutation({
@@ -4154,24 +4166,28 @@ function LeadsPage() {
   const [statusFilter, setStatusFilter] = useState('')
   const [searchFilter, setSearchFilter] = useState('')
   const [sortFilter, setSortFilter] = useState('newest')
+  const [page, setPage] = useState(1)
+  useEffect(() => setPage(1), [agentFilter, leadTypeFilter, statusFilter, searchFilter, sortFilter])
   const leadQueryParams = {
     assigned_agent_id: agentFilter || undefined,
     lead_type: leadTypeFilter || undefined,
     status: statusFilter || undefined,
     q: searchFilter.trim() || undefined,
     sort: sortFilter,
+    page: String(page),
+    per_page: '25',
   }
-  const { data, isLoading, isError, refetch } = useQuery({ queryKey: ['leads', leadQueryParams], queryFn: () => fetchLeads(leadQueryParams) })
+  const { data, isLoading, isError, refetch } = useQuery({ queryKey: ['leads', leadQueryParams], queryFn: () => fetchLeads(leadQueryParams), placeholderData: keepPreviousData })
   const statusMutation = useMutation({
     mutationFn: ({ id, status }: { id: number; status: LeadStatus }) => updateLead(id, { status }),
     onSuccess: () => refetch(),
   })
   const leads = data?.leads ?? []
   const assignableAgents = data?.assignable_agents ?? []
-  const openLeads = leads.filter((lead) => ['new', 'contacted', 'showing_scheduled', 'nurturing'].includes(lead.status)).length
-  const newLeads = leads.filter((lead) => lead.status === 'new').length
-  const scheduledLeads = leads.filter((lead) => lead.status === 'showing_scheduled').length
-  const priceWatchLeads = leads.filter((lead) => lead.lead_type === 'price_tracker').length
+  const openLeads = data?.metrics.open_leads ?? 0
+  const newLeads = data?.metrics.new_leads ?? 0
+  const scheduledLeads = data?.metrics.showing_leads ?? 0
+  const priceWatchLeads = data?.metrics.price_watch_leads ?? 0
   const hasActiveFilters = Boolean(agentFilter || leadTypeFilter || statusFilter || searchFilter.trim() || sortFilter !== 'newest')
   const resetFilters = () => {
     setAgentFilter('')
@@ -4201,7 +4217,7 @@ function LeadsPage() {
                 </div>
               </label>
               <div className="flex flex-wrap items-center gap-3">
-                <p className="text-sm font-semibold text-[#66746f]">Showing {leads.length} lead{leads.length === 1 ? '' : 's'}{isLoading ? '...' : ''}</p>
+                <p className="text-sm font-semibold text-[#66746f]">Showing {leads.length} of {data?.pagination.total_count ?? 0} lead{data?.pagination.total_count === 1 ? '' : 's'}{isLoading ? '...' : ''}</p>
                 {hasActiveFilters && <button type="button" onClick={resetFilters} className="rounded-full bg-[#edf0ec] px-4 py-2 text-sm font-bold text-[#304942]">Reset filters</button>}
               </div>
             </div>
@@ -4274,6 +4290,11 @@ function LeadsPage() {
           ))}
           {leads.length === 0 && !isLoading && <StateCard>No matching leads. New tour requests and price watch requests will appear here.</StateCard>}
         </div>
+        {data?.pagination && data.pagination.total_pages > 1 && (
+          <div className="mt-5 rounded-[1.5rem] bg-white p-4 shadow-sm">
+            <PaginationControls pagination={data.pagination} onPageChange={setPage} />
+          </div>
+        )}
       </section>
     </AdminShell>
   )
@@ -5445,7 +5466,8 @@ function ShowingScheduler({ lead, assignableAgents, mutation }: { lead: Lead; as
 }
 
 function AdminShowingsPage() {
-  const { data, isLoading, isError } = useQuery({ queryKey: ['showing-appointments'], queryFn: fetchShowingAppointments })
+  const [page, setPage] = useState(1)
+  const { data, isLoading, isError } = useQuery({ queryKey: ['showing-appointments', page], queryFn: () => fetchShowingAppointments(page), placeholderData: keepPreviousData })
   const showings = data?.showing_appointments ?? []
 
   return (
@@ -5470,6 +5492,11 @@ function AdminShowingsPage() {
           ))}
           {showings.length === 0 && !isLoading && <StateCard>No showing appointments scheduled yet.</StateCard>}
         </div>
+        {data?.pagination && data.pagination.total_pages > 1 && (
+          <div className="mt-5 rounded-[1.5rem] bg-white p-4 shadow-sm">
+            <PaginationControls pagination={data.pagination} onPageChange={setPage} />
+          </div>
+        )}
       </section>
     </AdminShell>
   )
@@ -5782,7 +5809,8 @@ function UserRoleCard({ user, brokerages, agents, onSave, saving }: { user: Admi
 }
 
 function AdminAuditPage() {
-  const { data, isLoading, isError, refetch } = useQuery({ queryKey: ['audit-events'], queryFn: fetchAuditEvents })
+  const [page, setPage] = useState(1)
+  const { data, isLoading, isError, refetch } = useQuery({ queryKey: ['audit-events', page], queryFn: () => fetchAuditEvents(page), placeholderData: keepPreviousData })
   const events = data?.audit_events ?? []
 
   return (
@@ -5823,6 +5851,11 @@ function AdminAuditPage() {
           ))}
           {events.length === 0 && !isLoading && <div className="p-5"><StateCard>No audit events yet.</StateCard></div>}
         </div>
+        {data?.pagination && data.pagination.total_pages > 1 && (
+          <div className="mt-5 rounded-[1.5rem] bg-white p-4 shadow-sm">
+            <PaginationControls pagination={data.pagination} onPageChange={setPage} />
+          </div>
+        )}
       </section>
     </AdminShell>
   )

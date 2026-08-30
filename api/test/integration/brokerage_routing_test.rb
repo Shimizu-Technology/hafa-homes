@@ -189,6 +189,80 @@ class BrokerageRoutingTest < ActionDispatch::IntegrationTest
     assert_equal @alpha.id, LeadIntentSession.first.brokerage_id
   end
 
+  test "does not block a direct request when its optional intent context is still sparse" do
+    token = "sparse-showing-context-token"
+    post "/api/v1/lead_intent/events",
+      headers: { "X-Brokerage-Host" => "alpha.test" },
+      params: {
+        lead_intent_event: {
+          session_token: token,
+          event_name: "listing_detail_viewed",
+          client_event_id: "listing-view-1",
+          listing_id: Listing.create!(
+            village: Village.create!(
+              name: "Sparse Showing Village",
+              slug: "sparse-showing-village",
+              region: "north"
+            ),
+            brokerage: @alpha,
+            agent: @alpha_agent,
+            title: "Yigo home",
+            listing_kind: "sale",
+            property_type: "home",
+            status: "active",
+            price: 500_000
+          ).id,
+          source: "web"
+        }
+      }
+    assert_response :created
+
+    post "/api/v1/leads",
+      headers: { "X-Brokerage-Host" => "alpha.test" },
+      params: {
+        lead: {
+          lead_type: "showing_request",
+          name: "Buyer",
+          email: "buyer@example.com",
+          intent_session_token: token
+        }
+      }
+
+    assert_response :created
+    assert_nil Lead.order(:id).last.lead_intent_session_id
+  end
+
+  test "still requires meaningful current context for search-assist conversion" do
+    token = "sparse-search-assist-context-token"
+    post "/api/v1/lead_intent/events",
+      headers: { "X-Brokerage-Host" => "alpha.test" },
+      params: {
+        lead_intent_event: {
+          session_token: token,
+          event_name: "search_filter_changed",
+          client_event_id: "filter-1",
+          source: "web",
+          metadata: { filter: "village", value: "Yigo" }
+        }
+      }
+    assert_response :created
+
+    post "/api/v1/leads",
+      headers: { "X-Brokerage-Host" => "alpha.test" },
+      params: {
+        lead: {
+          lead_type: "search_assist",
+          name: "Buyer",
+          email: "buyer@example.com",
+          intent_session_token: token
+        }
+      }
+
+    assert_response :conflict
+    assert_equal true, response.parsed_body.fetch("rebuild_intent_context")
+    assert_equal 0, Lead.count
+  end
+
   private
 
   def with_default_brokerage_slug(slug)

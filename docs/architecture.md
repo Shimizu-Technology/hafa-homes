@@ -189,6 +189,20 @@ terminal/manual-review events because the current ClickSend integration cannot
 prove that an ambiguous request was not already delivered. Reconciliation runs
 every five minutes to recover interrupted email sends and orphaned queued records.
 
+### Request throttling and bounded collections
+
+Rack::Attack runs after Rails resolves the remote client IP. Direct connections use
+`REMOTE_ADDR` so a forged forwarded header cannot create a fresh counter; requests
+from a configured trusted proxy use Rails' resolved client address. Only selected
+write paths are throttled, and provider-cost-bearing notification writes are keyed
+by both client IP and a one-way bearer-token fingerprint. Optional Rails format
+suffixes are normalized before protected routes are matched.
+
+The current deployment has one Puma process and uses its `Rails.cache` for counters.
+A shared cache is required before horizontal or multi-process web scaling. The lead
+inbox, showing schedule, storefront-scoped consumer request history, and audit log
+use a common pagination contract after their authorization and tenancy scopes.
+
 ### Brokerage / Agent tenancy
 
 - `Brokerage`: broker/customer/office tenant.
