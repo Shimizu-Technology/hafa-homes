@@ -4086,9 +4086,11 @@ function AdminPanel({ title, children }: { title: string; children: React.ReactN
 export function AdminIntentPage() {
   const { userId } = useAuthContext()
   const [searchParams, setSearchParams] = useSearchParams()
-  const [searchInput, setSearchInput] = useState('')
-  const [searchQuery, setSearchQuery] = useState('')
+  const [searchInput, setSearchInput] = useState({ ownerId: userId, value: '' })
+  const [searchQuery, setSearchQuery] = useState({ ownerId: userId, value: '' })
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const scopedSearchInput = searchInput.ownerId === userId ? searchInput.value : ''
+  const scopedSearchQuery = searchQuery.ownerId === userId ? searchQuery.value : ''
   const rawStatusFilter = searchParams.get('status') || ''
   const statusFilter = ['', 'active', 'snoozed', 'converted'].includes(rawStatusFilter) ? rawStatusFilter : ''
   const rawIdentityFilter = searchParams.get('identity') || ''
@@ -4119,8 +4121,8 @@ export function AdminIntentPage() {
   const intentPath = routes.adminIntent(canonicalParams)
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['admin-lead-intent-sessions', userId, statusFilter, identityFilter, sortBy, searchQuery, page],
-    queryFn: () => fetchAdminLeadIntentSessions({ status: statusFilter || undefined, identity: identityFilter || undefined, sort: sortBy || undefined, q: searchQuery || undefined, page: String(page), per_page: '10' }),
+    queryKey: ['admin-lead-intent-sessions', userId, statusFilter, identityFilter, sortBy, scopedSearchQuery, page],
+    queryFn: () => fetchAdminLeadIntentSessions({ status: statusFilter || undefined, identity: identityFilter || undefined, sort: sortBy || undefined, q: scopedSearchQuery || undefined, page: String(page), per_page: '10' }),
   })
   const { data: brokeragesData, refetch: refetchBrokerages } = useQuery({
     queryKey: ['admin-brokerages', 'prompt-settings', userId],
@@ -4169,9 +4171,9 @@ export function AdminIntentPage() {
                 <h2 className="text-2xl font-semibold tracking-[-0.05em]">Recent search sessions</h2>
                 <p className="mt-2 text-sm font-semibold leading-6 text-[#66746f]">Use this as a coaching surface: saves, repeated village interest, and abandoned forms are the strongest outreach signals.</p>
               </div>
-              <form onSubmit={(event) => { event.preventDefault(); setSearchQuery(searchInput.trim()); if (page > 1) setPage(1) }} className="grid w-full gap-2 lg:max-w-3xl">
+              <form onSubmit={(event) => { event.preventDefault(); setSearchQuery({ ownerId: userId, value: scopedSearchInput.trim() }); if (page > 1) setPage(1) }} className="grid w-full gap-2 lg:max-w-3xl">
                 <div className="flex flex-wrap gap-2">
-                  <input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Search user, email, village, listing, or behavior" className="min-h-11 min-w-0 flex-1 rounded-2xl border border-[#dce5df] bg-white px-3 text-sm font-bold text-[#304942] sm:min-w-[240px]" />
+                  <input value={scopedSearchInput} onChange={(event) => setSearchInput({ ownerId: userId, value: event.target.value })} placeholder="Search user, email, village, listing, or behavior" className="min-h-11 min-w-0 flex-1 rounded-2xl border border-[#dce5df] bg-white px-3 text-sm font-bold text-[#304942] sm:min-w-[240px]" />
                   <button className="min-h-11 w-full rounded-2xl bg-[var(--brand-primary)] px-4 text-sm font-bold text-white sm:w-auto">Search</button>
                 </div>
                 <div className="flex flex-wrap gap-2">

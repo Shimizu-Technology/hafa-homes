@@ -154,11 +154,13 @@ describe('staff intent operational context', () => {
     let resolveSecondBrokeragesRequest: ((value: Response) => void) | undefined
     const secondBrokeragesRequest = new Promise<Response>((resolve) => { resolveSecondBrokeragesRequest = resolve })
     let intentRequestCount = 0
+    const intentRequestUrls: string[] = []
     let brokeragesRequestCount = 0
-    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       if (String(input).includes('/api/v1/admin/lead_intent_sessions')) {
         intentRequestCount += 1
-        return intentRequestCount === 1 ? response(intentPayload) : secondRequest
+        intentRequestUrls.push(String(input))
+        return authState.userId === 'staff_99' ? secondRequest : response(intentPayload)
       }
       if (String(input).includes('/api/v1/admin/brokerages')) {
         brokeragesRequestCount += 1
@@ -167,20 +169,28 @@ describe('staff intent operational context', () => {
           : secondBrokeragesRequest
       }
       return response({})
-    }))
+    })
+    vi.stubGlobal('fetch', fetchMock)
 
     const view = renderRoute(<AdminIntentPage />, intentPath, '/admin/intent')
     expect(await screen.findByText('Kai Buyer')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Prompt settings' }))
     expect(await screen.findByText('Alpha Realty')).toBeTruthy()
+    const privateSearch = screen.getByPlaceholderText('Search user, email, village, listing, or behavior')
+    fireEvent.change(privateSearch, { target: { value: 'private@example.test' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }))
+    await waitFor(() => expect(intentRequestUrls.at(-1)).toContain('private%40example.test'))
+    const requestCountBeforeSwitch = intentRequestCount
 
     authState.userId = 'staff_99'
     view.rerenderRoute()
 
-    await waitFor(() => expect(intentRequestCount).toBe(2))
+    await waitFor(() => expect(intentRequestCount).toBeGreaterThan(requestCountBeforeSwitch))
     await waitFor(() => expect(brokeragesRequestCount).toBe(2))
     expect(screen.queryByText('Kai Buyer')).toBeNull()
     expect(screen.queryByText('Alpha Realty')).toBeNull()
+    expect((privateSearch as HTMLInputElement).value).toBe('')
+    expect(intentRequestUrls.at(-1)).not.toContain('private%40example.test')
     resolveSecondRequest?.(response({ ...intentPayload, lead_intent_sessions: [] }))
     resolveSecondBrokeragesRequest?.(response({ brokerages: [] }))
   })
