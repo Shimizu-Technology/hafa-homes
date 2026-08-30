@@ -28,7 +28,17 @@ describe('route builders', () => {
     expect(routes.agent('agent/7')).toBe('/agents/agent%2F7')
     expect(routes.request('request?7')).toBe('/account/requests/request%3F7')
     expect(routes.adminLead('lead#7')).toBe('/admin/leads/lead%237')
+    expect(routes.adminCustomer('brokerage/2', 'customer?7')).toBe('/admin/brokerages/brokerage%2F2/customers/customer%3F7')
     expect(routes.adminShowing('showing/7')).toBe('/admin/showings/showing%2F7')
+  })
+
+  it('preserves non-PII lead inbox state through customer and lead records', () => {
+    const inbox = routes.adminLeads('status=contacted&sort=quality_desc&page=2')
+    const customer = routes.adminCustomer(2, 7, inbox)
+
+    expect(inbox).toBe('/admin/leads?status=contacted&sort=quality_desc&page=2')
+    expect(customer).toBe('/admin/brokerages/2/customers/7?return_to=%2Fadmin%2Fleads%3Fstatus%3Dcontacted%26sort%3Dquality_desc%26page%3D2')
+    expect(routes.adminLead(42, customer)).toContain('return_to=%2Fadmin%2Fbrokerages%2F2%2Fcustomers%2F7')
   })
 
   it('preserves a request-list page through a request and related listing journey', () => {
