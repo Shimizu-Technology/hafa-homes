@@ -3,6 +3,7 @@ import { useEffect } from 'react'
 import posthog from 'posthog-js'
 import { PostHogProvider as PHProvider, usePostHog } from 'posthog-js/react'
 import { useLocation } from 'react-router-dom'
+import { publicAnalyticsPath } from '../lib/routes'
 
 const POSTHOG_KEY = import.meta.env.VITE_PUBLIC_POSTHOG_KEY
 const POSTHOG_HOST = import.meta.env.VITE_PUBLIC_POSTHOG_HOST || 'https://us.i.posthog.com'
@@ -13,17 +14,10 @@ if (isPostHogEnabled && typeof window !== 'undefined') {
   posthog.init(POSTHOG_KEY, {
     api_host: POSTHOG_HOST,
     capture_pageview: false,
-    capture_pageleave: true,
-    autocapture: true,
+    capture_pageleave: false,
+    autocapture: false,
+    disable_session_recording: true,
     disable_surveys: true,
-    session_recording: {
-      maskAllInputs: true,
-      maskInputOptions: {
-        email: true,
-        password: true,
-        tel: true,
-      },
-    },
     loaded: (ph) => {
       if (import.meta.env.DEV) {
         ph.opt_out_capturing()
@@ -37,10 +31,11 @@ export function PostHogPageView() {
   const ph = usePostHog()
 
   useEffect(() => {
-    if (ph && isPostHogEnabled && !import.meta.env.DEV) {
+    const analyticsPath = publicAnalyticsPath(location.pathname)
+    if (ph && analyticsPath && isPostHogEnabled && !import.meta.env.DEV) {
       ph.capture('$pageview', {
-        $current_url: window.location.href,
-        $pathname: location.pathname,
+        $current_url: `${window.location.origin}${analyticsPath}`,
+        $pathname: analyticsPath,
       })
     }
   }, [location, ph])

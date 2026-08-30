@@ -4,6 +4,7 @@ module Api
       include ClerkAuthenticatable
 
       before_action :authenticate_user!
+      before_action :require_request_brokerage!, only: [ :leads, :lead ]
 
       def show
         render json: { user: current_user.as_api_json }
@@ -22,12 +23,16 @@ module Api
       end
 
       def leads
-        leads = current_user.leads
-          .includes(:brokerage, :requested_agent, :assigned_agent, { showing_appointments: [:listing, :brokerage, :agent, :created_by] }, listing: [:village, :brokerage, :agent])
+        leads = consumer_request_scope
           .order(created_at: :desc)
           .limit(100)
 
         render json: { leads: leads.map { |lead| LeadSerializer.consumer(lead) } }
+      end
+
+      def lead
+        lead = consumer_request_scope.find(params[:id])
+        render json: { lead: LeadSerializer.consumer(lead) }
       end
 
       def destroy
@@ -63,6 +68,18 @@ module Api
       end
 
       private
+
+      def consumer_request_scope
+        current_user.leads
+          .where(brokerage: current_routing_brokerage)
+          .includes(:brokerage, :requested_agent, :assigned_agent, { showing_appointments: [ :listing, :brokerage, :agent, :created_by ] }, listing: [ :village, :brokerage, :agent ])
+      end
+
+      def require_request_brokerage!
+        return if current_routing_brokerage
+
+        render json: { error: "No brokerage is configured for this storefront" }, status: :not_found
+      end
 
       def me_params
         params.require(:user).permit(:first_name, :last_name, :phone, :preferred_contact_method).tap do |permitted|

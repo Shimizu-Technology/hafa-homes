@@ -75,4 +75,35 @@ class StaffTenantIsolationTest < ActionDispatch::IntegrationTest
     assert_response :success
     assert_equal [ @alpha_lead.id, @beta_lead.id ].sort, response.parsed_body.fetch("leads").pluck("id").sort
   end
+
+  test "agents only receive audit events for leads assigned to their active profiles" do
+    alpha_agent_user = create_user(email: "agent-one@alpha.test", role: "agent", clerk_id: "clerk-alpha-agent-one")
+    other_agent_user = create_user(email: "agent-two@alpha.test", role: "agent", clerk_id: "clerk-alpha-agent-two")
+    BrokerageMembership.create!(brokerage: @alpha, user: alpha_agent_user, role: "agent", status: "active")
+    BrokerageMembership.create!(brokerage: @alpha, user: other_agent_user, role: "agent", status: "active")
+    alpha_agent = Agent.create!(brokerage: @alpha, user: alpha_agent_user, name: "Agent One", email: alpha_agent_user.email)
+    other_agent = Agent.create!(brokerage: @alpha, user: other_agent_user, name: "Agent Two", email: other_agent_user.email)
+    assigned_lead = Lead.create!(brokerage: @alpha, assigned_agent: alpha_agent, lead_type: "contact", name: "Assigned Buyer", email: "assigned@example.com")
+    other_lead = Lead.create!(brokerage: @alpha, assigned_agent: other_agent, lead_type: "contact", name: "Other Buyer", email: "other@example.com")
+    assigned_event = AuditLogger.record!(action: "lead_updated", target: assigned_lead, lead: assigned_lead, metadata: { scope: "assigned" })
+    AuditLogger.record!(action: "lead_updated", target: other_lead, lead: other_lead, metadata: { scope: "other_agent" })
+    AuditLogger.record!(action: "brokerage_updated", target: @alpha, brokerage: @alpha, metadata: { scope: "brokerage" })
+
+    headers = authorization_headers(alpha_agent_user)
+    with_clerk_auth { get "/api/v1/admin/audit_events", headers: headers }
+
+    assert_response :success
+    assert_equal [ assigned_event.id ], response.parsed_body.fetch("audit_events").pluck("id")
+  end
+
+  test "brokerage admins retain brokerage-wide audit visibility" do
+    alpha_event = AuditLogger.record!(action: "brokerage_updated", target: @alpha, brokerage: @alpha)
+    AuditLogger.record!(action: "brokerage_updated", target: @beta, brokerage: @beta)
+
+    headers = authorization_headers(@admin)
+    with_clerk_auth { get "/api/v1/admin/audit_events", headers: headers }
+
+    assert_response :success
+    assert_equal [ alpha_event.id ], response.parsed_body.fetch("audit_events").pluck("id")
+  end
 end

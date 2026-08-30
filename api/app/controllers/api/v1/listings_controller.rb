@@ -19,7 +19,7 @@ module Api
       end
 
       def show
-        listing = Listing.includes(:village, :listing_photos, :features, :brokerage, :agent).find(params[:id])
+        listing = Listing.active.includes(:village, :listing_photos, :features, :brokerage, :agent).find(params[:id])
         render json: { listing: ListingSerializer.detail(listing) }
       end
 

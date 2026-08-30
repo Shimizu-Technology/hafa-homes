@@ -6,6 +6,7 @@ Rails.application.routes.draw do
       resource :context, only: [ :show ], controller: :contexts
       resource :me, only: [ :show, :update, :destroy ], controller: :me do
         get :leads
+        get "leads/:id", action: :lead, as: :lead
       end
       get "me/search_profile", to: "search_profiles#show"
       patch "me/search_profile", to: "search_profiles#update"
