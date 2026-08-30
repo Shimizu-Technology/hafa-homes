@@ -35,9 +35,9 @@ class AccountDeletion < ApplicationRecord
       begin
         transaction(requires_new: true) do
           locked_user = User.lock.find(user.id)
-          deletion = lock.find_by(clerk_id_digest: clerk_id_digest)
+          deletion = locked_tombstone(clerk_id_digest)
           unless deletion
-            deletion = create!(
+            deletion = create_tombstone!(
               user: locked_user,
               clerk_id: locked_user.clerk_id,
               clerk_id_digest: clerk_id_digest,
@@ -54,6 +54,16 @@ class AccountDeletion < ApplicationRecord
 
         find_by!(clerk_id_digest: clerk_id_digest)
       end
+    end
+
+    private
+
+    def locked_tombstone(clerk_id_digest)
+      lock.find_by(clerk_id_digest: clerk_id_digest)
+    end
+
+    def create_tombstone!(attributes)
+      create!(attributes)
     end
   end
 
@@ -138,19 +148,20 @@ class AccountDeletion < ApplicationRecord
   end
 
   def complete!(processing_token:)
-    with_lock do
-      return true if completed?
-      return false unless owns_processing_token?(processing_token)
-      raise ActiveRecord::RecordInvalid.new(self) unless provider_deleted?
-
+    self.class.transaction do
       user_record = User.lock.find_by(id: user_id)
-      if user_record
-        anonymize_audit_events!(user_record)
-        update!(user: nil)
+      deletion = self.class.lock.find(id)
+      return true if deletion.completed?
+      return false unless deletion.send(:owns_processing_token?, processing_token)
+      raise ActiveRecord::RecordInvalid.new(deletion) unless deletion.provider_deleted?
+
+      if user_record && deletion.user_id == user_record.id
+        deletion.send(:anonymize_audit_events!, user_record)
+        deletion.update!(user: nil)
         user_record.destroy!
       end
 
-      update!(
+      deletion.update!(
         status: "completed",
         clerk_id: nil,
         completed_at: Time.current,
@@ -159,6 +170,7 @@ class AccountDeletion < ApplicationRecord
         lease_expires_at: nil
       )
     end
+    reload
     true
   end
 

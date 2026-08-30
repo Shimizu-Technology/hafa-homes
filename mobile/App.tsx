@@ -8,6 +8,7 @@ import * as Linking from 'expo-linking'
 import { StatusBar } from 'expo-status-bar'
 import * as WebBrowser from 'expo-web-browser'
 import { apiFetch } from './src/apiClient'
+import { clearPendingAccountDeletion, hasPendingAccountDeletion, markPendingAccountDeletion } from './src/accountDeletionState'
 import { advanceNavigationGeneration, agentRecordBackTarget, beginAppLinkNavigation, closeListingTransition, isCurrentNavigationGeneration, mergeAgentListingPage, openListingFromAgentTransition, requestDetailKey } from './src/navigation'
 import { WebView } from 'react-native-webview'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -249,6 +250,7 @@ type CurrentUser = {
 type AppAuth = {
   clerkEnabled: boolean
   isSignedIn: boolean
+  userId?: string
   userName?: string
   userEmail?: string
   userInitial?: string
@@ -791,12 +793,13 @@ function AuthenticatedAppContent() {
   const auth = useMemo<AppAuth>(() => ({
     clerkEnabled: true,
     isSignedIn: Boolean(isSignedIn),
+    userId: user?.id,
     userName,
     userEmail,
     userInitial,
     getToken,
     signOut: () => signOut(),
-  }), [getToken, isSignedIn, signOut, userEmail, userInitial, userName])
+  }), [getToken, isSignedIn, signOut, user?.id, userEmail, userInitial, userName])
 
   return <AppContent auth={auth} />
 }
@@ -2599,7 +2602,35 @@ function AccountCard({ auth, onOpenAuth }: { auth: AppAuth; onOpenAuth: (prompt?
   const [deletingAccount, setDeletingAccount] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const [deletionStarted, setDeletionStarted] = useState(false)
+  const [deletionStateHydrated, setDeletionStateHydrated] = useState(!auth.isSignedIn)
   const deletingAccountRef = useRef(false)
+
+  useEffect(() => {
+    let cancelled = false
+
+    if (!auth.isSignedIn) {
+      setDeletionStarted(false)
+      setDeletionStateHydrated(true)
+      return () => { cancelled = true }
+    }
+
+    if (!auth.userId) {
+      setDeletionStateHydrated(false)
+      return () => { cancelled = true }
+    }
+
+    setDeletionStateHydrated(false)
+    hasPendingAccountDeletion(AsyncStorage, auth.userId)
+      .then((pending) => {
+        if (!cancelled) setDeletionStarted(pending)
+      })
+      .catch((storageError) => console.warn('Unable to restore account deletion state', storageError))
+      .finally(() => {
+        if (!cancelled) setDeletionStateHydrated(true)
+      })
+
+    return () => { cancelled = true }
+  }, [auth.isSignedIn, auth.userId])
 
   useEffect(() => {
     let cancelled = false
@@ -2617,6 +2648,7 @@ function AccountCard({ auth, onOpenAuth }: { auth: AppAuth; onOpenAuth: (prompt?
       setSearchProfileError(null)
       setSearchProfileLoaded(false)
 
+      let accountBlocked = false
       try {
         const result = await fetchMe(auth.getToken)
         loadedUser = result.user
@@ -2628,10 +2660,19 @@ function AccountCard({ auth, onOpenAuth }: { auth: AppAuth; onOpenAuth: (prompt?
           setPreferredContact(result.user.preferred_contact_method || 'email')
         }
       } catch (error) {
-        if (!cancelled) setProfileError(error instanceof Error ? error.message : 'Unable to load profile')
+        if (!cancelled) {
+          if (error instanceof ApiRequestError && error.status === 403) {
+            accountBlocked = true
+            setDeletionStarted(true)
+            markPendingAccountDeletion(AsyncStorage, auth.userId).catch((storageError) => console.warn('Unable to save account deletion state', storageError))
+          }
+          setProfileError(error instanceof Error ? error.message : 'Unable to load profile')
+        }
       } finally {
         if (!cancelled) setProfileLoading(false)
       }
+
+      if (accountBlocked) return
 
       setSearchProfileLoading(true)
       try {
@@ -2663,7 +2704,7 @@ function AccountCard({ auth, onOpenAuth }: { auth: AppAuth; onOpenAuth: (prompt?
 
     loadProfile()
     return () => { cancelled = true }
-  }, [auth.getToken, auth.isSignedIn, searchProfileReloadKey])
+  }, [auth.getToken, auth.isSignedIn, auth.userId, searchProfileReloadKey])
 
   async function handleSaveProfile() {
     if (!auth.getToken || profileSaving) return
@@ -2718,6 +2759,7 @@ function AccountCard({ auth, onOpenAuth }: { auth: AppAuth; onOpenAuth: (prompt?
     try {
       await deleteAccount(auth.getToken)
       setDeletionStarted(true)
+      markPendingAccountDeletion(AsyncStorage, auth.userId).catch((storageError) => console.warn('Unable to save account deletion state', storageError))
       const signedOut = await signOutDeletedAccount()
       if (signedOut) {
         Alert.alert('Deletion started', 'You have been signed out and cannot use this account again. Hafa Homes will finish removing the account and its synced data through the secure deletion process.')
@@ -2741,6 +2783,7 @@ function AccountCard({ auth, onOpenAuth }: { auth: AppAuth; onOpenAuth: (prompt?
     try {
       await auth.signOut()
       setDeleteError(null)
+      clearPendingAccountDeletion(AsyncStorage, auth.userId).catch((storageError) => console.warn('Unable to clear account deletion state', storageError))
       return true
     } catch (signOutError) {
       console.warn('Account deleted but sign-out failed', signOutError)
@@ -2768,6 +2811,15 @@ function AccountCard({ auth, onOpenAuth }: { auth: AppAuth; onOpenAuth: (prompt?
         { text: 'Cancel', style: 'cancel' },
         { text: deletingAccount ? 'Deleting...' : 'Delete account', style: 'destructive', onPress: handleDeleteAccount },
       ],
+    )
+  }
+
+  if (auth.isSignedIn && !deletionStateHydrated) {
+    return (
+      <View style={styles.accountCard}>
+        <ActivityIndicator color={colors.green2} />
+        <Text style={styles.accountCopy}>Checking account status...</Text>
+      </View>
     )
   }
 

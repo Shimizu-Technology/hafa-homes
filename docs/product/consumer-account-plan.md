@@ -107,8 +107,8 @@ Backend behavior:
 
 UX:
 
-- Mobile: signed-in users can delete their account from the More/account card. If local sign-out fails after the server accepts deletion, the account UI hides cached profile tools and presents a persistent **Finish signing out** recovery action.
-- Web: signed-in users can delete their account from `/account`, with the same honest sign-out recovery state instead of claiming a failed sign-out succeeded.
+- Mobile: signed-in users can delete their account from the More/account card. If local sign-out fails after the server accepts deletion, a Clerk-user-scoped device marker survives app restarts, hides cached profile tools, and presents a persistent **Finish signing out** recovery action. A blocked `/api/v1/me` response restores the same state if device storage is unavailable.
+- Web: signed-in users can delete their account from `/account`, with the same Clerk-user-scoped refresh recovery and blocked-API fallback instead of claiming a failed sign-out succeeded.
 - Destructive flows explain that submitted showing/contact requests remain for brokerage follow-up but are disconnected from the account.
 
 Production requirement:

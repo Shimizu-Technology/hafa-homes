@@ -146,6 +146,55 @@ class AccountDeletionTest < ActionDispatch::IntegrationTest
     assert user.reload.archived?
   end
 
+  test "a unique-index conflict returns the concurrently-created tombstone" do
+    user = create_user(email: "concurrent@example.com", clerk_id: "clerk-concurrent")
+    digest = AccountDeletion.digest_for(user.clerk_id)
+    winner = AccountDeletion.create!(clerk_id: user.clerk_id, clerk_id_digest: digest, status: "pending", requested_at: Time.current)
+    original_lookup = AccountDeletion.method(:locked_tombstone)
+    original_create = AccountDeletion.method(:create_tombstone!)
+    lookup_calls = 0
+    AccountDeletion.define_singleton_method(:locked_tombstone) do |requested_digest|
+      lookup_calls += 1
+      lookup_calls == 1 ? nil : original_lookup.call(requested_digest)
+    end
+    AccountDeletion.define_singleton_method(:create_tombstone!) do |*|
+      raise ActiveRecord::RecordNotUnique, "simulated concurrent insert"
+    end
+
+    deletion = AccountDeletion.request_for!(user)
+
+    assert_equal winner.id, deletion.id
+    assert_equal digest, deletion.clerk_id_digest
+    assert_equal 1, AccountDeletion.where(clerk_id_digest: digest).count
+    assert user.reload.archived?
+  ensure
+    AccountDeletion.define_singleton_method(:locked_tombstone, original_lookup) if original_lookup
+    AccountDeletion.define_singleton_method(:create_tombstone!, original_create) if original_create
+    AccountDeletion.singleton_class.send(:private, :locked_tombstone, :create_tombstone!) if original_lookup && original_create
+  end
+
+  test "completion locks the user before revalidating the tombstone" do
+    user = create_user(email: "lock-order@example.com", clerk_id: "clerk-lock-order")
+    deletion = AccountDeletion.request_for!(user)
+    token = deletion.claim_for_processing!
+    deletion.mark_provider_deleted!(processing_token: token)
+    lock_queries = []
+    subscriber = ActiveSupport::Notifications.subscribe("sql.active_record") do |*, payload|
+      sql = payload[:sql].to_s
+      lock_queries << sql if sql.include?("FOR UPDATE")
+    end
+
+    deletion.complete!(processing_token: token)
+
+    user_lock_index = lock_queries.index { |sql| sql.include?('FROM "users"') }
+    deletion_lock_index = lock_queries.index { |sql| sql.include?('FROM "account_deletions"') }
+    assert user_lock_index, "expected the user row to be locked"
+    assert deletion_lock_index, "expected the tombstone row to be locked"
+    assert_operator user_lock_index, :<, deletion_lock_index
+  ensure
+    ActiveSupport::Notifications.unsubscribe(subscriber) if subscriber
+  end
+
   test "accepts and enqueues a durable deletion when audit logging fails" do
     user = create_user(email: "audit-outage@example.com", clerk_id: "clerk-audit-outage")
     headers = authorization_headers(user)
