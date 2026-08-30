@@ -6,8 +6,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { AdminIntentPage, LeadDetailPage, ListingDetailPage } from './App'
 
+const authState = vi.hoisted(() => ({ userId: 'staff_12' }))
+
 vi.mock('./contexts/AuthContext', () => ({
-  useAuthContext: () => ({ isClerkEnabled: true, isSignedIn: true, isLoading: false, userId: 'staff_12' }),
+  useAuthContext: () => ({ isClerkEnabled: true, isSignedIn: true, isLoading: false, userId: authState.userId }),
 }))
 
 vi.mock('./components/AuthControls', () => ({
@@ -75,19 +77,22 @@ function LocationProbe() {
 
 function renderRoute(element: React.ReactNode, initialEntry: string, path: string) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, retryDelay: 0 } } })
-  return render(
+  const buildTree = () => (
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[initialEntry]}>
         <LocationProbe />
         <Routes><Route path={path} element={element} /></Routes>
       </MemoryRouter>
-    </QueryClientProvider>,
+    </QueryClientProvider>
   )
+  const view = render(buildTree())
+  return { ...view, rerenderRoute: () => view.rerender(buildTree()) }
 }
 
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
+  authState.userId = 'staff_12'
 })
 
 describe('staff intent operational context', () => {
@@ -127,6 +132,43 @@ describe('staff intent operational context', () => {
     const returnLinks = screen.getAllByRole('link', { name: 'Back to intent' })
     expect(returnLinks.length).toBeGreaterThanOrEqual(2)
     returnLinks.forEach((link) => expect(link.getAttribute('href')).toBe(intentPath))
+  })
+
+  it('ignores an invalid lead id and retains a valid intent return', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes('/api/v1/listings/27')) return response({ listing })
+      if (url.endsWith('/api/v1/agents')) return response({ agents: [] })
+      return response({})
+    }))
+
+    renderRoute(<ListingDetailPage />, `/listings/27?from=admin&lead_id=not-a-number&return_to=${encodedIntentPath}`, '/listings/:id')
+
+    const returnLinks = await screen.findAllByRole('link', { name: 'Back to intent' })
+    returnLinks.forEach((link) => expect(link.getAttribute('href')).toBe(intentPath))
+  })
+
+  it('does not retain another staff user\'s intent records during an auth switch', async () => {
+    let resolveSecondRequest: ((value: Response) => void) | undefined
+    const secondRequest = new Promise<Response>((resolve) => { resolveSecondRequest = resolve })
+    let intentRequestCount = 0
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).includes('/api/v1/admin/lead_intent_sessions')) {
+        intentRequestCount += 1
+        return intentRequestCount === 1 ? response(intentPayload) : secondRequest
+      }
+      return response({ brokerages: [] })
+    }))
+
+    const view = renderRoute(<AdminIntentPage />, intentPath, '/admin/intent')
+    expect(await screen.findByText('Kai Buyer')).toBeTruthy()
+
+    authState.userId = 'staff_99'
+    view.rerenderRoute()
+
+    await waitFor(() => expect(intentRequestCount).toBe(2))
+    expect(screen.queryByText('Kai Buyer')).toBeNull()
+    resolveSecondRequest?.(response({ ...intentPayload, lead_intent_sessions: [] }))
   })
 
   it('preserves the intent return through a converted lead and its listing', async () => {

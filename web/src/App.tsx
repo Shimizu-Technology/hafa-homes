@@ -2333,8 +2333,10 @@ export function ListingDetailPage() {
   const [detailParams] = useSearchParams()
   const fromAdmin = detailParams.get('from') === 'admin'
   const adminLeadId = detailParams.get('lead_id')
+  const parsedAdminLeadId = Number(adminLeadId)
+  const hasValidAdminLeadId = Boolean(adminLeadId && /^\d+$/.test(adminLeadId) && Number.isSafeInteger(parsedAdminLeadId) && parsedAdminLeadId > 0)
   const requestedBackPath = safeReturnPath(detailParams.get('return_to'), '/')
-  const adminBackPath = adminLeadId ? `/admin/leads/${adminLeadId}` : requestedBackPath.startsWith('/admin/') ? requestedBackPath : '/admin/leads'
+  const adminBackPath = hasValidAdminLeadId ? `/admin/leads/${parsedAdminLeadId}` : requestedBackPath.startsWith('/admin/') ? requestedBackPath : '/admin/leads'
   const listingBackPath = fromAdmin ? adminBackPath : requestedBackPath
   const listingPath = `${location.pathname}${location.search}`
   const listingBackLabel = fromAdmin
@@ -4119,7 +4121,6 @@ export function AdminIntentPage() {
   const { data, isLoading, isError } = useQuery({
     queryKey: ['admin-lead-intent-sessions', userId, statusFilter, identityFilter, sortBy, searchQuery, page],
     queryFn: () => fetchAdminLeadIntentSessions({ status: statusFilter || undefined, identity: identityFilter || undefined, sort: sortBy || undefined, q: searchQuery || undefined, page: String(page), per_page: '10' }),
-    placeholderData: keepPreviousData,
   })
   const { data: brokeragesData, refetch: refetchBrokerages } = useQuery({ queryKey: ['admin-brokerages', 'prompt-settings'], queryFn: fetchAdminBrokerages })
   const promptSettingsMutation = useMutation({
