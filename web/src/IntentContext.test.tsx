@@ -134,6 +134,30 @@ describe('staff intent operational context', () => {
     returnLinks.forEach((link) => expect(link.getAttribute('href')).toBe(intentPath))
   })
 
+  it('shows a prompt settings load failure and retries it', async () => {
+    let brokeragesRequestCount = 0
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes('/api/v1/admin/lead_intent_sessions')) return response(intentPayload)
+      if (url.includes('/api/v1/admin/brokerages')) {
+        brokeragesRequestCount += 1
+        return brokeragesRequestCount === 1
+          ? response({ error: 'Prompt settings are temporarily unavailable.' }, 503)
+          : response({ brokerages: [{ id: 2, name: 'Alpha Realty', slug: 'alpha', settings: {} }] })
+      }
+      return response({})
+    }))
+
+    renderRoute(<AdminIntentPage />, intentPath, '/admin/intent')
+    fireEvent.click(await screen.findByRole('button', { name: 'Prompt settings' }))
+
+    expect(await screen.findByText('Prompt settings are temporarily unavailable.')).toBeTruthy()
+    expect(screen.queryByText('No brokerages are available for prompt settings.')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    expect(await screen.findByText('Alpha Realty')).toBeTruthy()
+    expect(brokeragesRequestCount).toBe(2)
+  })
+
   it('ignores an invalid lead id and retains a valid intent return', async () => {
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input)

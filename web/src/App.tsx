@@ -4124,7 +4124,7 @@ export function AdminIntentPage() {
     queryKey: ['admin-lead-intent-sessions', userId, statusFilter, identityFilter, sortBy, scopedSearchQuery, page],
     queryFn: () => fetchAdminLeadIntentSessions({ status: statusFilter || undefined, identity: identityFilter || undefined, sort: sortBy || undefined, q: scopedSearchQuery || undefined, page: String(page), per_page: '10' }),
   })
-  const { data: brokeragesData, refetch: refetchBrokerages } = useQuery({
+  const { data: brokeragesData, isLoading: areBrokeragesLoading, isError: didBrokeragesFail, error: brokeragesError, refetch: refetchBrokerages } = useQuery({
     queryKey: ['admin-brokerages', 'prompt-settings', userId],
     queryFn: fetchAdminBrokerages,
     enabled: Boolean(userId),
@@ -4154,7 +4154,7 @@ export function AdminIntentPage() {
             <SlidersHorizontal size={17} /> Prompt settings
           </button>
         </div>
-        <PromptSettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} brokerages={brokerages} mutation={promptSettingsMutation} />
+        <PromptSettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} brokerages={brokerages} isLoading={areBrokeragesLoading} isError={didBrokeragesFail} error={brokeragesError} onRetry={() => { void refetchBrokerages() }} mutation={promptSettingsMutation} />
         {metrics && (
           <div className="grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-4">
             <AdminMetric label="Active sessions" value={metrics.active_sessions} tone="dark" />
@@ -4252,7 +4252,7 @@ export function AdminIntentPage() {
 
 type PromptSettingsMutation = { mutate: (variables: { id: number; payload: Record<string, unknown> }) => void; isPending: boolean; isError: boolean; error: unknown }
 
-function PromptSettingsModal({ open, onClose, brokerages, mutation }: { open: boolean; onClose: () => void; brokerages: Brokerage[]; mutation: PromptSettingsMutation }) {
+function PromptSettingsModal({ open, onClose, brokerages, isLoading, isError, error, onRetry, mutation }: { open: boolean; onClose: () => void; brokerages: Brokerage[]; isLoading: boolean; isError: boolean; error: unknown; onRetry: () => void; mutation: PromptSettingsMutation }) {
   const [modeGuideOpen, setModeGuideOpen] = useState(false)
 
   useEffect(() => {
@@ -4307,8 +4307,15 @@ function PromptSettingsModal({ open, onClose, brokerages, mutation }: { open: bo
         )}
 
         <div className="mt-4 grid gap-4">
+          {isLoading && <StateCard>Loading prompt settings...</StateCard>}
+          {isError && (
+            <div className="rounded-[1.5rem] border border-[#f5b8b0] bg-[#fff4f2] p-4 text-[#8f261d]">
+              <p className="text-sm font-semibold">{displayErrorMessage(error, 'Unable to load prompt settings.')}</p>
+              <button type="button" onClick={onRetry} className="mt-3 min-h-11 rounded-2xl bg-[#8f261d] px-4 text-sm font-bold text-white">Try again</button>
+            </div>
+          )}
           {brokerages.map((brokerage) => <PromptSettingsCard key={`${brokerage.id}-${JSON.stringify(brokerage.settings || {})}`} brokerage={brokerage} mutation={mutation} />)}
-          {brokerages.length === 0 && <StateCard>No brokerages are available for prompt settings.</StateCard>}
+          {!isLoading && !isError && brokerages.length === 0 && <StateCard>No brokerages are available for prompt settings.</StateCard>}
         </div>
       </div>
     </div>
