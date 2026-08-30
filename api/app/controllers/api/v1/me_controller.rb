@@ -78,7 +78,7 @@ module Api
       def require_request_brokerage!
         return if current_routing_brokerage
 
-        render json: { error: "No brokerage is configured for this storefront" }, status: :not_found
+        render json: { errors: [ "No brokerage is configured for this storefront" ] }, status: :not_found
       end
 
       def me_params

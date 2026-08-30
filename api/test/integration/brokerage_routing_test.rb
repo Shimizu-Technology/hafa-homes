@@ -160,7 +160,7 @@ class BrokerageRoutingTest < ActionDispatch::IntegrationTest
     end
 
     assert_response :not_found
-    assert_equal "No brokerage is configured for this storefront", response.parsed_body.fetch("error")
+    assert_equal [ "No brokerage is configured for this storefront" ], response.parsed_body.fetch("errors")
   end
 
   test "rejects reuse of an intent session token across brokerages" do

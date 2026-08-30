@@ -18,6 +18,18 @@ describe('route builders', () => {
     expect(routes.listing(42, '/?kind=rent&view=map')).toBe('/listings/42?return_to=%2F%3Fkind%3Drent%26view%3Dmap')
     expect(withReturnTo('/listings/42?from=saved', '/account/saved')).toBe('/listings/42?from=saved&return_to=%2Faccount%2Fsaved')
   })
+
+  it('appends return context before the destination fragment', () => {
+    expect(withReturnTo('/listings/42#photos', '/account/saved')).toBe('/listings/42?return_to=%2Faccount%2Fsaved#photos')
+  })
+
+  it('keeps reserved characters inside one dynamic path identifier', () => {
+    expect(routes.listing('a/b?tab=1#photos')).toBe('/listings/a%2Fb%3Ftab%3D1%23photos')
+    expect(routes.agent('agent/7')).toBe('/agents/agent%2F7')
+    expect(routes.request('request?7')).toBe('/account/requests/request%3F7')
+    expect(routes.adminLead('lead#7')).toBe('/admin/leads/lead%237')
+    expect(routes.adminShowing('showing/7')).toBe('/admin/showings/showing%2F7')
+  })
 })
 
 describe('publicAnalyticsPath', () => {

@@ -16,19 +16,24 @@ export function withReturnTo(path: string, returnTo?: string | null) {
   const safeReturnTo = safeInternalPath(returnTo, '')
   if (!safeReturnTo) return path
 
-  const separator = path.includes('?') ? '&' : '?'
-  return `${path}${separator}return_to=${encodeURIComponent(safeReturnTo)}`
+  const fragmentIndex = path.indexOf('#')
+  const target = fragmentIndex === -1 ? path : path.slice(0, fragmentIndex)
+  const fragment = fragmentIndex === -1 ? '' : path.slice(fragmentIndex)
+  const separator = target.includes('?') ? '&' : '?'
+  return `${target}${separator}return_to=${encodeURIComponent(safeReturnTo)}${fragment}`
 }
+
+const routeId = (id: number | string) => encodeURIComponent(String(id))
 
 export const routes = {
   home: () => '/',
-  listing: (listingId: number | string, returnTo?: string | null) => withReturnTo(`/listings/${listingId}`, returnTo),
+  listing: (listingId: number | string, returnTo?: string | null) => withReturnTo(`/listings/${routeId(listingId)}`, returnTo),
   village: (slug: string, returnTo?: string | null) => withReturnTo(`/villages/${encodeURIComponent(slug)}`, returnTo),
-  agent: (agentId: number | string, returnTo?: string | null) => withReturnTo(`/agents/${agentId}`, returnTo),
+  agent: (agentId: number | string, returnTo?: string | null) => withReturnTo(`/agents/${routeId(agentId)}`, returnTo),
   requests: () => '/account/requests',
-  request: (requestId: number | string, returnTo?: string | null) => withReturnTo(`/account/requests/${requestId}`, returnTo),
-  adminLead: (leadId: number | string, returnTo?: string | null) => withReturnTo(`/admin/leads/${leadId}`, returnTo),
-  adminShowing: (showingId: number | string, returnTo?: string | null) => withReturnTo(`/admin/showings/${showingId}`, returnTo),
+  request: (requestId: number | string, returnTo?: string | null) => withReturnTo(`/account/requests/${routeId(requestId)}`, returnTo),
+  adminLead: (leadId: number | string, returnTo?: string | null) => withReturnTo(`/admin/leads/${routeId(leadId)}`, returnTo),
+  adminShowing: (showingId: number | string, returnTo?: string | null) => withReturnTo(`/admin/showings/${routeId(showingId)}`, returnTo),
 }
 
 const PRIVATE_ANALYTICS_PREFIXES = [ '/admin', '/account', '/requests', '/sign-in', '/sign-up' ]
