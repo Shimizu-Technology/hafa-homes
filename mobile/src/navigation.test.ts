@@ -4,8 +4,10 @@ import {
   agentRecordBackTarget,
   appLinkTarget,
   beginAppLinkNavigation,
+  closeListingTransition,
   isCurrentNavigationGeneration,
   mergeAgentListingPage,
+  openListingFromAgentTransition,
   requestDetailKey,
 } from './navigation'
 
@@ -80,5 +82,16 @@ describe('agent record journeys', () => {
 
     expect(agentRecordBackTarget(listing)).toBe(listing)
     expect(agentRecordBackTarget(null)).toBeNull()
+  })
+
+  it('clears in-flight pagination when a listing opens before returning to the profile', () => {
+    const listing = { id: 27, title: 'Ocean view home' }
+    const agentProfile = { agentDetailId: 8, agentDetailLoading: true, listing: null }
+    const openedListing = openListingFromAgentTransition(agentProfile, listing)
+    const returnedProfile = closeListingTransition(openedListing)
+
+    expect(agentProfile.agentDetailLoading).toBe(true)
+    expect(openedListing).toEqual({ agentDetailId: 8, agentDetailLoading: false, listing })
+    expect(returnedProfile).toEqual({ agentDetailId: 8, agentDetailLoading: false, listing: null })
   })
 })

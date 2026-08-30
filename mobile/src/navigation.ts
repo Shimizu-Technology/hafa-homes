@@ -87,3 +87,21 @@ export function mergeAgentListingPage<
 export function agentRecordBackTarget<T>(returnListing: T | null) {
   return returnListing
 }
+
+export type AgentListingTransitionState<T> = {
+  agentDetailId: number | null
+  agentDetailLoading: boolean
+  listing: T | null
+}
+
+export function openListingFromAgentTransition<T>(state: AgentListingTransitionState<T>, listing: T): AgentListingTransitionState<T> {
+  return {
+    ...state,
+    agentDetailLoading: false,
+    listing,
+  }
+}
+
+export function closeListingTransition<T>(state: AgentListingTransitionState<T>): AgentListingTransitionState<T> {
+  return { ...state, listing: null }
+}

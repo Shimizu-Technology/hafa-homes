@@ -8,7 +8,7 @@ import * as Linking from 'expo-linking'
 import { StatusBar } from 'expo-status-bar'
 import * as WebBrowser from 'expo-web-browser'
 import { apiFetch } from './src/apiClient'
-import { advanceNavigationGeneration, agentRecordBackTarget, beginAppLinkNavigation, isCurrentNavigationGeneration, mergeAgentListingPage, requestDetailKey } from './src/navigation'
+import { advanceNavigationGeneration, agentRecordBackTarget, beginAppLinkNavigation, closeListingTransition, isCurrentNavigationGeneration, mergeAgentListingPage, openListingFromAgentTransition, requestDetailKey } from './src/navigation'
 import { WebView } from 'react-native-webview'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -1318,13 +1318,19 @@ function AppContent({ auth }: { auth: AppAuth }) {
 
   function openListingFromAgent(listing: Listing) {
     advanceNavigationGeneration(navigationGeneration)
+    const transition = openListingFromAgentTransition({ agentDetailId: selectedAgentDetailId, agentDetailLoading, listing: selectedListing }, listing)
+    setSelectedAgentDetailId(transition.agentDetailId)
+    setAgentDetailLoading(transition.agentDetailLoading)
     setListingCache((current) => ({ ...current, [listing.id]: listing }))
-    setSelectedListing(listing)
+    setSelectedListing(transition.listing)
   }
 
   function closeListing() {
     advanceNavigationGeneration(navigationGeneration)
-    setSelectedListing(null)
+    const transition = closeListingTransition({ agentDetailId: selectedAgentDetailId, agentDetailLoading, listing: selectedListing })
+    setSelectedAgentDetailId(transition.agentDetailId)
+    setAgentDetailLoading(transition.agentDetailLoading)
+    setSelectedListing(transition.listing)
   }
 
   function openRequest(requestId: number) {
