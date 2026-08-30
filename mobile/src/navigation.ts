@@ -19,7 +19,10 @@ function positiveId(value: string) {
 }
 
 export function appLinkTarget(parsed: ParsedAppLink): AppLinkTarget {
-  if ((parsed.scheme === 'http' || parsed.scheme === 'https') && !HTTPS_APP_HOSTS.has(parsed.hostname?.toLowerCase() || '')) {
+  if (parsed.scheme === 'https' && !HTTPS_APP_HOSTS.has(parsed.hostname?.toLowerCase() || '')) {
+    return { type: 'none' }
+  }
+  if (parsed.scheme !== 'https' && parsed.scheme !== 'hafahomes') {
     return { type: 'none' }
   }
 

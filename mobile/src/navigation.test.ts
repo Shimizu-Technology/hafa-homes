@@ -25,6 +25,8 @@ describe('appLinkTarget', () => {
 
   it('rejects record-looking HTTPS links from unassociated hosts', () => {
     expect(appLinkTarget({ scheme: 'https', hostname: 'example.com', path: 'account/requests/43' })).toEqual({ type: 'none' })
+    expect(appLinkTarget({ scheme: 'http', hostname: 'hafahomes.com', path: 'account/requests/43' })).toEqual({ type: 'none' })
+    expect(appLinkTarget({ scheme: 'mailto', hostname: null, path: 'account/requests/43' })).toEqual({ type: 'none' })
   })
 
   it('opens exact listings and rejects invalid record ids', () => {
