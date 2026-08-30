@@ -66,6 +66,31 @@ class LeadNotificationServiceTest < ActiveSupport::TestCase
     assert_includes sms, "https://alpha.test/open?target=%2Faccount%2Frequests%2F#{lead.id}"
   end
 
+  test "manual agent SMS bodies include the staff lead link" do
+    brokerage = create_brokerage(name: "Alpha Realty", slug: "alpha")
+    BrokerageDomain.create!(brokerage: brokerage, hostname: "alpha.test", status: "active", primary: true)
+    agent = Agent.create!(brokerage: brokerage, name: "Alpha Agent", email: "agent@alpha.test", phone: "6715550102")
+    lead = Lead.create!(
+      brokerage: brokerage,
+      assigned_agent: agent,
+      lead_type: "contact",
+      name: "Buyer",
+      email: "buyer@example.com"
+    )
+    delivery = LeadNotificationService.queue_manual(
+      lead,
+      channel: "sms",
+      recipient_role: "agent",
+      body: "A buyer replied."
+    )
+
+    sms = LeadNotificationService.send(:sms_body, delivery)
+
+    assert_includes sms, "A buyer replied."
+    assert_includes sms, "https://alpha.test/admin/leads/#{lead.id}"
+    refute_includes sms, "/account/requests"
+  end
+
   test "email delivery uses a stable provider idempotency key" do
     brokerage = create_brokerage(name: "Alpha Realty", slug: "alpha")
     lead = Lead.create!(brokerage: brokerage, lead_type: "contact", name: "Buyer", email: "buyer@example.com")
