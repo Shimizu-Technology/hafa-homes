@@ -314,6 +314,7 @@ type ListingsResponse = { listings: Listing[] }
 type ListingResponse = { listing: Listing }
 type VillagesResponse = { villages: Village[] }
 type AgentsResponse = { agents: Agent[] }
+type AgentDetailResponse = { agent: Agent; attributed_listings: Listing[]; pagination: PaginationMeta }
 type SyncRun = {
   id: number
   provider: string
@@ -815,6 +816,12 @@ async function fetchVillages(): Promise<VillagesResponse> {
 async function fetchAgents(): Promise<AgentsResponse> {
   const response = await apiFetch(`${API_URL}/api/v1/agents`)
   if (!response.ok) throw new Error('Unable to load agents')
+  return response.json()
+}
+
+async function fetchAgent(id: string, page = 1): Promise<AgentDetailResponse> {
+  const response = await apiFetch(`${API_URL}/api/v1/agents/${encodeURIComponent(id)}?page=${page}&per_page=6`)
+  if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to load this agent'), response.status)
   return response.json()
 }
 
@@ -1439,6 +1446,7 @@ function App() {
         <Route path="/villages" element={<VillagesPage />} />
         <Route path="/villages/:slug" element={<VillageDetailPage />} />
         <Route path="/agents" element={<AgentsPage />} />
+        <Route path="/agents/:id" element={<AgentDetailPage />} />
         <Route path="/military" element={<MilitaryPage />} />
         <Route path="/saved" element={<SavedPage />} />
         <Route path="/account" element={<AccountPage />} />
@@ -2252,7 +2260,7 @@ function DemoInventoryNotice({ className = '' }: { className?: string }) {
   )
 }
 
-function ListingCard({ listing }: { listing: Listing }) {
+function ListingCard({ listing, returnTo }: { listing: Listing; returnTo?: string }) {
   const { isClerkEnabled, isSignedIn, userId } = useAuthContext()
   const { data: savedData, refetch: refetchSaved } = useQuery({ queryKey: ['saved-listings', userId], queryFn: fetchSavedListings, enabled: isClerkEnabled && isSignedIn })
   const [optimisticSaved, setOptimisticSaved] = useState(false)
@@ -2283,14 +2291,14 @@ function ListingCard({ listing }: { listing: Listing }) {
 
   return (
     <article className="group overflow-hidden rounded-[1.7rem] border border-black/5 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[var(--brand-primary)]/10 md:grid md:min-h-[260px] md:grid-cols-[260px_1fr]">
-      <Link to={`/listings/${listing.id}`} onClick={() => captureAnalyticsEvent('listing_opened', { listing_id: listing.id, source: 'listing_image' })} className="block overflow-hidden">
+      <Link to={routes.listing(listing.id, returnTo)} onClick={() => captureAnalyticsEvent('listing_opened', { listing_id: listing.id, source: 'listing_image' })} className="block overflow-hidden">
         <img src={listing.primary_photo_url} onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = FALLBACK_LISTING_IMAGE }} alt="" className="h-56 w-full object-cover transition duration-500 group-hover:scale-105 md:h-[260px]" />
       </Link>
       <div className="p-5">
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-2xl font-bold tracking-[-0.04em]">{currency(listing.price, listing.listing_kind)}</p>
-            <Link to={`/listings/${listing.id}`} onClick={() => captureAnalyticsEvent('listing_opened', { listing_id: listing.id, source: 'listing_title' })} className="mt-1 block text-lg font-semibold transition hover:text-[#0f705e]">{listing.title}</Link>
+            <Link to={routes.listing(listing.id, returnTo)} onClick={() => captureAnalyticsEvent('listing_opened', { listing_id: listing.id, source: 'listing_title' })} className="mt-1 block text-lg font-semibold transition hover:text-[#0f705e]">{listing.title}</Link>
             <p className="mt-1 flex items-center gap-1 text-sm text-[#66746f]"><MapPin size={14} /> {listing.village.name} · {listing.address}</p>
           </div>
           <span className="rounded-full bg-[#e9f5ef] px-3 py-1 text-xs font-bold uppercase tracking-wide text-[#0f705e]">{listing.listing_kind}</span>
@@ -2298,7 +2306,7 @@ function ListingCard({ listing }: { listing: Listing }) {
         <PropertyStats listing={listing} />
         <FeaturePills features={listing.features.slice(0, 4)} />
         <div className="mt-5 flex items-center justify-between">
-          <Link to={`/listings/${listing.id}`} onClick={() => captureAnalyticsEvent('listing_opened', { listing_id: listing.id, source: 'listing_card' })} className="inline-flex items-center gap-2 text-sm font-bold text-[var(--brand-primary)]">View details <ChevronRight size={16} /></Link>
+          <Link to={routes.listing(listing.id, returnTo)} onClick={() => captureAnalyticsEvent('listing_opened', { listing_id: listing.id, source: 'listing_card' })} className="inline-flex items-center gap-2 text-sm font-bold text-[var(--brand-primary)]">View details <ChevronRight size={16} /></Link>
           {isSignedIn ? heartButton : <SignInButton mode="modal">{heartButton}</SignInButton>}
         </div>
       </div>
@@ -2321,6 +2329,8 @@ function ListingDetailPage() {
       ? 'Back to request'
       : listingBackPath.startsWith('/account/requests')
         ? 'Back to requests'
+        : listingBackPath.startsWith('/agents/')
+          ? 'Back to agent'
         : listingBackPath.startsWith('/saved')
           ? 'Back to saved homes'
           : listingBackPath.startsWith('/villages/')
@@ -2336,7 +2346,7 @@ function ListingDetailPage() {
   const viewedListingRef = useRef<number | null>(null)
   const { data, isLoading, isError } = useQuery({ queryKey: ['listing', id], queryFn: () => fetchListing(id), enabled: Boolean(id) })
   const { data: savedData, refetch: refetchSaved } = useQuery({ queryKey: ['saved-listings', userId], queryFn: fetchSavedListings, enabled: isClerkEnabled && isSignedIn })
-  const { data: routingAgentsData, isLoading: routingAgentsLoading } = useQuery({ queryKey: ['agents', 'routing', 'listing-detail'], queryFn: () => fetchAgents(), enabled: isClerkEnabled && isSignedIn && Boolean(data?.listing) })
+  const { data: routingAgentsData, isLoading: routingAgentsLoading } = useQuery({ queryKey: ['agents', 'routing', 'listing-detail'], queryFn: () => fetchAgents(), enabled: Boolean(data?.listing) })
   const listing = data?.listing
   const routingAgents = routingAgentsData?.agents ?? []
   const saved = listing ? (savedData?.listing_ids?.includes(listing.id) ?? localSaved) : false
@@ -2526,7 +2536,7 @@ function ListingDetailPage() {
   )
 }
 
-function ListingAgentRoutingPanel({
+export function ListingAgentRoutingPanel({
   listing,
   routingAgents,
   selectedAgentId,
@@ -2545,9 +2555,11 @@ function ListingAgentRoutingPanel({
   onSelectAgent: (agentId: number | null) => void
   className?: string
 }) {
+  const location = useLocation()
   const listedAgentName = listing.agent?.name || listing.agent_name || 'Listing agent unavailable'
   const listedBrokerageName = listing.agent?.brokerage?.name || listing.brokerage?.name || listing.brokerage_name || 'Listing brokerage'
   const selectedAgent = routingAgents.find((agent) => agent.id === selectedAgentId)
+  const storefrontListingAgent = listing.agent && routingAgents.some((agent) => agent.id === listing.agent?.id) ? listing.agent : null
 
   return (
     <section className={`${className} rounded-[1.5rem] border border-[#dfe8e2] bg-[#fbfcf8] p-4`}>
@@ -2561,6 +2573,7 @@ function ListingAgentRoutingPanel({
             <p className="truncate text-base font-extrabold tracking-[-0.03em] text-[#17211f]">{listedAgentName}</p>
             <p className="truncate text-sm font-semibold text-[#66746f]">{listedBrokerageName}</p>
             <p className="text-xs font-bold uppercase tracking-[0.14em] text-[#7b8a84]">Listing attribution</p>
+            {storefrontListingAgent && <Link to={routes.agent(storefrontListingAgent.id, `${location.pathname}${location.search}`)} className="mt-2 inline-flex min-h-11 items-center text-sm font-bold text-[var(--brand-primary)]">View agent profile <ChevronRight size={16} /></Link>}
           </div>
         </div>
       </div>
@@ -2770,6 +2783,7 @@ function AgentsPage() {
                   {agent.email && <span className="inline-flex items-center gap-2"><Mail size={15} /> {agent.email}</span>}
                   {agent.phone && <span className="inline-flex items-center gap-2"><Phone size={15} /> {agent.phone}</span>}
                 </div>
+                <Link to={routes.agent(agent.id, '/agents')} className="mt-5 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl border border-[#d7ded9] px-4 text-sm font-bold text-[var(--brand-primary)]">View profile <ChevronRight size={16} /></Link>
                 {canSelectAgent ? (
                   <button
                     type="button"
@@ -2790,6 +2804,108 @@ function AgentsPage() {
           })}
         </div>
         {agents.length === 0 && !isLoading && <StateCard>No active agents are published yet.</StateCard>}
+      </section>
+    </Shell>
+  )
+}
+
+export function AgentDetailPage() {
+  const { id = '' } = useParams()
+  const location = useLocation()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const returnPath = safeReturnPath(searchParams.get('return_to'), '/agents')
+  const rawPage = Number(searchParams.get('page') || '1')
+  const page = Number.isInteger(rawPage) && rawPage > 0 ? rawPage : 1
+  const { isClerkEnabled, isSignedIn } = useAuthContext()
+  const [selectedAgentId, setSelectedAgentId] = useState<number | null>(null)
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['agent', id, page],
+    queryFn: () => fetchAgent(id, page),
+    enabled: Boolean(id),
+    retry: false,
+    placeholderData: keepPreviousData,
+  })
+  const canSelectAgent = isClerkEnabled && isSignedIn
+  const agentPath = `${location.pathname}${location.search}`
+  const isUnavailable = error instanceof ApiFetchError && error.status === 404
+
+  useEffect(() => {
+    if (canSelectAgent) setSelectedAgentId(storedSelectedAgentId())
+    else setSelectedAgentId(null)
+  }, [canSelectAgent])
+
+  const selectAgent = () => {
+    if (!canSelectAgent || !data?.agent) return
+
+    setSelectedAgentId(data.agent.id)
+    storeSelectedAgentId(data.agent.id)
+    captureAnalyticsEvent('agent_selected', { agent_id: data.agent.id, brokerage_id: data.agent.brokerage_id, source: 'agent_detail' })
+    recordLeadIntentEvent('agent_selected', { agent_id: data.agent.id, source: 'web', metadata: { surface: 'agent_detail' } })
+  }
+
+  const setPage = (nextPage: number) => {
+    const next = new URLSearchParams(searchParams)
+    if (nextPage > 1) next.set('page', String(nextPage))
+    else next.delete('page')
+    setSearchParams(next)
+  }
+
+  return (
+    <Shell compact>
+      <section className="mx-auto max-w-7xl px-5 pb-10 pt-6">
+        <Link to={returnPath} className="mb-6 inline-flex min-h-11 items-center gap-2 rounded-full bg-white px-5 text-sm font-bold text-[#304942]"><ArrowLeft size={16} /> Back to {returnPath.startsWith('/listings/') ? 'listing' : 'agents'}</Link>
+        {isLoading && <StateCard>Loading agent profile...</StateCard>}
+        {isUnavailable && <StateCard tone="error">This agent is not available in this storefront.</StateCard>}
+        {error && !isUnavailable && <StateCard tone="error">{displayErrorMessage(error, 'Unable to load this agent profile.')}</StateCard>}
+        {data?.agent && (
+          <div className="grid gap-5">
+            <header className="overflow-hidden rounded-[2rem] bg-[var(--brand-primary)] p-5 text-white shadow-xl shadow-[var(--brand-primary)]/15 sm:p-7">
+              <div className="grid gap-6 md:grid-cols-[auto_minmax(0,1fr)_auto] md:items-center">
+                <div className="grid h-24 w-24 place-items-center overflow-hidden rounded-[1.75rem] bg-white/10 text-3xl font-black text-[#f5c16c]">
+                  {data.agent.photo_url ? <img src={data.agent.photo_url} alt="" className="h-full w-full object-cover" /> : agentInitials(data.agent)}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#bdebdc]">Storefront agent</p>
+                  <h1 className="mt-3 break-words text-4xl font-semibold tracking-[-0.06em] sm:text-5xl">{data.agent.name}</h1>
+                  <p className="mt-2 text-sm font-semibold text-white/72">{data.agent.brokerage?.name}</p>
+                  {data.agent.license_number && <p className="mt-1 text-xs font-bold uppercase tracking-[0.14em] text-white/52">License {data.agent.license_number}</p>}
+                </div>
+                {canSelectAgent ? (
+                  <button type="button" onClick={selectAgent} className={`min-h-12 rounded-full px-5 text-sm font-bold ${selectedAgentId === data.agent.id ? 'bg-[#e9f5ef] text-[#0f705e]' : 'bg-white text-[var(--brand-primary)]'}`}>{selectedAgentId === data.agent.id ? 'Selected for requests' : `Work with ${data.agent.name.split(' ')[0]}`}</button>
+                ) : isClerkEnabled ? (
+                  <SignInButton mode="modal"><button type="button" className="min-h-12 rounded-full bg-white px-5 text-sm font-bold text-[var(--brand-primary)]">Sign in to work together</button></SignInButton>
+                ) : null}
+              </div>
+            </header>
+
+            <div className="grid gap-5 lg:grid-cols-[minmax(280px,0.7fr)_minmax(0,1.3fr)]">
+              <aside className="grid content-start gap-5 rounded-[1.75rem] bg-white p-5 shadow-sm">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#0f705e]">About</p>
+                  <p className="mt-3 text-sm leading-7 text-[#53645f]">{data.agent.bio || 'Contact this brokerage agent for help with your Guam home search.'}</p>
+                </div>
+                <div className="grid gap-2 border-t border-[#edf0ec] pt-5 text-sm font-semibold text-[#304942]">
+                  {data.agent.email && <a href={`mailto:${data.agent.email}`} className="inline-flex min-h-11 items-center gap-2"><Mail size={16} /> {data.agent.email}</a>}
+                  {data.agent.phone && <a href={`tel:${data.agent.phone}`} className="inline-flex min-h-11 items-center gap-2"><Phone size={16} /> {data.agent.phone}</a>}
+                </div>
+                <p className="rounded-2xl bg-[#f6f1e8] p-4 text-xs font-semibold leading-6 text-[#66746f]">Preferred-agent selection controls request routing. Listing attribution below remains source-of-truth for each property.</p>
+              </aside>
+
+              <section className="min-w-0 rounded-[1.75rem] bg-white p-4 shadow-sm sm:p-6">
+                <div className="border-b border-[#edf0ec] pb-5">
+                  <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#0f705e]">Attributed inventory</p>
+                  <h2 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">Active listings</h2>
+                  <p className="mt-2 text-sm leading-6 text-[#66746f]">Properties whose current listing attribution names this agent.</p>
+                </div>
+                <div className="mt-5 grid gap-4">
+                  {data.attributed_listings.map((listing) => <ListingCard key={listing.id} listing={listing} returnTo={agentPath} />)}
+                  {data.attributed_listings.length === 0 && <StateCard>No active attributed listings are published for this agent.</StateCard>}
+                </div>
+                {data.pagination.total_pages > 1 && <div className="mt-5 border-t border-[#edf0ec] pt-5"><PaginationControls pagination={data.pagination} onPageChange={setPage} /></div>}
+              </section>
+            </div>
+          </div>
+        )}
       </section>
     </Shell>
   )

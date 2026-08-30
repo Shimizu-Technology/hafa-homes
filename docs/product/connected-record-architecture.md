@@ -79,10 +79,22 @@ The consumer projection does not include staff notes, internal showing notes, de
 - Lead inbox, lead detail, and customer workspace link in both directions through centralized route builders. Nested validated `return_to` values preserve the original filtered inbox when staff move through a customer and multiple related requests.
 - Customer request collections are independently paginated at ten records per page. The workspace does not serialize lead notes, tasks, activities, notifications, or showing collections into its related-request summaries.
 
+### Storefront agent slice
+
+- Public web and native agent records resolve through `GET /api/v1/agents/:id`, scoped before selection to active agents in the active routing brokerage. Cross-storefront, inactive-agent, and unknown-host lookups fail closed.
+- `/agents/:id` presents the active storefront agent, contact and brokerage context, preferred-agent action, and a separately paginated collection of active listings attributed to that agent.
+- Agent-directory cards link to the exact record. Listing details link to the agent record only when the attributed agent also appears in the active storefront directory; external MLS attribution remains visible but non-interactive.
+- Preferred-agent request routing and MLS listing attribution remain separately labeled throughout the record journey.
+- Agent-to-listing links preserve the exact agent page as return context. Listing-to-agent links preserve the exact listing, including an earlier validated return path.
+- The native app accepts exact cold-start and warm links for `/agents/:id`, keeps newer navigation ahead of stale profile loads, supports bounded incremental loading of attributed inventory, and preserves agent/listing returns in memory.
+
 ## Planned slices
 
-1. A storefront-scoped public agent record, linked only when the agent belongs to the active routing brokerage.
-2. Additional bounded related-record summaries with separately pageable collections as volume grows.
+1. Preserve the complete public discovery origin when opening a listing: URL-backed list/map mode, filtered search returns, saved-home returns, village returns, and reciprocal listing-to-village navigation.
+2. Make village detail a real API-backed record with explicit loading, unavailable, and unknown-slug states instead of treating an unmatched slug as an empty village.
+3. Preserve the staff intent queue's operational status, identity, sort, and page in the URL while keeping free-text search local; listing detours must return to that exact queue, not the lead inbox.
+4. Publish and verify the iOS universal-link contract for exact consumer records, then use canonical HTTPS record URLs in new notifications while retaining the existing `/open` handoff for previously issued links.
+5. Add further bounded related-record summaries with separately pageable collections as volume grows.
 
 ## Deliberate deferrals
 

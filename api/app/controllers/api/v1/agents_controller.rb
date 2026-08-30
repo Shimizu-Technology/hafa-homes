@@ -1,15 +1,14 @@
 module Api
   module V1
     class AgentsController < ApplicationController
+      include PaginatedResponse
+
       DEFAULT_LIMIT = 100
       MAX_LIMIT = 100
 
       def index
-        brokerage = current_routing_brokerage
-        unless brokerage
-          render json: { errors: [ "No brokerage is configured for this domain" ] }, status: :not_found
-          return
-        end
+        brokerage = routing_brokerage!
+        return unless brokerage
 
         agents = Agent.active.includes(:brokerage).where(brokerage: brokerage)
 
@@ -26,7 +25,31 @@ module Api
         }
       end
 
+      def show
+        brokerage = routing_brokerage!
+        return unless brokerage
+
+        agent = brokerage.agents.active.includes(:brokerage).find(params[:id])
+        attributed_listings = Listing.active
+          .where(agent: agent)
+          .includes(:village, :listing_photos, :features, :brokerage, :agent)
+          .order(updated_at: :desc)
+        response = paginated_response(attributed_listings, :attributed_listings, default_per_page: 6, max_per_page: 24) do |listing|
+          Api::V1::ListingSerializer.summary(listing)
+        end
+
+        render json: response.merge(agent: agent.as_api_json)
+      end
+
       private
+
+      def routing_brokerage!
+        brokerage = current_routing_brokerage
+        return brokerage if brokerage
+
+        render json: { errors: [ "No brokerage is configured for this domain" ] }, status: :not_found
+        nil
+      end
 
       def limit_param
         requested_limit = params[:limit].to_i
