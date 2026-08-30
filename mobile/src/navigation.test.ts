@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
   advanceNavigationGeneration,
+  agentRecordBackTarget,
   appLinkTarget,
+  beginAppLinkNavigation,
   isCurrentNavigationGeneration,
+  mergeAgentListingPage,
   requestDetailKey,
 } from './navigation'
 
@@ -44,5 +47,38 @@ describe('navigation generation', () => {
   it('gives different request records different remount keys', () => {
     expect(requestDetailKey(42)).toBe('request-42')
     expect(requestDetailKey(43)).not.toBe(requestDetailKey(42))
+  })
+
+  it('dispatches initial and warm agent links while invalidating the older load', () => {
+    const generation = { current: 0 }
+    const initial = beginAppLinkNavigation(generation, { scheme: 'hafahomes', hostname: 'agents', path: '8' })
+    const warm = beginAppLinkNavigation(generation, { scheme: 'hafahomes', hostname: 'agents', path: '9' })
+
+    expect(initial.target).toEqual({ type: 'agent', agentId: 8 })
+    expect(warm.target).toEqual({ type: 'agent', agentId: 9 })
+    expect(isCurrentNavigationGeneration(generation, initial.generation)).toBe(false)
+    expect(isCurrentNavigationGeneration(generation, warm.generation)).toBe(true)
+  })
+})
+
+describe('agent record journeys', () => {
+  it('merges bounded listing pages without duplicates and rejects another agent', () => {
+    type AgentPage = { agent: { id: number }; attributed_listings: { id: number }[]; pagination: { next_page: number | null } }
+    const first: AgentPage = { agent: { id: 8 }, attributed_listings: [{ id: 1 }, { id: 2 }], pagination: { next_page: 2 } }
+    const second: AgentPage = { agent: { id: 8 }, attributed_listings: [{ id: 2 }, { id: 3 }], pagination: { next_page: null } }
+    const anotherAgent: AgentPage = { agent: { id: 9 }, attributed_listings: [{ id: 4 }], pagination: { next_page: null } }
+
+    expect(mergeAgentListingPage(first, second, 8)).toEqual({
+      ...second,
+      attributed_listings: [{ id: 1 }, { id: 2 }, { id: 3 }],
+    })
+    expect(mergeAgentListingPage(first, anotherAgent, 8)).toBe(first)
+  })
+
+  it('retains the exact listing only for listing-to-agent navigation', () => {
+    const listing = { id: 27, title: 'Ocean view home' }
+
+    expect(agentRecordBackTarget(listing)).toBe(listing)
+    expect(agentRecordBackTarget(null)).toBeNull()
   })
 })

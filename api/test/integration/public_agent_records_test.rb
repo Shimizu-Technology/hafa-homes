@@ -9,7 +9,7 @@ class PublicAgentRecordsTest < ActionDispatch::IntegrationTest
     @alpha_agent = Agent.create!(brokerage: @alpha, name: "Ana Alpha", email: "ana@alpha.test", bio: "North-island relocation specialist")
     @beta_agent = Agent.create!(brokerage: @beta, name: "Ben Beta", email: "ben@beta.test")
     @inactive_agent = Agent.create!(brokerage: @alpha, name: "Inactive Agent", status: "inactive")
-    village = Village.create!(name: "Yigo", slug: "yigo", region: "north")
+    village = Village.create!(name: "Yigo", slug: "public-agent-records-yigo", region: "north")
     @alpha_listing = Listing.create!(
       village: village,
       brokerage: @alpha,

@@ -53,10 +53,37 @@ export function advanceNavigationGeneration(generation: { current: number }) {
   return generation.current
 }
 
+export function beginAppLinkNavigation(generation: { current: number }, parsed: ParsedAppLink) {
+  return {
+    generation: advanceNavigationGeneration(generation),
+    target: appLinkTarget(parsed),
+  }
+}
+
 export function isCurrentNavigationGeneration(generation: { current: number }, candidate: number) {
   return generation.current === candidate
 }
 
 export function requestDetailKey(requestId: number) {
   return `request-${requestId}`
+}
+
+export function mergeAgentListingPage<
+  TListing extends { id: number },
+  TRecord extends { agent: { id: number }; attributed_listings: TListing[] },
+>(current: TRecord | null, next: TRecord, expectedAgentId: number): TRecord | null {
+  if (!current || current.agent.id !== expectedAgentId || next.agent.id !== expectedAgentId) return current
+
+  const seen = new Set(current.attributed_listings.map((listing) => listing.id))
+  return {
+    ...next,
+    attributed_listings: [
+      ...current.attributed_listings,
+      ...next.attributed_listings.filter((listing) => !seen.has(listing.id)),
+    ],
+  }
+}
+
+export function agentRecordBackTarget<T>(returnListing: T | null) {
+  return returnListing
 }

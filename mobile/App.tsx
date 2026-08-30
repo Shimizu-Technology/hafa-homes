@@ -8,7 +8,7 @@ import * as Linking from 'expo-linking'
 import { StatusBar } from 'expo-status-bar'
 import * as WebBrowser from 'expo-web-browser'
 import { apiFetch } from './src/apiClient'
-import { advanceNavigationGeneration, appLinkTarget, isCurrentNavigationGeneration, requestDetailKey } from './src/navigation'
+import { advanceNavigationGeneration, agentRecordBackTarget, beginAppLinkNavigation, isCurrentNavigationGeneration, mergeAgentListingPage, requestDetailKey } from './src/navigation'
 import { WebView } from 'react-native-webview'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -842,8 +842,8 @@ function AppContent({ auth }: { auth: AppAuth }) {
     async function handleUrl(url: string | null) {
       if (!url) return
       const sequence = ++linkSequence
-      const generation = advanceNavigationGeneration(navigationGeneration)
-      const target = appLinkTarget(Linking.parse(url))
+      const navigation = beginAppLinkNavigation(navigationGeneration, Linking.parse(url))
+      const { generation, target } = navigation
 
       if (target.type === 'request') {
         setSelectedAgentDetailId(null)
@@ -1280,22 +1280,18 @@ function AppContent({ auth }: { auth: AppAuth }) {
     const nextPage = selectedAgentDetail?.pagination.next_page
     if (!agentId || !nextPage || agentDetailLoading) return
 
+    const generation = navigationGeneration.current
     setAgentDetailLoading(true)
     setAgentDetailError(null)
     try {
       const next = await fetchAgent(agentId, nextPage)
-      setSelectedAgentDetail((current) => {
-        if (!current || current.agent.id !== agentId) return current
-        const seen = new Set(current.attributed_listings.map((listing) => listing.id))
-        return {
-          ...next,
-          attributed_listings: [...current.attributed_listings, ...next.attributed_listings.filter((listing) => !seen.has(listing.id))],
-        }
-      })
+      if (!isCurrentNavigationGeneration(navigationGeneration, generation)) return
+      setSelectedAgentDetail((current) => mergeAgentListingPage(current, next, agentId))
     } catch (agentError) {
+      if (!isCurrentNavigationGeneration(navigationGeneration, generation)) return
       setAgentDetailError(agentError instanceof Error ? agentError.message : 'Unable to load more listings.')
     } finally {
-      setAgentDetailLoading(false)
+      if (isCurrentNavigationGeneration(navigationGeneration, generation)) setAgentDetailLoading(false)
     }
   }
 
@@ -1347,7 +1343,7 @@ function AppContent({ auth }: { auth: AppAuth }) {
 
   function closeAgentRecord() {
     advanceNavigationGeneration(navigationGeneration)
-    const returnListing = agentReturnListing
+    const returnListing = agentRecordBackTarget(agentReturnListing)
     setSelectedAgentDetailId(null)
     setSelectedAgentDetail(null)
     setAgentDetailError(null)
