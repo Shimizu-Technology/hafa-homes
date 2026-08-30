@@ -757,7 +757,7 @@ async function updateSearchProfile(payload: SearchProfilePayload, getToken: GetA
   return response.json()
 }
 
-async function deleteAccount(getToken: GetAuthToken): Promise<{ deleted: boolean }> {
+async function deleteAccount(getToken: GetAuthToken): Promise<{ deleted: boolean; deletion_pending: boolean }> {
   const response = await apiFetch(`${API_URL}/api/v1/me`, {
     method: 'DELETE',
     headers: await authHeaders(getToken),
@@ -2598,6 +2598,7 @@ function AccountCard({ auth, onOpenAuth }: { auth: AppAuth; onOpenAuth: (prompt?
   const [searchNotes, setSearchNotes] = useState('')
   const [deletingAccount, setDeletingAccount] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [deletionStarted, setDeletionStarted] = useState(false)
   const deletingAccountRef = useRef(false)
 
   useEffect(() => {
@@ -2716,18 +2717,47 @@ function AccountCard({ auth, onOpenAuth }: { auth: AppAuth; onOpenAuth: (prompt?
     setDeleteError(null)
     try {
       await deleteAccount(auth.getToken)
-      try {
-        await auth.signOut?.()
-      } catch (signOutError) {
-        console.warn('Account deleted but sign-out failed', signOutError)
+      setDeletionStarted(true)
+      const signedOut = await signOutDeletedAccount()
+      if (signedOut) {
+        Alert.alert('Deletion started', 'You have been signed out and cannot use this account again. Hafa Homes will finish removing the account and its synced data through the secure deletion process.')
+      } else {
+        Alert.alert('Deletion started', 'Your account is blocked and secure deletion is continuing, but this device could not finish signing out. Use the visible “Finish signing out” action before continuing.')
       }
-      Alert.alert('Deletion started', 'You have been signed out and cannot use this account again. Hafa Homes will finish removing the account and its synced data through the secure deletion process.')
     } catch (error) {
       setDeleteError(error instanceof Error ? error.message : 'Unable to delete account right now.')
     } finally {
       deletingAccountRef.current = false
       setDeletingAccount(false)
     }
+  }
+
+  async function signOutDeletedAccount() {
+    if (!auth.signOut) {
+      setDeleteError('Deletion is underway, but sign-out is unavailable. Restart the app or try “Finish signing out” again.')
+      return false
+    }
+
+    try {
+      await auth.signOut()
+      setDeleteError(null)
+      return true
+    } catch (signOutError) {
+      console.warn('Account deleted but sign-out failed', signOutError)
+      setDeleteError('Deletion is underway, but this device is still signed in. Finish signing out before continuing.')
+      return false
+    }
+  }
+
+  async function handleDeletionSessionRecovery() {
+    if (deletingAccountRef.current) return
+
+    deletingAccountRef.current = true
+    setDeletingAccount(true)
+    const signedOut = await signOutDeletedAccount()
+    deletingAccountRef.current = false
+    setDeletingAccount(false)
+    if (signedOut) Alert.alert('Signed out', 'Account deletion is still processing securely in the background.')
   }
 
   function confirmDeleteAccount() {
@@ -2738,6 +2768,20 @@ function AccountCard({ auth, onOpenAuth }: { auth: AppAuth; onOpenAuth: (prompt?
         { text: 'Cancel', style: 'cancel' },
         { text: deletingAccount ? 'Deleting...' : 'Delete account', style: 'destructive', onPress: handleDeleteAccount },
       ],
+    )
+  }
+
+  if (auth.isSignedIn && deletionStarted) {
+    return (
+      <View style={styles.accountCard}>
+        <Text style={styles.accountKicker}>Deletion started</Text>
+        <Text style={styles.accountTitle}>Your account is blocked.</Text>
+        <Text style={styles.accountCopy}>Secure deletion is continuing in the background. Finish signing out on this device before using Hafa Homes again.</Text>
+        {deleteError && <Text style={styles.profileErrorText}>{deleteError}</Text>}
+        <Pressable style={[styles.primaryCta, deletingAccount && styles.ctaDisabled]} onPress={handleDeletionSessionRecovery} disabled={deletingAccount}>
+          <Text style={styles.primaryCtaText}>{deletingAccount ? 'Signing out...' : 'Finish signing out'}</Text>
+        </Pressable>
+      </View>
     )
   }
 

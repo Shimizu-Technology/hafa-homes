@@ -8,6 +8,8 @@ class CreateAccountDeletions < ActiveRecord::Migration[8.1]
       t.integer :attempt_count, null: false, default: 0
       t.datetime :requested_at, null: false
       t.datetime :last_attempt_at
+      t.string :processing_token
+      t.datetime :lease_expires_at
       t.datetime :provider_deleted_at
       t.datetime :completed_at
       t.text :last_error
@@ -15,6 +17,7 @@ class CreateAccountDeletions < ActiveRecord::Migration[8.1]
 
       t.index :clerk_id_digest, unique: true
       t.index [ :status, :updated_at ]
+      t.index [ :status, :lease_expires_at ]
     end
   end
 end

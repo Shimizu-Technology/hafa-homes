@@ -1,7 +1,10 @@
 require "digest"
+require "securerandom"
 
 class AccountDeletion < ApplicationRecord
-  STATUSES = %w[pending processing failed completed].freeze
+  MAX_ATTEMPTS = 10
+  PROCESSING_LEASE = 2.minutes
+  STATUSES = %w[pending processing failed action_required completed].freeze
 
   belongs_to :user, optional: true
 
@@ -10,8 +13,9 @@ class AccountDeletion < ApplicationRecord
   validates :status, inclusion: { in: STATUSES }
   validates :clerk_id, presence: true, unless: :provider_deleted?
 
-  scope :retryable, -> { where(status: %w[pending failed]) }
-  scope :processing_before, ->(time) { where(status: "processing", updated_at: ..time) }
+  scope :retryable, -> { where(status: %w[pending failed]).where("attempt_count < ?", MAX_ATTEMPTS) }
+  scope :exhausted, -> { where(status: %w[pending failed]).where(attempt_count: MAX_ATTEMPTS..) }
+  scope :expired_processing, ->(time) { where(status: "processing", lease_expires_at: ..time) }
 
   class << self
     def digest_for(clerk_id)
@@ -25,19 +29,30 @@ class AccountDeletion < ApplicationRecord
     end
 
     def request_for!(user)
-      transaction do
-        locked_user = User.lock.find(user.id)
-        deletion = lock.find_or_initialize_by(clerk_id_digest: digest_for(locked_user.clerk_id))
-        deletion.assign_attributes(
-          user: locked_user,
-          clerk_id: locked_user.clerk_id,
-          status: "pending",
-          requested_at: Time.current,
-          last_error: nil
-        )
-        deletion.save!
-        locked_user.archive! unless locked_user.archived?
-        deletion
+      clerk_id_digest = digest_for(user.clerk_id)
+      retries = 0
+
+      begin
+        transaction(requires_new: true) do
+          locked_user = User.lock.find(user.id)
+          deletion = lock.find_by(clerk_id_digest: clerk_id_digest)
+          unless deletion
+            deletion = create!(
+              user: locked_user,
+              clerk_id: locked_user.clerk_id,
+              clerk_id_digest: clerk_id_digest,
+              status: "pending",
+              requested_at: Time.current
+            )
+          end
+          locked_user.archive! unless locked_user.archived?
+          deletion
+        end
+      rescue ActiveRecord::RecordNotUnique
+        retries += 1
+        retry if retries <= 1
+
+        find_by!(clerk_id_digest: clerk_id_digest)
       end
     end
   end
@@ -50,34 +65,82 @@ class AccountDeletion < ApplicationRecord
     status == "completed"
   end
 
-  def claim_for_processing!
+  def claim_for_processing!(now: Time.current)
+    token = SecureRandom.uuid
     claimed = self.class
       .where(id: id, status: %w[pending failed])
-      .update_all([ "status = 'processing', attempt_count = attempt_count + 1, last_attempt_at = ?, updated_at = ?", Time.current, Time.current ])
+      .where("attempt_count < ?", MAX_ATTEMPTS)
+      .update_all(
+        status: "processing",
+        attempt_count: Arel.sql("attempt_count + 1"),
+        last_attempt_at: now,
+        processing_token: token,
+        lease_expires_at: PROCESSING_LEASE.after(now),
+        updated_at: now
+      )
     reload if claimed == 1
-    claimed == 1
+    claimed == 1 ? token : nil
   end
 
-  def mark_provider_deleted!
-    update!(provider_deleted_at: Time.current, clerk_id: nil, last_error: nil)
+  def mark_provider_deleted!(processing_token:, now: Time.current)
+    updated = owned_processing_scope(processing_token).update_all(
+      provider_deleted_at: now,
+      clerk_id: nil,
+      last_error: nil,
+      updated_at: now
+    )
+    reload if updated == 1
+    updated == 1
   end
 
-  def mark_failed!(message)
-    update!(status: "failed", last_error: message.to_s.truncate(500)) unless completed?
-  end
-
-  def recover_interrupted!(cutoff:)
+  def mark_failed!(message, processing_token:, now: Time.current)
     with_lock do
-      return false unless status == "processing" && updated_at <= cutoff
+      return false unless owns_processing_token?(processing_token)
 
-      update!(status: "failed", last_error: "Recovered interrupted account deletion")
+      terminal = attempt_count >= MAX_ATTEMPTS
+      update!(
+        status: terminal ? "action_required" : "failed",
+        last_error: message.to_s.truncate(500),
+        processing_token: nil,
+        lease_expires_at: nil,
+        updated_at: now
+      )
+      Rails.logger.error("Account deletion #{id} requires operator action after #{attempt_count} attempts") if terminal
+      !terminal
+    end
+  end
+
+  def recover_interrupted!(now: Time.current)
+    with_lock do
+      return false unless status == "processing" && lease_expires_at.present? && lease_expires_at <= now
+
+      terminal = attempt_count >= MAX_ATTEMPTS
+      update!(
+        status: terminal ? "action_required" : "failed",
+        last_error: "Recovered expired account-deletion lease",
+        processing_token: nil,
+        lease_expires_at: nil,
+        updated_at: now
+      )
+      Rails.logger.error("Account deletion #{id} requires operator action after an expired final lease") if terminal
     end
     true
   end
 
-  def complete!
+  def mark_action_required!
     with_lock do
-      return if completed?
+      return false unless status.in?(%w[pending failed]) && attempt_count >= MAX_ATTEMPTS
+
+      update!(status: "action_required", last_error: last_error.presence || "Maximum account-deletion attempts reached")
+      Rails.logger.error("Account deletion #{id} requires operator action after #{attempt_count} attempts")
+    end
+    true
+  end
+
+  def complete!(processing_token:)
+    with_lock do
+      return true if completed?
+      return false unless owns_processing_token?(processing_token)
       raise ActiveRecord::RecordInvalid.new(self) unless provider_deleted?
 
       user_record = User.lock.find_by(id: user_id)
@@ -87,11 +150,27 @@ class AccountDeletion < ApplicationRecord
         user_record.destroy!
       end
 
-      update!(status: "completed", clerk_id: nil, completed_at: Time.current, last_error: nil)
+      update!(
+        status: "completed",
+        clerk_id: nil,
+        completed_at: Time.current,
+        last_error: nil,
+        processing_token: nil,
+        lease_expires_at: nil
+      )
     end
+    true
   end
 
   private
+
+  def owned_processing_scope(processing_token)
+    self.class.where(id: id, status: "processing", processing_token: processing_token)
+  end
+
+  def owns_processing_token?(processing_token)
+    processing_token.present? && status == "processing" && self.processing_token == processing_token
+  end
 
   def anonymize_audit_events!(user_record)
     anonymized_at = Time.current

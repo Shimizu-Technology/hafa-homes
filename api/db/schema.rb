@@ -22,12 +22,15 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_31_060500) do
     t.datetime "created_at", null: false
     t.datetime "last_attempt_at"
     t.text "last_error"
+    t.datetime "lease_expires_at"
+    t.string "processing_token"
     t.datetime "provider_deleted_at"
     t.datetime "requested_at", null: false
     t.string "status", default: "pending", null: false
     t.datetime "updated_at", null: false
     t.bigint "user_id"
     t.index ["clerk_id_digest"], name: "index_account_deletions_on_clerk_id_digest", unique: true
+    t.index ["status", "lease_expires_at"], name: "index_account_deletions_on_status_and_lease_expires_at"
     t.index ["status", "updated_at"], name: "index_account_deletions_on_status_and_updated_at"
     t.index ["user_id"], name: "index_account_deletions_on_user_id"
   end

@@ -10,24 +10,29 @@ class AccountDeletionJob < ApplicationJob
   def perform(account_deletion_id)
     deletion = AccountDeletion.find(account_deletion_id)
     return if deletion.completed?
-    return unless deletion.claim_for_processing!
+    processing_token = deletion.claim_for_processing!
+    return unless processing_token
 
     unless deletion.provider_deleted?
       result = ClerkAuth.delete_user(deletion.clerk_id)
       unless result[:success]
-        deletion.mark_failed!("Identity-provider deletion is pending")
-        raise RetryableDeletionError, "Identity-provider deletion is pending"
+        retryable = deletion.mark_failed!("Identity-provider deletion is pending", processing_token: processing_token)
+        raise RetryableDeletionError, "Identity-provider deletion is pending" if retryable
+
+        return
       end
 
-      deletion.mark_provider_deleted!
+      return unless deletion.mark_provider_deleted!(processing_token: processing_token)
     end
 
-    deletion.complete!
+    deletion.complete!(processing_token: processing_token)
+  rescue ActiveRecord::RecordNotFound
+    raise
   rescue RetryableDeletionError
     raise
   rescue StandardError => e
-    deletion&.mark_failed!("Account purge is pending")
+    retryable = deletion&.mark_failed!("Account purge is pending", processing_token: processing_token)
     Rails.logger.warn("Account deletion #{account_deletion_id} will retry after #{e.class}: #{e.message}")
-    raise RetryableDeletionError, "Account purge is pending"
+    raise RetryableDeletionError, "Account purge is pending" if retryable
   end
 end

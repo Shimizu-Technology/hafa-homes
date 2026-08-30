@@ -101,14 +101,14 @@ Backend behavior:
 
 - `DELETE /api/v1/me` requires authentication.
 - Rails first commits a durable deletion tombstone and archives the local account, preventing concurrent or later authentication from recreating it.
-- Solid Queue then deletes the Clerk identity and purges account-owned data. Provider or queue failures remain durable and are retried by a reconciliation job; the account never reopens while deletion is pending.
+- Solid Queue then deletes the Clerk identity and purges account-owned data. Provider work uses a durable lease and a shorter total request deadline to prevent overlapping attempts. Provider or queue failures remain durable and are retried by reconciliation up to a fixed limit; exhausted records become operator-visible `action_required` tombstones, and the account never reopens.
 - Successful provider deletion destroys synced saved homes and search profiles. Consumer leads, showing appointments, CRM activity, notes, tasks, and notification history remain available for brokerage follow-up/audit, but user foreign keys are nullified and account audit data is anonymized.
 - The completed tombstone retains only a one-way digest of the former Clerk ID so delayed tokens cannot recreate the account.
 
 UX:
 
-- Mobile: signed-in users can delete their account from the More/account card.
-- Web: signed-in users can delete their account from `/account`.
+- Mobile: signed-in users can delete their account from the More/account card. If local sign-out fails after the server accepts deletion, the account UI hides cached profile tools and presents a persistent **Finish signing out** recovery action.
+- Web: signed-in users can delete their account from `/account`, with the same honest sign-out recovery state instead of claiming a failed sign-out succeeded.
 - Destructive flows explain that submitted showing/contact requests remain for brokerage follow-up but are disconnected from the account.
 
 Production requirement:

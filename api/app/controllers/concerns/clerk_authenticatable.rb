@@ -11,6 +11,7 @@ module ClerkAuthenticatable
     end
 
     @archived_user_authentication_attempt = false
+    @deleted_account_authentication_attempt = false
     @current_user = find_or_create_user_from_clerk(decoded)
     if @archived_user_authentication_attempt
       render_forbidden(archived_account_message)
@@ -33,6 +34,7 @@ module ClerkAuthenticatable
     return unless decoded
 
     @archived_user_authentication_attempt = false
+    @deleted_account_authentication_attempt = false
     user = find_or_create_user_from_clerk(decoded)
     @current_user = user unless user&.archived? || @archived_user_authentication_attempt
   end
@@ -73,6 +75,7 @@ module ClerkAuthenticatable
 
     if AccountDeletion.blocks_clerk_id?(clerk_id)
       @archived_user_authentication_attempt = true
+      @deleted_account_authentication_attempt = true
       return nil
     end
 
@@ -196,6 +199,8 @@ module ClerkAuthenticatable
   end
 
   def archived_account_message
+    return "This account was deleted." if @deleted_account_authentication_attempt
+
     "This account is archived. Contact Hafa Homes support if this looks wrong."
   end
 

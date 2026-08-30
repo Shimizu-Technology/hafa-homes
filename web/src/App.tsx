@@ -866,7 +866,7 @@ async function updateSearchProfile(payload: SearchProfilePayload): Promise<Searc
   return response.json()
 }
 
-async function deleteCurrentAccount(): Promise<{ deleted: boolean }> {
+async function deleteCurrentAccount(): Promise<{ deleted: boolean; deletion_pending: boolean }> {
   const response = await apiFetch(`${API_URL}/api/v1/me`, { method: 'DELETE', headers: await authHeaders() })
   if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to delete account'), response.status)
   return response.json()
@@ -3053,6 +3053,9 @@ function AccountPage() {
   const navigate = useNavigate()
   const [deletePanelOpen, setDeletePanelOpen] = useState(false)
   const [confirmation, setConfirmation] = useState('')
+  const [deletionStarted, setDeletionStarted] = useState(false)
+  const [deletionSessionError, setDeletionSessionError] = useState<string | null>(null)
+  const [deletionSignOutPending, setDeletionSignOutPending] = useState(false)
   const { data, isLoading: isMeLoading, refetch } = useQuery({
     queryKey: ['me', userId, 'account'],
     queryFn: fetchMe,
@@ -3070,15 +3073,30 @@ function AccountPage() {
   const deleteMutation = useMutation({
     mutationFn: deleteCurrentAccount,
     onSuccess: async () => {
-      try {
-        await signOut?.()
-      } catch (signOutError) {
-        console.warn('Account deleted but sign-out failed', signOutError)
-      } finally {
-        navigate('/', { replace: true })
-      }
+      setDeletionStarted(true)
+      if (await finishDeletedAccountSignOut()) navigate('/', { replace: true })
     },
   })
+
+  async function finishDeletedAccountSignOut() {
+    if (!signOut) {
+      setDeletionSessionError('Deletion is underway, but sign-out is unavailable. Reload the page or try again before continuing.')
+      return false
+    }
+
+    setDeletionSignOutPending(true)
+    try {
+      await signOut()
+      setDeletionSessionError(null)
+      return true
+    } catch (signOutError) {
+      console.warn('Account deleted but sign-out failed', signOutError)
+      setDeletionSessionError('Deletion is underway, but this browser is still signed in. Finish signing out before continuing.')
+      return false
+    } finally {
+      setDeletionSignOutPending(false)
+    }
+  }
 
   if (isLoading || isMeLoading) return <Shell compact><StateCard>Checking account...</StateCard></Shell>
 
@@ -3095,6 +3113,27 @@ function AccountPage() {
       <Shell compact>
         <ContentHeader kicker="Account" title="Sign in to manage your Hafa Homes account." description="Public browsing stays open. Accounts unlock synced saved homes, request history, and self-service account deletion." />
         <section className="mx-auto max-w-3xl px-5 pb-10"><div className="rounded-[2rem] bg-white p-8 text-center shadow-sm"><SignInButton mode="modal"><button className="rounded-full bg-[var(--brand-primary)] px-6 py-3 text-sm font-bold text-white">Sign in or create account</button></SignInButton></div></section>
+      </Shell>
+    )
+  }
+
+  if (deletionStarted) {
+    return (
+      <Shell compact>
+        <ContentHeader kicker="Deletion started" title="Your account is blocked." description="Secure deletion is continuing in the background. Finish signing out in this browser before using Hafa Homes again." />
+        <section className="mx-auto max-w-3xl px-5 pb-10">
+          <div className="rounded-[2rem] border border-red-200 bg-[#fff8f6] p-8 text-center shadow-sm">
+            {deletionSessionError && <p className="text-sm font-semibold text-red-700">{deletionSessionError}</p>}
+            <button
+              type="button"
+              onClick={async () => { if (await finishDeletedAccountSignOut()) navigate('/', { replace: true }) }}
+              disabled={deletionSignOutPending}
+              className="mt-5 rounded-full bg-red-700 px-6 py-3 text-sm font-bold text-white disabled:opacity-60"
+            >
+              {deletionSignOutPending ? 'Signing out...' : 'Finish signing out'}
+            </button>
+          </div>
+        </section>
       </Shell>
     )
   }

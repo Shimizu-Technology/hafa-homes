@@ -1,12 +1,11 @@
 class AccountDeletionReconciliationJob < ApplicationJob
   queue_as :default
 
-  INTERRUPTED_AFTER = 15.minutes
   BATCH_SIZE = 500
 
   def perform(now: Time.current)
-    cutoff = INTERRUPTED_AFTER.before(now)
-    AccountDeletion.processing_before(cutoff).find_each { |deletion| deletion.recover_interrupted!(cutoff: cutoff) }
+    AccountDeletion.expired_processing(now).find_each { |deletion| deletion.recover_interrupted!(now: now) }
+    AccountDeletion.exhausted.find_each(&:mark_action_required!)
 
     AccountDeletion.retryable.limit(BATCH_SIZE).pluck(:id).each do |deletion_id|
       AccountDeletionJob.perform_later(deletion_id)

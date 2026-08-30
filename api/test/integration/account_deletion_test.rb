@@ -30,6 +30,7 @@ class AccountDeletionTest < ActionDispatch::IntegrationTest
 
     assert_response :accepted
     assert_equal true, response.parsed_body.fetch("deleted")
+    assert_equal true, response.parsed_body.fetch("deletion_pending")
     deletion = AccountDeletion.find_by!(clerk_id_digest: AccountDeletion.digest_for("clerk-buyer"))
     assert_equal "pending", deletion.status
     assert user.reload.archived?
@@ -41,6 +42,7 @@ class AccountDeletionTest < ActionDispatch::IntegrationTest
       get "/api/v1/me", headers: headers
     end
     assert_response :forbidden
+    assert_equal "This account was deleted.", response.parsed_body.fetch("error")
 
     with_singleton_stub(ClerkAuth, :delete_user, { success: true, status: 200, message: nil }) do
       AccountDeletionJob.new.perform(deletion.id)
@@ -118,7 +120,6 @@ class AccountDeletionTest < ActionDispatch::IntegrationTest
   test "keeps a retryable tombstone when immediate queue insertion fails" do
     user = create_user(email: "queue@example.com", clerk_id: "clerk-queue")
     headers = authorization_headers(user)
-    original_perform_later = AccountDeletionJob.method(:perform_later)
     AccountDeletionJob.define_singleton_method(:perform_later) { |*| raise ActiveJob::EnqueueError, "queue unavailable" }
 
     with_singleton_stub(ClerkAuth, :verify, @clerk_claims) do
@@ -132,7 +133,17 @@ class AccountDeletionTest < ActionDispatch::IntegrationTest
     assert_equal "pending", deletion.status
     assert user.reload.archived?
   ensure
-    AccountDeletionJob.define_singleton_method(:perform_later, original_perform_later) if original_perform_later
+    AccountDeletionJob.singleton_class.remove_method(:perform_later) if AccountDeletionJob.singleton_methods(false).include?(:perform_later)
+  end
+
+  test "repeated deletion requests reuse the durable tombstone" do
+    user = create_user(email: "repeat@example.com", clerk_id: "clerk-repeat")
+    first = AccountDeletion.request_for!(user)
+    second = AccountDeletion.request_for!(user.reload)
+
+    assert_equal first.id, second.id
+    assert_equal 1, AccountDeletion.where(clerk_id_digest: AccountDeletion.digest_for("clerk-repeat")).count
+    assert user.reload.archived?
   end
 
   test "accepts and enqueues a durable deletion when audit logging fails" do
