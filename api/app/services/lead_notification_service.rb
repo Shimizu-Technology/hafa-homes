@@ -353,16 +353,24 @@ class LeadNotificationService
       lead = delivery.lead
       showing = delivery.showing_appointment
       listing = lead&.listing&.title || "your Hafa Homes request"
+      details_url = sms_details_url(delivery)
 
       custom_body = delivery.metadata["body"].presence
-      return custom_body if custom_body
+      return "#{custom_body} View details: #{details_url}" if custom_body
 
       case delivery.event_name
       when "showing_update"
-        "Hafa Homes: #{showing&.status.to_s.humanize} showing for #{listing}. #{format_time(showing&.scheduled_starts_at, timezone: showing&.timezone)}. View details: #{app_link_url(consumer_request_path(lead), lead: lead)}"
+        "Hafa Homes: #{showing&.status.to_s.humanize} showing for #{listing}. #{format_time(showing&.scheduled_starts_at, timezone: showing&.timezone)}. View details: #{details_url}"
       else
-        "Hafa Homes: update for #{listing}. View details: #{app_link_url(consumer_request_path(lead), lead: lead)}"
+        "Hafa Homes: update for #{listing}. View details: #{details_url}"
       end
+    end
+
+    def sms_details_url(delivery)
+      lead = delivery.lead
+      return "#{frontend_url(lead)}/admin/leads/#{lead.id}" if delivery.recipient_role == "agent"
+
+      app_link_url(consumer_request_path(lead), lead: lead)
     end
 
     def consumer_request_path(lead)

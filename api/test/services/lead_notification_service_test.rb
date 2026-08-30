@@ -49,6 +49,23 @@ class LeadNotificationServiceTest < ActiveSupport::TestCase
     previous ? ENV["FRONTEND_URL"] = previous : ENV.delete("FRONTEND_URL")
   end
 
+  test "manual consumer SMS bodies include the exact request link" do
+    brokerage = create_brokerage(name: "Alpha Realty", slug: "alpha")
+    BrokerageDomain.create!(brokerage: brokerage, hostname: "alpha.test", status: "active", primary: true)
+    lead = Lead.create!(brokerage: brokerage, lead_type: "contact", name: "Buyer", email: "buyer@example.com", phone: "6715550101")
+    delivery = LeadNotificationService.queue_manual(
+      lead,
+      channel: "sms",
+      recipient_role: "consumer",
+      body: "Your showing time changed."
+    )
+
+    sms = LeadNotificationService.send(:sms_body, delivery)
+
+    assert_includes sms, "Your showing time changed."
+    assert_includes sms, "https://alpha.test/open?target=%2Faccount%2Frequests%2F#{lead.id}"
+  end
+
   test "email delivery uses a stable provider idempotency key" do
     brokerage = create_brokerage(name: "Alpha Realty", slug: "alpha")
     lead = Lead.create!(brokerage: brokerage, lead_type: "contact", name: "Buyer", email: "buyer@example.com")

@@ -3231,7 +3231,7 @@ function RequestDetailPage() {
           <div className="grid gap-6">
             {lead.listing && listingPath && (
               <article className="overflow-hidden rounded-[2rem] bg-white shadow-sm md:grid md:grid-cols-[260px_1fr]">
-                <Link to={listingPath} className="group block overflow-hidden">
+                <Link to={listingPath} aria-label={`Open related listing ${lead.listing.title}`} className="group block overflow-hidden">
                   <img src={lead.listing.primary_photo_url || FALLBACK_LISTING_IMAGE} onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = FALLBACK_LISTING_IMAGE }} alt="" className="h-60 w-full object-cover transition duration-700 ease-out group-hover:scale-105 md:h-full" />
                 </Link>
                 <div className="p-6">

@@ -1,7 +1,5 @@
 # Connected record architecture
 
-Last updated: August 31, 2026
-
 ## Decision
 
 Håfa Homes should use connected record architecture where a durable product object has a clear user workflow. This is a navigation, authorization, and projection strategy. It is not a graph-database migration, a generic relationship engine, or a reason to give every table its own page.
