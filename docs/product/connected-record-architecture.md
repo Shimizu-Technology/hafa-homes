@@ -88,13 +88,18 @@ The consumer projection does not include staff notes, internal showing notes, de
 - Agent-to-listing links preserve the exact agent page as return context. Listing-to-agent links preserve the exact listing, including an earlier validated return path.
 - The native app accepts exact cold-start and warm links for `/agents/:id`, keeps newer navigation ahead of stale profile loads, supports bounded incremental loading of attributed inventory, and preserves agent/listing returns in memory.
 
+### Public discovery continuity slice
+
+- Search list/map mode is canonical URL state. Filtered list cards plus real, fallback, and full-map markers carry the exact search URL into listing detail, so refresh and return restore both filters and presentation mode.
+- Saved-home and village listing links carry their exact collection or record origin. Listing detail labels those returns explicitly instead of resetting consumers to an unfiltered search.
+- Village detail resolves through `GET /api/v1/villages/:slug` and renders explicit loading, listing-loading, empty, error, and unavailable states. Unknown slugs no longer appear as a generic empty Guam village.
+- Listing detail links reciprocally to its village while preserving the listing's own nested return path. Village listing cards likewise return to the exact village record.
+
 ## Planned slices
 
-1. Preserve the complete public discovery origin when opening a listing: URL-backed list/map mode, filtered search returns, saved-home returns, village returns, and reciprocal listing-to-village navigation.
-2. Make village detail a real API-backed record with explicit loading, unavailable, and unknown-slug states instead of treating an unmatched slug as an empty village.
-3. Preserve the staff intent queue's operational status, identity, sort, and page in the URL while keeping free-text search local; listing detours must return to that exact queue, not the lead inbox.
-4. Publish and verify the iOS universal-link contract for exact consumer records, then use canonical HTTPS record URLs in new notifications while retaining the existing `/open` handoff for previously issued links.
-5. Add further bounded related-record summaries with separately pageable collections as volume grows.
+1. Preserve the staff intent queue's operational status, identity, sort, and page in the URL while keeping free-text search local; listing detours must return to that exact queue, not the lead inbox.
+2. Publish and verify the iOS universal-link contract for exact consumer records, then use canonical HTTPS record URLs in new notifications while retaining the existing `/open` handoff for previously issued links.
+3. Add further bounded related-record summaries with separately pageable collections as volume grows.
 
 ## Deliberate deferrals
 

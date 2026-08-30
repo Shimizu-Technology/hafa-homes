@@ -15,6 +15,8 @@ describe('safeInternalPath', () => {
 
 describe('route builders', () => {
   it('encodes exact return context once', () => {
+    expect(routes.search('kind=rent&view=map')).toBe('/?kind=rent&view=map')
+    expect(routes.search(new URLSearchParams('kind=rent&view=map'))).toBe('/?kind=rent&view=map')
     expect(routes.listing(42, '/?kind=rent&view=map')).toBe('/listings/42?return_to=%2F%3Fkind%3Drent%26view%3Dmap')
     expect(withReturnTo('/listings/42?from=saved', '/account/saved')).toBe('/listings/42?from=saved&return_to=%2Faccount%2Fsaved')
   })

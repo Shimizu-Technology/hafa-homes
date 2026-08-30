@@ -15,7 +15,7 @@ Rails.application.routes.draw do
         post :save, on: :member, to: "saved_listings#create"
         delete :save, on: :member, to: "saved_listings#destroy"
       end
-      resources :villages, only: [ :index ]
+      resources :villages, param: :slug, only: [ :index, :show ]
       resources :agents, only: [ :index, :show ]
       resource :lead_intent, only: [], controller: :lead_intents do
         post :events
