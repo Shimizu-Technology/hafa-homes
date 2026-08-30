@@ -2721,7 +2721,7 @@ function AccountCard({ auth, onOpenAuth }: { auth: AppAuth; onOpenAuth: (prompt?
       } catch (signOutError) {
         console.warn('Account deleted but sign-out failed', signOutError)
       }
-      Alert.alert('Account deleted', 'Your Hafa Homes account, saved homes, search profile, and account link to request history were deleted.')
+      Alert.alert('Deletion started', 'You have been signed out and cannot use this account again. Hafa Homes will finish removing the account and its synced data through the secure deletion process.')
     } catch (error) {
       setDeleteError(error instanceof Error ? error.message : 'Unable to delete account right now.')
     } finally {

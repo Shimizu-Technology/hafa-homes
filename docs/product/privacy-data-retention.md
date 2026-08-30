@@ -1,6 +1,6 @@
 # Privacy and data retention operations
 
-_Last updated: 2026-08-30_
+_Last updated: 2026-08-31_
 
 This document records the product behavior implemented by Hafa Homes. It is an engineering and operations reference, not a substitute for legal review by a broker or attorney.
 
@@ -29,5 +29,12 @@ This document records the product behavior implemented by Hafa Homes. It is an e
 5. Schedule the anonymous-intent pruning task and document who responds to deletion requests.
 6. Review analytics, notification, authentication, hosting, and mapping vendors in the public privacy policy.
 7. Run exactly one Solid Queue execution owner (Puma by default, or a dedicated worker) and monitor queued, sending, and failed notification deliveries; creating a queued record is not proof of delivery.
+
+## Durable account deletion
+
+- `DELETE /api/v1/me` first writes a durable Clerk-ID tombstone and archives the local user in one transaction. Every authenticated path checks that tombstone before it can find, accept, or recreate a user.
+- The request returns only after the account is blocked. A Solid Queue job deletes the Clerk identity, then purges account-owned records and detaches preserved broker requests. The raw Clerk ID is removed from the tombstone after provider confirmation; its one-way digest remains to prevent replay or recreation.
+- Provider and queue failures do not reopen the account. Failed or interrupted work remains retryable and the recurring account-deletion reconciliation job re-enqueues it every five minutes.
+- Account-deletion audit rows are anonymized during purge. Submitted showing, price-watch, search-assist, and contact requests remain brokerage business records but are detached from the deleted account, consistent with the request-retention policy above.
 
 Scheduling remains an operational launch gate. The queue and recurring-job configuration existing in the repository do not prove that a production execution owner or the daily privacy-pruning task is running.

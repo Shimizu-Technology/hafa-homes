@@ -45,29 +45,22 @@ module Api
           return
         end
 
-        user_id = current_user.id
-        clerk_id = current_user.clerk_id
-        audit_actor_email = current_user.email
-
         begin
-          ActiveRecord::Base.transaction do
-            record_audit_event(action: "account_deleted", target: current_user, metadata: { email: audit_actor_email })
-            current_user.destroy!
-          end
+          deletion = AccountDeletion.request_for!(current_user)
+          record_audit_event(action: "account_deletion_requested", target: current_user, target_label: "User ##{current_user.id}")
         rescue ActiveRecord::ActiveRecordError => e
-          Rails.logger.warn("Unable to delete local account for user #{user_id}: #{e.class} #{e.message}")
+          Rails.logger.warn("Unable to begin account deletion for user #{current_user.id}: #{e.class} #{e.message}")
           render json: { error: "Account deletion could not be completed. Please try again or contact support." }, status: :unprocessable_entity
           return
         end
 
-        deletion = ClerkAuth.delete_user(clerk_id)
-        unless deletion[:success]
-          Rails.logger.warn("Unable to delete Clerk account for deleted local user #{user_id}: #{deletion[:status]} #{deletion[:message]}")
-          render json: { error: "Your Hafa Homes account data was removed, but identity-provider deletion could not be completed. Please sign in and try again, or contact support." }, status: account_deletion_failure_status(deletion[:status])
-          return
+        begin
+          AccountDeletionJob.perform_later(deletion.id)
+        rescue StandardError => e
+          Rails.logger.warn("Account deletion #{deletion.id} was saved but could not be enqueued immediately: #{e.class} #{e.message}")
         end
 
-        render json: { deleted: true }
+        render json: { deleted: true, deletion_pending: true }, status: :accepted
       end
 
       private
@@ -89,10 +82,6 @@ module Api
           permitted[:preferred_contact_method] = nil if permitted.key?(:preferred_contact_method) && permitted[:preferred_contact_method].blank?
           permitted[:phone] = nil if permitted.key?(:phone) && permitted[:phone].blank?
         end
-      end
-
-      def account_deletion_failure_status(status)
-        status == :not_configured ? :service_unavailable : :bad_gateway
       end
     end
   end

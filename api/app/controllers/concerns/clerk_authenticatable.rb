@@ -71,6 +71,11 @@ module ClerkAuthenticatable
     clerk_id = decoded["sub"]
     return nil if clerk_id.blank?
 
+    if AccountDeletion.blocks_clerk_id?(clerk_id)
+      @archived_user_authentication_attempt = true
+      return nil
+    end
+
     email = email_from_claims(decoded)
     first_name = decoded["first_name"] || decoded.dig("user", "first_name")
     last_name = decoded["last_name"] || decoded.dig("user", "last_name")
