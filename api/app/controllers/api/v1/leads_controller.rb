@@ -3,6 +3,7 @@ module Api
     class LeadsController < ApplicationController
       include ClerkAuthenticatable
       include StaffLeadScoping
+      include PaginatedResponse
 
       MINIMUM_INTENT_EVENTS_FOR_LEAD_LINK = 2
       MEANINGFUL_INTENT_EVENTS_FOR_LEAD_LINK = %w[
@@ -27,12 +28,13 @@ module Api
         leads = ordered_staff_leads(leads)
         return if performed?
 
-        leads = leads.limit(100)
+        response = paginated_response(leads, :leads, default_per_page: 100, max_per_page: 100) do |lead|
+          LeadSerializer.staff_summary(lead)
+        end
+        response[:assignable_agents] = assignable_agents_for_scope.map(&:as_api_json)
+        response[:metrics] = lead_inbox_metrics
 
-        render json: {
-          leads: leads.map { |lead| LeadSerializer.staff_summary(lead) },
-          assignable_agents: assignable_agents_for_scope.map(&:as_api_json)
-        }
+        render json: response
       end
 
       def show
@@ -45,7 +47,10 @@ module Api
       def create
         permitted = lead_params
         normalize_blank_lead_values(permitted)
-        intent_session = lead_intent_session_from_token(permitted.delete(:intent_session_token))
+        intent_session = lead_intent_session_from_token(
+          permitted.delete(:intent_session_token),
+          require_context: permitted[:lead_type] == "search_assist"
+        )
         lead = Lead.new(permitted.except(:listing_id, :requested_agent_id))
         lead.listing = active_listing_from_params(permitted)
         return if performed?
@@ -169,6 +174,16 @@ module Api
         search = params[:q].to_s.strip
         leads = apply_lead_search_filter(leads, search) if search.present?
         leads
+      end
+
+      def lead_inbox_metrics
+        scope = staff_lead_scope
+        {
+          open_leads: scope.where(status: %w[new contacted showing_scheduled nurturing]).count,
+          new_leads: scope.where(status: "new").count,
+          showing_leads: scope.where(status: "showing_scheduled").count,
+          price_watch_leads: scope.where(lead_type: "price_tracker").count
+        }
       end
 
       def apply_lead_search_filter(leads, search)
@@ -379,15 +394,16 @@ module Api
         end
       end
 
-      def lead_intent_session_from_token(token)
+      def lead_intent_session_from_token(token, require_context: false)
         return nil if token.blank?
 
         brokerage = current_routing_brokerage
         session = LeadIntentSession.find_scoped_by_token(token, user: current_user, brokerage: brokerage)
         return nil unless session
-        raise InsufficientLeadIntentContextError, "Intent session needs more current browsing context before lead submission" unless sufficient_lead_intent_context?(session)
+        return session if sufficient_lead_intent_context?(session)
+        raise InsufficientLeadIntentContextError, "Intent session needs more current browsing context before lead submission" if require_context
 
-        session
+        nil
       rescue ArgumentError
         nil
       end

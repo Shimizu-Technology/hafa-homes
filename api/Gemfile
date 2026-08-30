@@ -35,6 +35,9 @@ gem "image_processing", "~> 1.2"
 # Use Rack CORS for handling Cross-Origin Resource Sharing (CORS), making cross-origin Ajax possible
 gem "rack-cors"
 
+# Protect public and cost-bearing API writes from accidental or abusive bursts.
+gem "rack-attack", "~> 6.8"
+
 # PostGIS support for map/geospatial real estate queries.
 gem "activerecord-postgis-adapter"
 

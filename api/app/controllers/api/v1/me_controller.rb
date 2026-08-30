@@ -2,6 +2,7 @@ module Api
   module V1
     class MeController < ApplicationController
       include ClerkAuthenticatable
+      include PaginatedResponse
 
       before_action :authenticate_user!
       before_action :require_request_brokerage!, only: [ :leads, :lead ]
@@ -25,9 +26,11 @@ module Api
       def leads
         leads = consumer_request_scope
           .order(created_at: :desc)
-          .limit(100)
 
-        render json: { leads: leads.map { |lead| LeadSerializer.consumer(lead) } }
+        response = paginated_response(leads, :leads, default_per_page: 100, max_per_page: 100) do |lead|
+          LeadSerializer.consumer(lead)
+        end
+        render json: response
       end
 
       def lead

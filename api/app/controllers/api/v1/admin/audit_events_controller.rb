@@ -3,9 +3,10 @@ module Api
     module Admin
       class AuditEventsController < ApplicationController
         include ClerkAuthenticatable
+        include PaginatedResponse
 
-        DEFAULT_LIMIT = 100
-        MAX_LIMIT = 250
+        DEFAULT_PER_PAGE = 100
+        MAX_PER_PAGE = 250
 
         before_action :authenticate_user!
         before_action :require_staff!
@@ -14,9 +15,11 @@ module Api
           events = scoped_events
             .includes(:actor)
             .recent_first
-            .limit(requested_limit)
 
-          render json: { audit_events: events.map(&:as_api_json) }
+          response = paginated_response(events, :audit_events, default_per_page: requested_page_size, max_per_page: MAX_PER_PAGE) do |event|
+            event.as_api_json
+          end
+          render json: response
         end
 
         private
@@ -44,8 +47,8 @@ module Api
           AuditEvent.none
         end
 
-        def requested_limit
-          params.fetch(:limit, DEFAULT_LIMIT).to_i.clamp(1, MAX_LIMIT)
+        def requested_page_size
+          params[:per_page].presence || params[:limit].presence || DEFAULT_PER_PAGE
         end
       end
     end

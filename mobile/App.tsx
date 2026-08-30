@@ -667,7 +667,7 @@ async function createLead(payload: CreateLeadPayload, getToken?: GetAuthToken, r
 }
 
 async function fetchMyLeads(getToken: GetAuthToken): Promise<{ leads: ConsumerLead[] }> {
-  const response = await apiFetch(`${API_URL}/api/v1/me/leads`, {
+  const response = await apiFetch(`${API_URL}/api/v1/me/leads?per_page=100`, {
     headers: await authHeaders(getToken),
   })
   if (!response.ok) throw new ApiRequestError(await apiErrorMessage(response, 'Unable to load your requests'), response.status)
