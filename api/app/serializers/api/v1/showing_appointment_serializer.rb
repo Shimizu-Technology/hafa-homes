@@ -20,6 +20,7 @@ module Api
             internal_notes: showing.internal_notes,
             created_at: showing.created_at,
             updated_at: showing.updated_at,
+            lead: lead_json(showing.lead),
             listing: listing_json(showing.listing),
             brokerage: brokerage_json(showing.brokerage),
             agent: agent_json(showing.agent),
@@ -30,10 +31,23 @@ module Api
         def consumer(showing)
           return nil unless showing
 
-          summary(showing).except(:internal_notes, :created_by, :created_by_id)
+          summary(showing).except(:internal_notes, :created_by, :created_by_id, :lead)
         end
 
         private
+
+        def lead_json(lead)
+          return nil unless lead
+
+          {
+            id: lead.id,
+            lead_type: lead.lead_type,
+            name: lead.name,
+            email: lead.email,
+            phone: lead.phone,
+            status: lead.status
+          }
+        end
 
         def listing_json(listing)
           return nil unless listing

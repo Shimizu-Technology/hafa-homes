@@ -11,7 +11,7 @@ module Api
 
       def index
         showings = staff_showing_appointment_scope
-          .includes(:lead, :listing, :brokerage, :agent, :created_by)
+          .includes(:lead, :brokerage, :agent, :created_by, listing: [:village, :listing_photos])
           .order(Arel.sql("scheduled_starts_at DESC NULLS LAST"), created_at: :desc)
 
         response = paginated_response(showings, :showing_appointments, default_per_page: 100, max_per_page: 100) do |showing|
@@ -56,7 +56,9 @@ module Api
       private
 
       def set_showing_appointment
-        @showing_appointment = staff_showing_appointment_scope.find(params[:id])
+        @showing_appointment = staff_showing_appointment_scope
+          .includes(:lead, :brokerage, :agent, :created_by, listing: [:village, :listing_photos])
+          .find(params[:id])
       end
 
       def apply_agent(showing, agent_id)

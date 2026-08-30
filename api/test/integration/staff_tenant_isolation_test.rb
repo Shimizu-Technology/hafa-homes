@@ -66,6 +66,34 @@ class StaffTenantIsolationTest < ActionDispatch::IntegrationTest
     assert_equal "proposed", beta_showing.reload.status
   end
 
+  test "brokerage admins can open an exact showing only inside their staff scope" do
+    alpha_showing = @alpha_lead.showing_appointments.create!(created_by: @admin, internal_notes: "Use the side entrance")
+    beta_showing = @beta_lead.showing_appointments.create!(created_by: @beta_admin)
+    headers = authorization_headers(@admin)
+
+    with_clerk_auth { get "/api/v1/showing_appointments/#{alpha_showing.id}", headers: headers }
+    assert_response :success
+    showing = response.parsed_body.fetch("showing_appointment")
+    assert_equal alpha_showing.id, showing.fetch("id")
+    assert_equal @alpha_lead.id, showing.dig("lead", "id")
+    assert_equal "Alpha Buyer", showing.dig("lead", "name")
+    assert_equal "Use the side entrance", showing.fetch("internal_notes")
+
+    with_clerk_auth { get "/api/v1/showing_appointments/#{beta_showing.id}", headers: headers }
+    assert_response :not_found
+  end
+
+  test "consumer showing projection excludes staff-only notes and the nested lead" do
+    showing = @alpha_lead.showing_appointments.create!(created_by: @admin, internal_notes: "Staff only")
+
+    payload = Api::V1::ShowingAppointmentSerializer.consumer(showing)
+
+    refute payload.key?(:internal_notes)
+    refute payload.key?(:created_by)
+    refute payload.key?(:created_by_id)
+    refute payload.key?(:lead)
+  end
+
   test "platform admins retain explicit cross-brokerage visibility" do
     platform_admin = create_user(email: "platform@example.com", role: "platform_admin", clerk_id: "clerk-platform")
     headers = authorization_headers(platform_admin)
