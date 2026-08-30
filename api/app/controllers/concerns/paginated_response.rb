@@ -4,12 +4,12 @@ module PaginatedResponse
   private
 
   def paginated_response(scope, collection_key, default_per_page: 10, max_per_page: 50)
-    page = [integer_pagination_param(params[:page], fallback: 1), 1].max
     per_page = [[integer_pagination_param(params[:per_page], fallback: default_per_page), 1].max, max_per_page].min
     total_count = scope.count
+    total_pages = (total_count.to_f / per_page).ceil
+    page = integer_pagination_param(params[:page], fallback: 1).clamp(1, [ total_pages, 1 ].max)
     primary_key = scope.klass.arel_table[scope.klass.primary_key]
     records = scope.order(primary_key.asc).offset((page - 1) * per_page).limit(per_page)
-    total_pages = (total_count.to_f / per_page).ceil
 
     {
       collection_key => records.map { |record| yield(record) },

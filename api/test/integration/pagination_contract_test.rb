@@ -119,6 +119,18 @@ class PaginationContractTest < ActionDispatch::IntegrationTest
     end
   end
 
+  test "clamps an oversized page to the final available page" do
+    leads = 3.times.map do |index|
+      Lead.create!(brokerage: @alpha, lead_type: "contact", name: "Alpha Buyer #{index}", email: "alpha-#{index}@example.com")
+    end
+
+    with_clerk_auth { get "/api/v1/leads", headers: @headers, params: { page: 99, per_page: 2 } }
+
+    assert_response :success
+    assert_equal 2, response.parsed_body.dig("pagination", "page")
+    assert_equal [ leads.first.id ], response.parsed_body.fetch("leads").pluck("id")
+  end
+
   test "keeps the audit log's previous limit parameter as a page-size alias" do
     3.times do |index|
       AuditLogger.record!(action: "lead_updated", brokerage: @alpha, target_label: "Alpha event #{index}")

@@ -146,13 +146,21 @@ class RackAttackRateLimitingTest < ActionDispatch::IntegrationTest
     assert_equal "203.0.113.30", Rack::Attack.throttle_ip(request)
   end
 
-  test "uses the resolved client address behind a trusted proxy" do
-    request = Rack::Request.new(
-      "REMOTE_ADDR" => "10.0.0.5",
-      "action_dispatch.remote_ip" => "198.51.100.40"
-    )
+  test "uses independent resolved client addresses behind a trusted proxy" do
+    proxy_env = { "REMOTE_ADDR" => "10.0.0.5" }
+    client_one_headers = { "X-Forwarded-For" => "198.51.100.40" }
+    client_two_headers = { "X-Forwarded-For" => "198.51.100.41" }
 
-    assert_equal "198.51.100.40", Rack::Attack.throttle_ip(request)
+    10.times do
+      post "/api/v1/leads", headers: client_one_headers, params: {}, env: proxy_env
+      assert_response :bad_request
+    end
+
+    post "/api/v1/leads", headers: client_one_headers, params: {}, env: proxy_env
+    assert_response :too_many_requests
+
+    post "/api/v1/leads", headers: client_two_headers, params: {}, env: proxy_env
+    assert_response :bad_request
   end
 
   test "fingerprints bearer credentials without using the raw token" do
