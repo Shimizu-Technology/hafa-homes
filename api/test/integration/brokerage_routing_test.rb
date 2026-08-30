@@ -153,14 +153,17 @@ class BrokerageRoutingTest < ActionDispatch::IntegrationTest
 
   test "consumer request history fails closed without an active storefront" do
     buyer = create_user(email: "unrouted-request-buyer@example.com", clerk_id: "clerk-unrouted-request-buyer")
+    request = Lead.create!(user: buyer, brokerage: @alpha, lead_type: "contact", name: "Unrouted Request Buyer", email: buyer.email)
     headers = authorization_headers(buyer)
 
-    with_clerk_auth do
-      get "/api/v1/me/leads", headers: headers.merge("X-Brokerage-Host" => "unknown.test")
-    end
+    [ "/api/v1/me/leads", "/api/v1/me/leads/#{request.id}" ].each do |path|
+      with_clerk_auth do
+        get path, headers: headers.merge("X-Brokerage-Host" => "unknown.test")
+      end
 
-    assert_response :not_found
-    assert_equal [ "No brokerage is configured for this storefront" ], response.parsed_body.fetch("errors")
+      assert_response :not_found
+      assert_equal [ "No brokerage is configured for this storefront" ], response.parsed_body.fetch("errors")
+    end
   end
 
   test "rejects reuse of an intent session token across brokerages" do
