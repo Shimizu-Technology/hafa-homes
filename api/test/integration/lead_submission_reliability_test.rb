@@ -56,6 +56,30 @@ class LeadSubmissionReliabilityTest < ActionDispatch::IntegrationTest
 
     assert_response :conflict
     assert_equal [ "Idempotency-Key was already used for a different request" ], response.parsed_body.fetch("errors")
+    assert_equal true, response.parsed_body.fetch("reset_idempotency_key")
+  end
+
+  test "does not replay a pending key across authenticated users on a shared device" do
+    first_user = create_user(email: "first@example.com", clerk_id: "clerk-first")
+    second_user = create_user(email: "second@example.com", clerk_id: "clerk-second")
+    key = SecureRandom.uuid
+
+    with_singleton_stub(ClerkAuth, :verify, { "sub" => first_user.clerk_id, "email" => first_user.email }) do
+      post "/api/v1/leads", headers: @headers.merge("Authorization" => "Bearer first", "Idempotency-Key" => key), params: @payload
+    end
+    assert_response :created
+    first_lead = Lead.order(:id).last
+    assert_equal first_user.id, first_lead.user_id
+
+    assert_no_difference -> { Lead.count } do
+      with_singleton_stub(ClerkAuth, :verify, { "sub" => second_user.clerk_id, "email" => second_user.email }) do
+        post "/api/v1/leads", headers: @headers.merge("Authorization" => "Bearer second", "Idempotency-Key" => key), params: @payload
+      end
+    end
+
+    assert_response :conflict
+    assert_equal true, response.parsed_body.fetch("reset_idempotency_key")
+    assert_equal first_user.id, first_lead.reload.user_id
   end
 
   test "validates idempotency keys before creating a lead" do
@@ -107,6 +131,46 @@ class LeadSubmissionReliabilityTest < ActionDispatch::IntegrationTest
     assert_response :created
   ensure
     LeadActivity.define_singleton_method(:record!, original) if original
+  end
+
+  test "does not turn best-effort lead audit failure into a false submission failure" do
+    original = AuditLogger.method(:record!)
+    AuditLogger.define_singleton_method(:record!) { |**| raise ActiveRecord::StatementInvalid, "audit unavailable" }
+
+    assert_difference -> { Lead.count }, 1 do
+      post "/api/v1/leads", headers: @headers.merge("Idempotency-Key" => SecureRandom.uuid), params: @payload
+    end
+
+    assert_response :created
+  ensure
+    AuditLogger.define_singleton_method(:record!, original) if original
+  end
+
+  test "does not turn best-effort showing audit failure into a false creation failure" do
+    admin = create_user(email: "admin@example.com", role: "brokerage_admin", clerk_id: "clerk-admin")
+    BrokerageMembership.create!(brokerage: @brokerage, user: admin, role: "brokerage_admin", status: "active")
+    lead = Lead.create!(brokerage: @brokerage, lead_type: "showing_request", name: "Showing Buyer", email: "showing@example.com")
+    original = AuditLogger.method(:record!)
+    AuditLogger.define_singleton_method(:record!) { |**| raise ActiveRecord::StatementInvalid, "audit unavailable" }
+
+    assert_difference -> { ShowingAppointment.count }, 1 do
+      with_singleton_stub(ClerkAuth, :verify, { "sub" => admin.clerk_id, "email" => admin.email }) do
+        post "/api/v1/showing_appointments",
+          headers: @headers.merge("Authorization" => "Bearer admin"),
+          params: {
+            showing_appointment: {
+              lead_id: lead.id,
+              scheduled_starts_at: 2.days.from_now,
+              scheduled_ends_at: 2.days.from_now + 1.hour,
+              status: "confirmed"
+            }
+          }
+      end
+    end
+
+    assert_response :created
+  ensure
+    AuditLogger.define_singleton_method(:record!, original) if original
   end
 
   test "rolls back a showing and its lead status when notification intent persistence fails" do

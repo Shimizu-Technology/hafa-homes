@@ -57,7 +57,7 @@ module Api
         end
 
         idempotency_key = request.headers["Idempotency-Key"].to_s.strip.presence
-        idempotency_fingerprint = lead_submission_fingerprint(permitted)
+        idempotency_fingerprint = lead_submission_fingerprint(permitted, user: current_user)
         return if replay_idempotent_lead(brokerage, idempotency_key, idempotency_fingerprint)
 
         intent_session = lead_intent_session_from_token(
@@ -90,7 +90,7 @@ module Api
 
         if saved
           record_intent_conversion_activity(lead, intent_session)
-          record_audit_event(action: "lead_created", target: lead, lead: lead, metadata: { lead_type: lead.lead_type, source: lead.lead_source, lead_intent_session_id: intent_session&.id })
+          record_lead_creation_audit(lead, intent_session)
           render json: { lead: serialized_created_lead(lead) }, status: :created
         else
           render json: { errors: lead.errors.full_messages }, status: :unprocessable_entity
@@ -382,8 +382,11 @@ module Api
         )
       end
 
-      def lead_submission_fingerprint(permitted)
-        canonical = canonical_idempotency_value(permitted.to_h)
+      def lead_submission_fingerprint(permitted, user:)
+        canonical = canonical_idempotency_value({
+          owner: user ? "user:#{user.id}" : "anonymous",
+          lead: permitted.to_h
+        })
         Digest::SHA256.hexdigest(JSON.generate(canonical))
       end
 
@@ -405,7 +408,10 @@ module Api
         return false unless existing
 
         if existing.idempotency_fingerprint != fingerprint
-          render json: { errors: [ "Idempotency-Key was already used for a different request" ] }, status: :conflict
+          render json: {
+            errors: [ "Idempotency-Key was already used for a different request" ],
+            reset_idempotency_key: true
+          }, status: :conflict
           return true
         end
 
@@ -493,6 +499,17 @@ module Api
         )
       rescue StandardError => e
         Rails.logger.warn("Unable to record intent conversion activity for lead #{lead.id}: #{e.class} #{e.message}")
+      end
+
+      def record_lead_creation_audit(lead, intent_session)
+        record_audit_event(
+          action: "lead_created",
+          target: lead,
+          lead: lead,
+          metadata: { lead_type: lead.lead_type, source: lead.lead_source, lead_intent_session_id: intent_session&.id }
+        )
+      rescue StandardError => e
+        Rails.logger.warn("Unable to record creation audit for lead #{lead.id}: #{e.class} #{e.message}")
       end
 
       def serialized_created_lead(lead)

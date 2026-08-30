@@ -1131,9 +1131,10 @@ async function submitLead(payload: LeadPayload, retryAfterIntentReset: boolean):
     body: JSON.stringify({ lead: payload }),
   })
 
-  if (response.status === 409 && retryAfterIntentReset && payload.intent_session_token) {
-    const conflictPayload = await response.clone().json().catch(() => null) as { reset_session?: boolean } | null
-    if (conflictPayload?.reset_session) {
+  if (response.status === 409) {
+    const conflictPayload = await response.clone().json().catch(() => null) as { reset_session?: boolean; reset_idempotency_key?: boolean } | null
+    if (conflictPayload?.reset_idempotency_key) idempotency.complete(idempotencyToken)
+    if (retryAfterIntentReset && payload.intent_session_token && conflictPayload?.reset_session) {
       clearLeadIntentSessionToken()
       markLeadIntentCurrentContextRequired()
       throw new ApiFetchError('Your search session refreshed after sign-in. Please view the home again and reopen this form before submitting.', response.status)
