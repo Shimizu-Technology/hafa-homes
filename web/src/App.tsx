@@ -2333,11 +2333,12 @@ export function ListingDetailPage() {
   const [detailParams] = useSearchParams()
   const fromAdmin = detailParams.get('from') === 'admin'
   const adminLeadId = detailParams.get('lead_id')
-  const adminBackPath = adminLeadId ? `/admin/leads/${adminLeadId}` : '/admin/leads'
-  const listingBackPath = fromAdmin ? adminBackPath : safeReturnPath(detailParams.get('return_to'), '/')
+  const requestedBackPath = safeReturnPath(detailParams.get('return_to'), '/')
+  const adminBackPath = adminLeadId ? `/admin/leads/${adminLeadId}` : requestedBackPath.startsWith('/admin/') ? requestedBackPath : '/admin/leads'
+  const listingBackPath = fromAdmin ? adminBackPath : requestedBackPath
   const listingPath = `${location.pathname}${location.search}`
   const listingBackLabel = fromAdmin
-    ? 'Back to lead'
+    ? adminBackPath.startsWith('/admin/intent') ? 'Back to intent' : 'Back to lead'
     : listingBackPath.startsWith('/admin/showings/')
       ? 'Back to showing'
       : listingBackPath.startsWith('/account/requests/')
@@ -2439,8 +2440,8 @@ export function ListingDetailPage() {
           {fromAdmin && (
             <div className="border-b border-[#eadfce] bg-[#fff8ea] px-5 py-3">
               <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 text-sm font-bold text-[#304942]">
-                <span>You are viewing this public listing from the admin CRM.</span>
-                <Link to={adminBackPath} className="inline-flex items-center gap-2 rounded-full bg-[var(--brand-primary)] px-4 py-2 text-white"><ArrowLeft size={16} /> Back to lead</Link>
+                <span>You are viewing this public listing from {adminBackPath.startsWith('/admin/intent') ? 'search intent' : 'the admin CRM'}.</span>
+                <Link to={adminBackPath} className="inline-flex items-center gap-2 rounded-full bg-[var(--brand-primary)] px-4 py-2 text-white"><ArrowLeft size={16} /> {listingBackLabel}</Link>
               </div>
             </div>
           )}
@@ -4080,21 +4081,43 @@ function AdminPanel({ title, children }: { title: string; children: React.ReactN
   return <div className="rounded-[1.75rem] bg-white p-4 shadow-sm sm:rounded-[2rem] sm:p-5"><h2 className="text-xl font-semibold tracking-[-0.04em] sm:text-2xl">{title}</h2><div className="mt-4">{children}</div></div>
 }
 
-function AdminIntentPage() {
-  const [statusFilter, setStatusFilter] = useState('')
-  const [identityFilter, setIdentityFilter] = useState('')
-  const [sortBy, setSortBy] = useState('last_seen')
+export function AdminIntentPage() {
+  const { userId } = useAuthContext()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [searchInput, setSearchInput] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
-  const [page, setPage] = useState(1)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const rawStatusFilter = searchParams.get('status') || ''
+  const statusFilter = ['', 'active', 'snoozed', 'converted'].includes(rawStatusFilter) ? rawStatusFilter : ''
+  const rawIdentityFilter = searchParams.get('identity') || ''
+  const identityFilter = ['', 'signed_in', 'anonymous'].includes(rawIdentityFilter) ? rawIdentityFilter : ''
+  const rawSortBy = searchParams.get('sort') || 'last_seen'
+  const sortBy = ['last_seen', 'oldest', 'views_desc', 'saved_desc', 'forms_desc'].includes(rawSortBy) ? rawSortBy : 'last_seen'
+  const rawPage = Number(searchParams.get('page') || '1')
+  const page = Number.isInteger(rawPage) && rawPage > 0 ? rawPage : 1
+  const canonicalParams = new URLSearchParams()
+  if (statusFilter) canonicalParams.set('status', statusFilter)
+  if (identityFilter) canonicalParams.set('identity', identityFilter)
+  if (sortBy !== 'last_seen') canonicalParams.set('sort', sortBy)
+  if (page > 1) canonicalParams.set('page', String(page))
+  const canonicalQuery = canonicalParams.toString()
+  const currentQuery = searchParams.toString()
 
   useEffect(() => {
-    setPage(1)
-  }, [statusFilter, identityFilter, sortBy, searchQuery])
+    if (currentQuery !== canonicalQuery) setSearchParams(new URLSearchParams(canonicalQuery), { replace: true })
+  }, [canonicalQuery, currentQuery, setSearchParams])
+
+  const setOperationalParams = (updates: Record<string, string>, resetPage = true) => {
+    const next = new URLSearchParams(canonicalParams)
+    Object.entries(updates).forEach(([key, value]) => value ? next.set(key, value) : next.delete(key))
+    if (resetPage) next.delete('page')
+    setSearchParams(next)
+  }
+  const setPage = (nextPage: number) => setOperationalParams({ page: nextPage > 1 ? String(nextPage) : '' }, false)
+  const intentPath = routes.adminIntent(canonicalParams)
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['admin-lead-intent-sessions', statusFilter, identityFilter, sortBy, searchQuery, page],
+    queryKey: ['admin-lead-intent-sessions', userId, statusFilter, identityFilter, sortBy, searchQuery, page],
     queryFn: () => fetchAdminLeadIntentSessions({ status: statusFilter || undefined, identity: identityFilter || undefined, sort: sortBy || undefined, q: searchQuery || undefined, page: String(page), per_page: '10' }),
     placeholderData: keepPreviousData,
   })
@@ -4141,24 +4164,24 @@ function AdminIntentPage() {
                 <h2 className="text-2xl font-semibold tracking-[-0.05em]">Recent search sessions</h2>
                 <p className="mt-2 text-sm font-semibold leading-6 text-[#66746f]">Use this as a coaching surface: saves, repeated village interest, and abandoned forms are the strongest outreach signals.</p>
               </div>
-              <form onSubmit={(event) => { event.preventDefault(); setSearchQuery(searchInput.trim()) }} className="grid w-full gap-2 lg:max-w-3xl">
+              <form onSubmit={(event) => { event.preventDefault(); setSearchQuery(searchInput.trim()); if (page > 1) setPage(1) }} className="grid w-full gap-2 lg:max-w-3xl">
                 <div className="flex flex-wrap gap-2">
                   <input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Search user, email, village, listing, or behavior" className="min-h-11 min-w-0 flex-1 rounded-2xl border border-[#dce5df] bg-white px-3 text-sm font-bold text-[#304942] sm:min-w-[240px]" />
                   <button className="min-h-11 w-full rounded-2xl bg-[var(--brand-primary)] px-4 text-sm font-bold text-white sm:w-auto">Search</button>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="min-h-11 w-full rounded-2xl border border-[#dce5df] bg-white px-3 text-sm font-bold text-[#304942] sm:w-auto">
+                  <select aria-label="Intent status" value={statusFilter} onChange={(event) => setOperationalParams({ status: event.target.value })} className="min-h-11 w-full rounded-2xl border border-[#dce5df] bg-white px-3 text-sm font-bold text-[#304942] sm:w-auto">
                     <option value="">All statuses</option>
                     <option value="active">Active</option>
                     <option value="snoozed">Snoozed</option>
                     <option value="converted">Converted</option>
                   </select>
-                  <select value={identityFilter} onChange={(event) => setIdentityFilter(event.target.value)} className="min-h-11 w-full rounded-2xl border border-[#dce5df] bg-white px-3 text-sm font-bold text-[#304942] sm:w-auto">
+                  <select aria-label="Visitor identity" value={identityFilter} onChange={(event) => setOperationalParams({ identity: event.target.value })} className="min-h-11 w-full rounded-2xl border border-[#dce5df] bg-white px-3 text-sm font-bold text-[#304942] sm:w-auto">
                     <option value="">All visitors</option>
                     <option value="signed_in">Signed in</option>
                     <option value="anonymous">Anonymous</option>
                   </select>
-                  <select value={sortBy} onChange={(event) => setSortBy(event.target.value)} className="min-h-11 w-full rounded-2xl border border-[#dce5df] bg-white px-3 text-sm font-bold text-[#304942] sm:w-auto">
+                  <select aria-label="Intent sort" value={sortBy} onChange={(event) => setOperationalParams({ sort: event.target.value === 'last_seen' ? '' : event.target.value })} className="min-h-11 w-full rounded-2xl border border-[#dce5df] bg-white px-3 text-sm font-bold text-[#304942] sm:w-auto">
                     <option value="last_seen">Last seen newest</option>
                     <option value="oldest">Last seen oldest</option>
                     <option value="views_desc">Most listings viewed</option>
@@ -4172,7 +4195,7 @@ function AdminIntentPage() {
             <div className="mt-5 grid gap-4">
               {isLoading && <StateCard>Loading search intent...</StateCard>}
               {isError && <StateCard tone="error">Unable to load search intent.</StateCard>}
-              {sessions.map((session) => <AdminIntentSessionCard key={session.id} session={session} />)}
+              {sessions.map((session) => <AdminIntentSessionCard key={session.id} session={session} returnTo={intentPath} />)}
               {!isLoading && sessions.length === 0 && <StateCard>No search intent sessions match these filters yet.</StateCard>}
               {pagination && pagination.total_pages > 1 && (
                 <PaginationControls pagination={pagination} onPageChange={setPage} />
@@ -4199,7 +4222,7 @@ function AdminIntentPage() {
               <p className="mt-5 text-xs font-bold uppercase tracking-[0.2em] text-[#7b8a84]">Top viewed homes</p>
               <div className="mt-4 grid gap-3">
                 {(data?.top_listings ?? []).map((listing) => (
-                  <Link key={listing.id} to={`/listings/${listing.id}?from=admin`} className="grid gap-1 rounded-2xl bg-[#fbfaf6] p-3 transition hover:bg-[#f6f1e8]">
+                  <Link key={listing.id} to={routes.adminListing(listing.id, intentPath)} className="grid gap-1 rounded-2xl bg-[#fbfaf6] p-3 transition hover:bg-[#f6f1e8]">
                     <span className="text-sm font-black text-[#17211f]">{listing.title}</span>
                     <span className="text-xs font-bold text-[#66746f]">{listing.village || 'Guam'} · {listing.price ? currency(listing.price, listing.listing_kind || 'sale') : 'Price not shown'}</span>
                     <span className="text-[10px] font-black uppercase tracking-[0.14em] text-[#0f705e]">{listing.view_count} views</span>
@@ -4421,7 +4444,7 @@ function defaultPromptSnooze(mode: PromptMode) {
   return String(promptModeDefaults(mode).snoozeHours)
 }
 
-function AdminIntentSessionCard({ session }: { session: AdminLeadIntentSession }) {
+function AdminIntentSessionCard({ session, returnTo }: { session: AdminLeadIntentSession; returnTo: string }) {
   const topVillages = session.top_villages ?? []
   const events = session.recent_events ?? []
   const statusClasses = intentStatusClasses(session.status)
@@ -4468,14 +4491,14 @@ function AdminIntentSessionCard({ session }: { session: AdminLeadIntentSession }
         <div className="rounded-2xl bg-white p-3">
           <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#7b8a84]">Next action</p>
           {session.converted_lead ? (
-            <Link to={`/admin/leads/${session.converted_lead.id}`} className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-full bg-[var(--brand-primary)] px-4 text-sm font-bold text-white">Open converted lead <ChevronRight size={16} /></Link>
+            <Link to={routes.adminLead(session.converted_lead.id, returnTo)} className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-full bg-[var(--brand-primary)] px-4 text-sm font-bold text-white">Open converted lead <ChevronRight size={16} /></Link>
           ) : session.user ? (
             <p className="mt-3 text-sm font-semibold leading-6 text-[#304942]">Signed-in shopper. Prioritize follow-up only when they save homes, request help, or repeatedly revisit a focused search.</p>
           ) : (
             <p className="mt-3 text-sm font-semibold leading-6 text-[#304942]">Anonymous visitor. Let the progressive prompt convert them before outreach.</p>
           )}
           {session.latest_listing_id && (
-            <Link to={`/listings/${session.latest_listing_id}?from=admin`} className="mt-3 inline-flex items-center gap-2 text-sm font-bold text-[#0f705e]">View latest listing <ChevronRight size={15} /></Link>
+            <Link to={routes.adminListing(session.latest_listing_id, returnTo)} className="mt-3 inline-flex items-center gap-2 text-sm font-bold text-[#0f705e]">View latest listing <ChevronRight size={15} /></Link>
           )}
           {session.last_prompt_dismissed_at && <p className="mt-3 text-xs font-bold uppercase tracking-[0.14em] text-[#7b8a84]">Prompt dismissed {formatDateTime(session.last_prompt_dismissed_at)}</p>}
         </div>
