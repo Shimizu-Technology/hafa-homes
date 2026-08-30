@@ -17,6 +17,12 @@ describe('appLinkTarget', () => {
     expect(appLinkTarget({ scheme: 'hafahomes', hostname: 'listings', path: '0' })).toEqual({ type: 'none' })
   })
 
+  it('opens exact agents from both custom-scheme URL forms before the directory route', () => {
+    expect(appLinkTarget({ scheme: 'hafahomes', hostname: 'agents', path: '8' })).toEqual({ type: 'agent', agentId: 8 })
+    expect(appLinkTarget({ scheme: 'hafahomes', hostname: null, path: 'agents/9' })).toEqual({ type: 'agent', agentId: 9 })
+    expect(appLinkTarget({ scheme: 'hafahomes', hostname: 'agents', path: '0' })).toEqual({ type: 'none' })
+  })
+
   it('keeps request history ahead of the broader account route', () => {
     expect(appLinkTarget({ scheme: 'hafahomes', hostname: 'account', path: 'requests' })).toEqual({ type: 'requests' })
     expect(appLinkTarget({ scheme: 'hafahomes', hostname: 'account', path: null })).toEqual({ type: 'more' })

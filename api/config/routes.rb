@@ -16,7 +16,7 @@ Rails.application.routes.draw do
         delete :save, on: :member, to: "saved_listings#destroy"
       end
       resources :villages, only: [ :index ]
-      resources :agents, only: [ :index ]
+      resources :agents, only: [ :index, :show ]
       resource :lead_intent, only: [], controller: :lead_intents do
         post :events
         post :dismiss

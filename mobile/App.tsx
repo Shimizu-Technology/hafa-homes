@@ -85,6 +85,15 @@ type Agent = {
   brokerage?: Brokerage
 }
 
+type PaginationMeta = {
+  page: number
+  per_page: number
+  total_count: number
+  total_pages: number
+  previous_page: number | null
+  next_page: number | null
+}
+
 type Listing = {
   id: number
   external_id?: string
@@ -109,6 +118,12 @@ type Listing = {
   village: Village
   features: Feature[]
   photos?: ListingPhoto[]
+}
+
+type AgentDetailResponse = {
+  agent: Agent
+  attributed_listings: Listing[]
+  pagination: PaginationMeta
 }
 
 type ShowingAppointment = {
@@ -381,6 +396,12 @@ async function fetchAgents(): Promise<Agent[]> {
   if (!response.ok) throw new Error('Unable to load agents')
   const json = await response.json()
   return json.agents ?? []
+}
+
+async function fetchAgent(id: number, page = 1): Promise<AgentDetailResponse> {
+  const response = await apiFetch(`${API_URL}/api/v1/agents/${id}?page=${page}&per_page=6`)
+  if (!response.ok) throw new Error(await apiErrorMessage(response, response.status === 404 ? 'This agent is not available in this storefront.' : 'Unable to load this agent profile.'))
+  return response.json()
 }
 
 function agentInitials(agent: Agent) {
@@ -786,9 +807,14 @@ function AppContent({ auth }: { auth: AppAuth }) {
   const [searchQuery, setSearchQuery] = useState('')
   const [listings, setListings] = useState<Listing[]>([])
   const [agents, setAgents] = useState<Agent[]>([])
-  const [agentsScope, setAgentsScope] = useState<'global' | null>(null)
+  const [agentsScope, setAgentsScope] = useState<'storefront' | null>(null)
   const [agentsLoading, setAgentsLoading] = useState(false)
   const [selectedAgentId, setSelectedAgentId] = useState<number | null>(null)
+  const [selectedAgentDetailId, setSelectedAgentDetailId] = useState<number | null>(null)
+  const [selectedAgentDetail, setSelectedAgentDetail] = useState<AgentDetailResponse | null>(null)
+  const [agentDetailLoading, setAgentDetailLoading] = useState(false)
+  const [agentDetailError, setAgentDetailError] = useState<string | null>(null)
+  const [agentReturnListing, setAgentReturnListing] = useState<Listing | null>(null)
   const [listingCache, setListingCache] = useState<Record<number, Listing>>({})
   const [selectedListing, setSelectedListing] = useState<Listing | null>(null)
   const [selectedRequestId, setSelectedRequestId] = useState<number | null>(null)
@@ -820,6 +846,9 @@ function AppContent({ auth }: { auth: AppAuth }) {
       const target = appLinkTarget(Linking.parse(url))
 
       if (target.type === 'request') {
+        setSelectedAgentDetailId(null)
+        setSelectedAgentDetail(null)
+        setAgentReturnListing(null)
         setSelectedListing(null)
         setSelectedRequestId(target.requestId)
         setActiveTab('requests')
@@ -827,6 +856,9 @@ function AppContent({ auth }: { auth: AppAuth }) {
       }
 
       if (target.type === 'listing') {
+        setSelectedAgentDetailId(null)
+        setSelectedAgentDetail(null)
+        setAgentReturnListing(null)
         setSelectedRequestId(null)
         setSelectedListing(null)
         setActiveTab('search')
@@ -843,8 +875,35 @@ function AppContent({ auth }: { auth: AppAuth }) {
         return
       }
 
+      if (target.type === 'agent') {
+        setSelectedListing(null)
+        setSelectedRequestId(null)
+        setSelectedAgentDetailId(target.agentId)
+        setSelectedAgentDetail(null)
+        setAgentReturnListing(null)
+        setAgentDetailError(null)
+        setAgentDetailLoading(true)
+        setActiveTab('agents')
+        try {
+          const agentRecord = await fetchAgent(target.agentId)
+          if (!active || sequence !== linkSequence || !isCurrentNavigationGeneration(navigationGeneration, generation)) return
+          setSelectedAgentDetail(agentRecord)
+        } catch (linkError) {
+          console.warn('Unable to open linked agent', linkError)
+          if (active && sequence === linkSequence && isCurrentNavigationGeneration(navigationGeneration, generation)) {
+            setAgentDetailError(linkError instanceof Error ? linkError.message : 'Unable to load this agent profile.')
+          }
+        } finally {
+          if (active && sequence === linkSequence && isCurrentNavigationGeneration(navigationGeneration, generation)) setAgentDetailLoading(false)
+        }
+        return
+      }
+
       setSelectedListing(null)
       setSelectedRequestId(null)
+      setSelectedAgentDetailId(null)
+      setSelectedAgentDetail(null)
+      setAgentReturnListing(null)
       if (target.type === 'agents') setActiveTab('agents')
       else if (target.type === 'requests') setActiveTab('requests')
       else if (target.type === 'saved') setActiveTab('saved')
@@ -877,7 +936,7 @@ function AppContent({ auth }: { auth: AppAuth }) {
   }, [auth.clerkEnabled, auth.isSignedIn])
 
   useEffect(() => {
-    const targetAgentsScope: 'global' | null = activeTab === 'agents' || Boolean(selectedListing) ? 'global' : null
+    const targetAgentsScope: 'storefront' | null = activeTab === 'agents' || Boolean(selectedListing) || Boolean(selectedAgentDetailId) ? 'storefront' : null
     if (!targetAgentsScope || agentsScope === targetAgentsScope) return undefined
 
     let cancelled = false
@@ -906,7 +965,7 @@ function AppContent({ auth }: { auth: AppAuth }) {
     return () => {
       cancelled = true
     }
-  }, [activeTab, agentsScope, selectedListing])
+  }, [activeTab, agentsScope, selectedAgentDetailId, selectedListing])
 
   useEffect(() => {
     let cancelled = false
@@ -963,8 +1022,8 @@ function AppContent({ auth }: { auth: AppAuth }) {
     [listingCache, savedListingIds],
   )
 
-  const directoryAgents = agentsScope === 'global' ? agents : []
-  const selectedListingAgents = agentsScope === 'global' ? agents : []
+  const directoryAgents = agentsScope === 'storefront' ? agents : []
+  const selectedListingAgents = agentsScope === 'storefront' ? agents : []
   const selectedAgent = useMemo(
     () => (selectedListing ? selectedListingAgents : directoryAgents).find((agent) => agent.id === selectedAgentId) ?? null,
     [directoryAgents, selectedAgentId, selectedListing, selectedListingAgents],
@@ -1193,9 +1252,59 @@ function AppContent({ auth }: { auth: AppAuth }) {
     ensureSaved(listingId)
   }, [auth.getToken, auth.isSignedIn, pendingSaveListingId])
 
+  async function openAgentRecord(agentId: number, returnListing: Listing | null = null) {
+    const generation = advanceNavigationGeneration(navigationGeneration)
+    setSelectedRequestId(null)
+    setSelectedListing(null)
+    setSelectedAgentDetailId(agentId)
+    setSelectedAgentDetail(null)
+    setAgentReturnListing(returnListing)
+    setAgentDetailError(null)
+    setAgentDetailLoading(true)
+    setActiveTab('agents')
+
+    try {
+      const agentRecord = await fetchAgent(agentId)
+      if (!isCurrentNavigationGeneration(navigationGeneration, generation)) return
+      setSelectedAgentDetail(agentRecord)
+    } catch (agentError) {
+      if (!isCurrentNavigationGeneration(navigationGeneration, generation)) return
+      setAgentDetailError(agentError instanceof Error ? agentError.message : 'Unable to load this agent profile.')
+    } finally {
+      if (isCurrentNavigationGeneration(navigationGeneration, generation)) setAgentDetailLoading(false)
+    }
+  }
+
+  async function loadMoreAgentListings() {
+    const agentId = selectedAgentDetail?.agent.id
+    const nextPage = selectedAgentDetail?.pagination.next_page
+    if (!agentId || !nextPage || agentDetailLoading) return
+
+    setAgentDetailLoading(true)
+    setAgentDetailError(null)
+    try {
+      const next = await fetchAgent(agentId, nextPage)
+      setSelectedAgentDetail((current) => {
+        if (!current || current.agent.id !== agentId) return current
+        const seen = new Set(current.attributed_listings.map((listing) => listing.id))
+        return {
+          ...next,
+          attributed_listings: [...current.attributed_listings, ...next.attributed_listings.filter((listing) => !seen.has(listing.id))],
+        }
+      })
+    } catch (agentError) {
+      setAgentDetailError(agentError instanceof Error ? agentError.message : 'Unable to load more listings.')
+    } finally {
+      setAgentDetailLoading(false)
+    }
+  }
+
   function openListingFromBrowse(listing: Listing) {
     advanceNavigationGeneration(navigationGeneration)
     setSelectedRequestId(null)
+    setSelectedAgentDetailId(null)
+    setSelectedAgentDetail(null)
+    setAgentReturnListing(null)
     setSelectedListing(listing)
   }
 
@@ -1204,6 +1313,15 @@ function AppContent({ auth }: { auth: AppAuth }) {
     const listing = listingCache[listingId] ?? await fetchListing(listingId)
     if (!isCurrentNavigationGeneration(navigationGeneration, generation)) return
     setKind(listing.listing_kind)
+    setListingCache((current) => ({ ...current, [listing.id]: listing }))
+    setSelectedAgentDetailId(null)
+    setSelectedAgentDetail(null)
+    setAgentReturnListing(null)
+    setSelectedListing(listing)
+  }
+
+  function openListingFromAgent(listing: Listing) {
+    advanceNavigationGeneration(navigationGeneration)
     setListingCache((current) => ({ ...current, [listing.id]: listing }))
     setSelectedListing(listing)
   }
@@ -1216,6 +1334,9 @@ function AppContent({ auth }: { auth: AppAuth }) {
   function openRequest(requestId: number) {
     advanceNavigationGeneration(navigationGeneration)
     setSelectedListing(null)
+    setSelectedAgentDetailId(null)
+    setSelectedAgentDetail(null)
+    setAgentReturnListing(null)
     setSelectedRequestId(requestId)
   }
 
@@ -1224,10 +1345,23 @@ function AppContent({ auth }: { auth: AppAuth }) {
     setSelectedRequestId(null)
   }
 
+  function closeAgentRecord() {
+    advanceNavigationGeneration(navigationGeneration)
+    const returnListing = agentReturnListing
+    setSelectedAgentDetailId(null)
+    setSelectedAgentDetail(null)
+    setAgentDetailError(null)
+    setAgentReturnListing(null)
+    if (returnListing) setSelectedListing(returnListing)
+  }
+
   function navigateToTab(tab: TabKey) {
     advanceNavigationGeneration(navigationGeneration)
     setSelectedListing(null)
     setSelectedRequestId(null)
+    setSelectedAgentDetailId(null)
+    setSelectedAgentDetail(null)
+    setAgentReturnListing(null)
     setActiveTab(tab)
   }
 
@@ -1241,6 +1375,7 @@ function AppContent({ auth }: { auth: AppAuth }) {
           agents={selectedListingAgents}
           selectedAgent={selectedAgent}
           onSelectAgent={selectAgent}
+          onOpenAgent={(agentId) => openAgentRecord(agentId, selectedListing)}
           onBack={closeListing}
           onOpenAuth={openAuthPrompt}
           onToggleSaved={() => toggleSaved(selectedListing.id)}
@@ -1260,6 +1395,23 @@ function AppContent({ auth }: { auth: AppAuth }) {
         />
         {auth.clerkEnabled && <AuthModal open={Boolean(authPrompt)} prompt={authPrompt} onClose={() => setAuthPrompt(null)} />}
       </>
+    )
+  }
+
+
+  if (selectedAgentDetailId) {
+    return (
+      <AgentDetailScreen
+        record={selectedAgentDetail}
+        loading={agentDetailLoading}
+        error={agentDetailError}
+        selectedAgentId={selectedAgentId}
+        canSelectAgent={auth.isSignedIn}
+        onBack={closeAgentRecord}
+        onSelectAgent={selectAgent}
+        onOpenListing={openListingFromAgent}
+        onLoadMore={loadMoreAgentListings}
+      />
     )
   }
 
@@ -1323,7 +1475,7 @@ function AppContent({ auth }: { auth: AppAuth }) {
               />
         )}
         {activeTab === 'agents' && (
-          <AgentsScreen agents={directoryAgents} loading={agentsLoading || agentsScope !== 'global'} selectedAgentId={selectedAgentId} canSelectAgent={auth.isSignedIn} onSelectAgent={selectAgent} />
+          <AgentsScreen agents={directoryAgents} loading={agentsLoading || agentsScope !== 'storefront'} selectedAgentId={selectedAgentId} canSelectAgent={auth.isSignedIn} onSelectAgent={selectAgent} onOpenAgent={(agentId) => openAgentRecord(agentId)} />
         )}
         {activeTab === 'saved' && (
           !auth.isSignedIn
@@ -1971,7 +2123,69 @@ function buildMapHtml(points: Listing[], initialCamera?: MapCamera | null) {
 </html>`
 }
 
-function AgentsScreen({ agents, loading, selectedAgentId, canSelectAgent, onSelectAgent }: { agents: Agent[]; loading: boolean; selectedAgentId: number | null; canSelectAgent: boolean; onSelectAgent: (agentId: number | null) => void }) {
+function AgentDetailScreen({ record, loading, error, selectedAgentId, canSelectAgent, onBack, onSelectAgent, onOpenListing, onLoadMore }: { record: AgentDetailResponse | null; loading: boolean; error: string | null; selectedAgentId: number | null; canSelectAgent: boolean; onBack: () => void; onSelectAgent: (agentId: number | null) => void; onOpenListing: (listing: Listing) => void; onLoadMore: () => void }) {
+  const agent = record?.agent
+  const selected = agent?.id === selectedAgentId
+
+  return (
+    <SafeAreaView style={styles.shell}>
+      <StatusBar style="light" />
+      <View style={styles.detailHeader}>
+        <Pressable onPress={onBack} style={styles.backButton} accessibilityRole="button"><Text style={styles.backButtonText}>← Back</Text></Pressable>
+        <Text style={styles.agentDetailHeaderTitle}>Agent profile</Text>
+      </View>
+      {loading && !record ? <CenteredState label="Loading agent profile..." loading /> : error && !record ? <CenteredState label={error} /> : agent && record ? (
+        <ScrollView contentContainerStyle={styles.agentDetailContent}>
+          <View style={styles.agentDetailHero}>
+            <View style={styles.agentDetailAvatar}>
+              {agent.photo_url ? <Image source={{ uri: agent.photo_url }} style={styles.agentDirectoryPhoto} /> : <Text style={styles.agentDetailInitial}>{agentInitials(agent)}</Text>}
+            </View>
+            <Text style={styles.agentDetailKicker}>Storefront agent</Text>
+            <Text style={styles.agentDetailName}>{agent.name}</Text>
+            <Text style={styles.agentDetailBrokerage}>{agent.brokerage?.name || 'Brokerage partner'}</Text>
+            {agent.license_number && <Text style={styles.agentDetailLicense}>License {agent.license_number}</Text>}
+          </View>
+
+          <View style={styles.agentDetailCard}>
+            <Text style={styles.kicker}>About</Text>
+            <Text style={styles.detailCopy}>{agent.bio || 'Contact this brokerage agent for help with your Guam home search.'}</Text>
+            {(agent.phone || agent.email) && <Text style={styles.agentDetailContact}>{[agent.phone, agent.email].filter(Boolean).join(' · ')}</Text>}
+            <Pressable style={[styles.primaryCta, selected && styles.selectedAgentCta]} onPress={() => onSelectAgent(agent.id)} accessibilityRole="button">
+              <Text style={[styles.primaryCtaText, selected && styles.selectedAgentCtaText]}>{canSelectAgent ? (selected ? 'Selected for future requests' : `Work with ${agent.name.split(' ')[0]}`) : `Sign in to work with ${agent.name.split(' ')[0]}`}</Text>
+            </Pressable>
+            <Text style={styles.agentRoutingNote}>Preferred-agent selection controls request routing. Listing attribution below remains source-of-truth for each property.</Text>
+          </View>
+
+          <View style={styles.agentDetailCard}>
+            <Text style={styles.kicker}>Attributed inventory</Text>
+            <Text style={styles.agentListingsTitle}>Active listings</Text>
+            <Text style={styles.detailCopy}>Properties whose current listing attribution names this agent.</Text>
+            {record.attributed_listings.length === 0 && <Text style={styles.agentEmptyCopy}>No active attributed listings are published for this agent.</Text>}
+            {record.attributed_listings.map((listing) => (
+              <Pressable key={listing.id} style={styles.agentListingRow} onPress={() => onOpenListing(listing)} accessibilityRole="button" accessibilityLabel={`View ${listing.title}`}>
+                <Image source={{ uri: listing.primary_photo_url || FALLBACK_IMAGE }} style={styles.agentListingImage} />
+                <View style={styles.agentListingBody}>
+                  <Text style={styles.agentListingPrice}>{currency(listing.price, listing.listing_kind)}</Text>
+                  <Text style={styles.agentListingTitle} numberOfLines={2}>{listing.title}</Text>
+                  <Text style={styles.agentMeta}>{listing.village.name} · {listing.address}</Text>
+                </View>
+                <Text style={styles.agentListingArrow}>›</Text>
+              </Pressable>
+            ))}
+            {error && record && <Text style={styles.requestError}>{error}</Text>}
+            {record.pagination.next_page && (
+              <Pressable disabled={loading} style={[styles.secondaryCta, loading && styles.ctaDisabled]} onPress={onLoadMore} accessibilityRole="button">
+                <Text style={styles.secondaryCtaText}>{loading ? 'Loading listings...' : `Load more listings (${record.attributed_listings.length} of ${record.pagination.total_count})`}</Text>
+              </Pressable>
+            )}
+          </View>
+        </ScrollView>
+      ) : <CenteredState label="This agent is not available in this storefront." />}
+    </SafeAreaView>
+  )
+}
+
+function AgentsScreen({ agents, loading, selectedAgentId, canSelectAgent, onSelectAgent, onOpenAgent }: { agents: Agent[]; loading: boolean; selectedAgentId: number | null; canSelectAgent: boolean; onSelectAgent: (agentId: number | null) => void; onOpenAgent: (agentId: number) => void }) {
   return (
     <ScrollView contentContainerStyle={styles.listContent}>
       <View style={styles.screenIntro}>
@@ -2004,6 +2218,9 @@ function AgentsScreen({ agents, loading, selectedAgentId, canSelectAgent, onSele
             </View>
             {agent.bio && <Text style={styles.agentBio}>{agent.bio}</Text>}
             {(agent.phone || agent.email) && <Text style={styles.agentBio}>{[agent.phone, agent.email].filter(Boolean).join(' · ')}</Text>}
+            <Pressable style={styles.secondaryCta} onPress={() => onOpenAgent(agent.id)} accessibilityRole="button" accessibilityLabel={`View ${agent.name} profile`}>
+              <Text style={styles.secondaryCtaText}>View profile</Text>
+            </Pressable>
             <Pressable style={[styles.primaryCta, selected && styles.selectedAgentCta]} onPress={() => onSelectAgent(agent.id)} accessibilityRole="button">
               <Text style={[styles.primaryCtaText, selected && styles.selectedAgentCtaText]}>{canSelectAgent ? (selected ? 'Selected for future requests' : `Work with ${agent.name.split(' ')[0]}`) : `Sign in to work with ${agent.name.split(' ')[0]}`}</Text>
             </Pressable>
@@ -2983,7 +3200,7 @@ function CalculatorInput({ label, value, onChangeText, prefix, suffix }: { label
   )
 }
 
-function ListingDetailScreen({ listing, saved, auth, agents, selectedAgent, onSelectAgent, onBack, onOpenAuth, onToggleSaved, onTrackIntent }: { listing: Listing; saved: boolean; auth: AppAuth; agents: Agent[]; selectedAgent: Agent | null; onSelectAgent: (agentId: number | null) => void; onBack: () => void; onOpenAuth: (prompt?: AuthPrompt) => void; onToggleSaved: () => void; onTrackIntent: (eventName: string, payload?: { listing_id?: number; village_id?: number; agent_id?: number; source?: string; metadata?: Record<string, unknown> }) => void }) {
+function ListingDetailScreen({ listing, saved, auth, agents, selectedAgent, onSelectAgent, onOpenAgent, onBack, onOpenAuth, onToggleSaved, onTrackIntent }: { listing: Listing; saved: boolean; auth: AppAuth; agents: Agent[]; selectedAgent: Agent | null; onSelectAgent: (agentId: number | null) => void; onOpenAgent: (agentId: number) => void; onBack: () => void; onOpenAuth: (prompt?: AuthPrompt) => void; onToggleSaved: () => void; onTrackIntent: (eventName: string, payload?: { listing_id?: number; village_id?: number; agent_id?: number; source?: string; metadata?: Record<string, unknown> }) => void }) {
   const [detailListing, setDetailListing] = useState(listing)
   const [imageUri, setImageUri] = useState(listing.photos?.[0]?.url || listing.primary_photo_url || FALLBACK_IMAGE)
   const [photoIndex, setPhotoIndex] = useState(0)
@@ -3023,6 +3240,7 @@ function ListingDetailScreen({ listing, saved, auth, agents, selectedAgent, onSe
   const routingAgents = agents
   const requestedAgent = auth.isSignedIn ? selectedAgent : null
   const listingAgent = detailListing.agent || null
+  const storefrontListingAgent = listingAgent && routingAgents.some((agent) => agent.id === listingAgent.id) ? listingAgent : null
 
   function showPhoto(index: number) {
     const nextIndex = (index + photos.length) % photos.length
@@ -3072,6 +3290,11 @@ function ListingDetailScreen({ listing, saved, auth, agents, selectedAgent, onSe
               <Text style={styles.agentMeta}>Listing attribution</Text>
             </View>
           </View>
+          {storefrontListingAgent && (
+            <Pressable style={styles.secondaryCta} onPress={() => onOpenAgent(storefrontListingAgent.id)} accessibilityRole="button" accessibilityLabel={`View ${storefrontListingAgent.name} profile`}>
+              <Text style={styles.secondaryCtaText}>View storefront agent profile</Text>
+            </Pressable>
+          )}
           <View style={styles.agentChoiceList}>
             <Text style={styles.sectionTitle}>Work with an agent</Text>
             <Text style={styles.detailCopy}>Choose who should follow up and coordinate next steps. The listing attribution above stays unchanged.</Text>
@@ -3761,6 +3984,26 @@ const styles = StyleSheet.create({
   agentDirectoryAvatar: { alignItems: 'center', backgroundColor: colors.green, borderRadius: 22, height: 56, justifyContent: 'center', overflow: 'hidden', width: 56 },
   agentDirectoryPhoto: { height: '100%', width: '100%' },
   agentBio: { color: colors.muted, fontSize: 13, fontWeight: '700', lineHeight: 20 },
+  agentDetailHeaderTitle: { color: 'white', fontSize: 16, fontWeight: '900' },
+  agentDetailContent: { backgroundColor: colors.sand, gap: 14, padding: 16, paddingBottom: 32 },
+  agentDetailHero: { alignItems: 'center', backgroundColor: colors.green, borderRadius: 30, padding: 24 },
+  agentDetailAvatar: { alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: 30, height: 88, justifyContent: 'center', overflow: 'hidden', width: 88 },
+  agentDetailInitial: { color: colors.amber, fontSize: 28, fontWeight: '900' },
+  agentDetailKicker: { color: colors.mint, fontSize: 11, fontWeight: '900', letterSpacing: 1.8, marginTop: 16, textTransform: 'uppercase' },
+  agentDetailName: { color: 'white', fontSize: 30, fontWeight: '900', letterSpacing: -0.9, marginTop: 6, textAlign: 'center' },
+  agentDetailBrokerage: { color: 'rgba(255,255,255,0.76)', fontSize: 14, fontWeight: '800', marginTop: 5 },
+  agentDetailLicense: { color: 'rgba(255,255,255,0.54)', fontSize: 11, fontWeight: '900', letterSpacing: 1, marginTop: 5, textTransform: 'uppercase' },
+  agentDetailCard: { backgroundColor: 'white', borderRadius: 26, padding: 18 },
+  agentDetailContact: { color: colors.green, fontSize: 13, fontWeight: '800', lineHeight: 20, marginTop: 14 },
+  agentRoutingNote: { backgroundColor: colors.sand, borderRadius: 18, color: colors.muted, fontSize: 12, fontWeight: '700', lineHeight: 18, marginTop: 14, padding: 13 },
+  agentListingsTitle: { color: colors.ink, fontSize: 24, fontWeight: '900', letterSpacing: -0.7, marginTop: 5 },
+  agentEmptyCopy: { color: colors.muted, fontSize: 14, fontWeight: '700', lineHeight: 21, marginTop: 18 },
+  agentListingRow: { alignItems: 'center', borderColor: '#e3ebe6', borderRadius: 20, borderWidth: 1, flexDirection: 'row', gap: 12, marginTop: 12, overflow: 'hidden', padding: 10 },
+  agentListingImage: { backgroundColor: '#dbe8df', borderRadius: 14, height: 72, width: 82 },
+  agentListingBody: { flex: 1, minWidth: 0 },
+  agentListingPrice: { color: colors.green, fontSize: 15, fontWeight: '900' },
+  agentListingTitle: { color: colors.ink, fontSize: 14, fontWeight: '900', lineHeight: 18, marginTop: 3 },
+  agentListingArrow: { color: colors.green2, fontSize: 28, fontWeight: '700' },
   selectedAgentCta: { backgroundColor: colors.mint },
   selectedAgentCtaText: { color: colors.green },
   agentChoiceList: { gap: 8, marginTop: 12 },

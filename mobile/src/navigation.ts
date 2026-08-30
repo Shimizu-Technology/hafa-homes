@@ -7,6 +7,7 @@ export type ParsedAppLink = {
 export type AppLinkTarget =
   | { type: 'request'; requestId: number }
   | { type: 'listing'; listingId: number }
+  | { type: 'agent'; agentId: number }
   | { type: 'agents' | 'requests' | 'saved' | 'more' }
   | { type: 'none' }
 
@@ -23,6 +24,7 @@ export function appLinkTarget(parsed: ParsedAppLink): AppLinkTarget {
   const path = `/${pathParts.join('/')}`
   const exactRequest = path.match(/^\/(?:account\/)?requests\/(\d+)\/?$/)
   const exactListing = path.match(/^\/listings\/(\d+)\/?$/)
+  const exactAgent = path.match(/^\/agents\/(\d+)\/?$/)
 
   if (exactRequest) {
     const requestId = positiveId(exactRequest[1])
@@ -32,6 +34,11 @@ export function appLinkTarget(parsed: ParsedAppLink): AppLinkTarget {
   if (exactListing) {
     const listingId = positiveId(exactListing[1])
     return listingId ? { type: 'listing', listingId } : { type: 'none' }
+  }
+
+  if (exactAgent) {
+    const agentId = positiveId(exactAgent[1])
+    return agentId ? { type: 'agent', agentId } : { type: 'none' }
   }
 
   if (path.startsWith('/agents')) return { type: 'agents' }
