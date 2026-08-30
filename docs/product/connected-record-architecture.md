@@ -55,6 +55,7 @@ The consumer projection does not include staff notes, internal showing notes, de
 - The native request record shows consumer-safe status, all consumer-visible showing appointments, requested and assigned agent roles, the conversation-owning brokerage, and a reciprocal related-listing action.
 - Exact listing links fetch the requested record independently of the current search page and show a bounded unavailable notice when the listing cannot be opened.
 - Incoming link handling ignores stale asynchronous listing results after a newer link or navigation target takes precedence.
+- Mobile CI exercises exact request/listing targets, both custom-scheme path forms, request-vs-account routing order, navigation-generation invalidation, and per-request remount keys.
 
 ## Planned slices
 

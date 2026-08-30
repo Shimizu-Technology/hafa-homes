@@ -8,6 +8,7 @@ import * as Linking from 'expo-linking'
 import { StatusBar } from 'expo-status-bar'
 import * as WebBrowser from 'expo-web-browser'
 import { apiFetch } from './src/apiClient'
+import { advanceNavigationGeneration, appLinkTarget, isCurrentNavigationGeneration, requestDetailKey } from './src/navigation'
 import { WebView } from 'react-native-webview'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -802,6 +803,7 @@ function AppContent({ auth }: { auth: AppAuth }) {
   const [mapCamera, setMapCamera] = useState<MapCamera | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const navigationGeneration = useRef(0)
 
   useEffect(() => {
     if (activeTab !== 'map' && fullMapOpen) setFullMapOpen(false)
@@ -814,49 +816,39 @@ function AppContent({ auth }: { auth: AppAuth }) {
     async function handleUrl(url: string | null) {
       if (!url) return
       const sequence = ++linkSequence
-      const parsed = Linking.parse(url)
-      const pathParts = [parsed.scheme === 'hafahomes' ? parsed.hostname : null, parsed.path]
-        .filter((part): part is string => Boolean(part))
-        .map((part) => part.replace(/^\/+|\/+$/g, ''))
-        .filter(Boolean)
-      const path = `/${pathParts.join('/')}`
-      const exactRequest = path.match(/^\/(?:account\/)?requests\/(\d+)\/?$/)
-      const exactListing = path.match(/^\/listings\/(\d+)\/?$/)
+      const generation = advanceNavigationGeneration(navigationGeneration)
+      const target = appLinkTarget(Linking.parse(url))
 
-      if (exactRequest) {
-        const requestId = Number(exactRequest[1])
-        if (!Number.isSafeInteger(requestId) || requestId <= 0) return
+      if (target.type === 'request') {
         setSelectedListing(null)
-        setSelectedRequestId(requestId)
+        setSelectedRequestId(target.requestId)
         setActiveTab('requests')
         return
       }
 
-      if (exactListing) {
-        const listingId = Number(exactListing[1])
-        if (!Number.isSafeInteger(listingId) || listingId <= 0) return
+      if (target.type === 'listing') {
         setSelectedRequestId(null)
         setSelectedListing(null)
         setActiveTab('search')
         try {
-          const listing = await fetchListing(listingId)
-          if (!active || sequence !== linkSequence) return
+          const listing = await fetchListing(target.listingId)
+          if (!active || sequence !== linkSequence || !isCurrentNavigationGeneration(navigationGeneration, generation)) return
           setKind(listing.listing_kind)
           setListingCache((current) => ({ ...current, [listing.id]: listing }))
           setSelectedListing(listing)
         } catch (linkError) {
           console.warn('Unable to open linked listing', linkError)
-          if (active && sequence === linkSequence) Alert.alert('Listing unavailable', 'This listing is no longer available to open.')
+          if (active && sequence === linkSequence && isCurrentNavigationGeneration(navigationGeneration, generation)) Alert.alert('Listing unavailable', 'This listing is no longer available to open.')
         }
         return
       }
 
       setSelectedListing(null)
       setSelectedRequestId(null)
-      if (path.startsWith('/agents')) setActiveTab('agents')
-      else if (path.startsWith('/account/requests') || path.startsWith('/requests')) setActiveTab('requests')
-      else if (path.startsWith('/saved')) setActiveTab('saved')
-      else if (path.startsWith('/account')) setActiveTab('more')
+      if (target.type === 'agents') setActiveTab('agents')
+      else if (target.type === 'requests') setActiveTab('requests')
+      else if (target.type === 'saved') setActiveTab('saved')
+      else if (target.type === 'more') setActiveTab('more')
     }
 
     Linking.getInitialURL().then(handleUrl).catch((linkError) => console.warn('Unable to parse initial link', linkError))
@@ -1202,18 +1194,38 @@ function AppContent({ auth }: { auth: AppAuth }) {
   }, [auth.getToken, auth.isSignedIn, pendingSaveListingId])
 
   function openListingFromBrowse(listing: Listing) {
+    advanceNavigationGeneration(navigationGeneration)
     setSelectedRequestId(null)
     setSelectedListing(listing)
   }
 
   async function openListingFromRequest(listingId: number) {
+    const generation = advanceNavigationGeneration(navigationGeneration)
     const listing = listingCache[listingId] ?? await fetchListing(listingId)
+    if (!isCurrentNavigationGeneration(navigationGeneration, generation)) return
     setKind(listing.listing_kind)
     setListingCache((current) => ({ ...current, [listing.id]: listing }))
     setSelectedListing(listing)
   }
 
+  function closeListing() {
+    advanceNavigationGeneration(navigationGeneration)
+    setSelectedListing(null)
+  }
+
+  function openRequest(requestId: number) {
+    advanceNavigationGeneration(navigationGeneration)
+    setSelectedListing(null)
+    setSelectedRequestId(requestId)
+  }
+
+  function closeRequest() {
+    advanceNavigationGeneration(navigationGeneration)
+    setSelectedRequestId(null)
+  }
+
   function navigateToTab(tab: TabKey) {
+    advanceNavigationGeneration(navigationGeneration)
     setSelectedListing(null)
     setSelectedRequestId(null)
     setActiveTab(tab)
@@ -1229,7 +1241,7 @@ function AppContent({ auth }: { auth: AppAuth }) {
           agents={selectedListingAgents}
           selectedAgent={selectedAgent}
           onSelectAgent={selectAgent}
-          onBack={() => setSelectedListing(null)}
+          onBack={closeListing}
           onOpenAuth={openAuthPrompt}
           onToggleSaved={() => toggleSaved(selectedListing.id)}
           onTrackIntent={trackLeadIntent}
@@ -1324,8 +1336,8 @@ function AppContent({ auth }: { auth: AppAuth }) {
           !auth.isSignedIn
             ? <RequestsSignInScreen clerkEnabled={auth.clerkEnabled} onOpenAuth={() => openAuthPrompt({ title: 'Sign in to view your requests', copy: 'Signed-in showing and price watch requests can show status, agent, and scheduled appointment details.' })} />
             : selectedRequestId
-              ? <RequestDetailScreen requestId={selectedRequestId} auth={auth} onBack={() => setSelectedRequestId(null)} onOpenListing={openListingFromRequest} />
-              : <RequestsScreen auth={auth} onSelectRequest={setSelectedRequestId} />
+              ? <RequestDetailScreen key={requestDetailKey(selectedRequestId)} requestId={selectedRequestId} auth={auth} onBack={closeRequest} onOpenListing={openListingFromRequest} />
+              : <RequestsScreen auth={auth} onSelectRequest={openRequest} />
         )}
         {activeTab === 'more' && <MoreScreen auth={auth} onOpenAuth={openAuthPrompt} onNavigateTab={navigateToTab} />}
       </View>
@@ -2213,6 +2225,7 @@ function RequestDetailScreen({ requestId, auth, onBack, onOpenListing }: { reque
 
     async function loadRequest() {
       if (!auth.getToken) return
+      setRequest(null)
       setLoading(true)
       setError(null)
       try {
