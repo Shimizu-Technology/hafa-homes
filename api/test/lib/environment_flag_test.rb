@@ -4,7 +4,7 @@ class EnvironmentFlagTest < ActiveSupport::TestCase
   test "parses explicit truthy and false values" do
     original = ENV["FEATURE_FLAG_TEST"]
 
-    %w[1 true TRUE yes on].each do |value|
+    [ "1", "true", "TRUE", "t", "y", "yes", "on", "  YES  " ].each do |value|
       ENV["FEATURE_FLAG_TEST"] = value
       assert EnvironmentFlag.enabled?("FEATURE_FLAG_TEST"), value
     end

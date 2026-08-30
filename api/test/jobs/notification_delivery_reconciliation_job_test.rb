@@ -19,6 +19,7 @@ class NotificationDeliveryReconciliationJobTest < ActiveSupport::TestCase
     end
 
     assert_equal "queued", stale_email.reload.status
+    assert_in_delta Time.current, stale_email.queued_at, 2.seconds
     assert_equal "failed", stale_sms.reload.status
     assert_includes stale_sms.error_message, "unknown provider outcome"
     assert_equal "queued", fresh.reload.status

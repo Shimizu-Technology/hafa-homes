@@ -10,7 +10,8 @@ class NotificationDeliveryReconciliationJob < ApplicationJob
   def perform(now: Time.current)
     cutoff = STALE_SENDING_AFTER.before(now)
     NotificationDelivery.sending_before(cutoff).find_each do |delivery|
-      delivery.recover_interrupted!(cutoff: cutoff)
+      recovered = delivery.recover_interrupted!(cutoff: cutoff)
+      NotificationDeliveryJob.perform_later(delivery.id) if recovered && delivery.queued?
     end
 
     NotificationDelivery

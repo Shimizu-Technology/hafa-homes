@@ -54,10 +54,10 @@ owner:
 
 The notification path records durable state before enqueueing work. Email sends use
 a stable Resend idempotency key and retry transient provider errors. A five-minute
-reconciliation job re-enqueues orphaned email work. Interrupted SMS sends are marked
-failed for manual review because ClickSend does not provide an idempotency contract
-for this integration; automatically retrying an ambiguous send could text someone
-twice.
+reconciliation job re-enqueues orphaned queued delivery work. Interrupted SMS sends
+are marked failed for manual review because ClickSend does not provide an idempotency
+contract for this integration; automatically retrying an ambiguous send could text
+someone twice.
 
 Operational requirements:
 

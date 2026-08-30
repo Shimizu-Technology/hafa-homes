@@ -3,7 +3,9 @@ default: &default
     - polling_interval: 5
       batch_size: 100
   workers:
-    - queues: "default"
+    - queues:
+        - default
+        - solid_queue_recurring
       threads: 2
       processes: <%= ENV.fetch("JOB_CONCURRENCY", 1) %>
       polling_interval: 2

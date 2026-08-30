@@ -51,7 +51,7 @@ class NotificationDelivery < ApplicationRecord
       return false unless status == "sending" && updated_at <= cutoff
 
       if channel == "email"
-        update!(status: "queued", error_message: "Recovered an interrupted email delivery", failed_at: nil)
+        update!(status: "queued", error_message: "Recovered an interrupted email delivery", failed_at: nil, queued_at: Time.current)
       else
         mark_failed!("Delivery was interrupted with an unknown provider outcome; review before resending")
       end

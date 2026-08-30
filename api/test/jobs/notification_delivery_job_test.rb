@@ -43,6 +43,22 @@ class NotificationDeliveryJobTest < ActiveSupport::TestCase
     assert_in_delta Time.current, delivery.queued_at, 2.seconds
   end
 
+  test "marks a delivery failed when retryable errors exhaust the retry limit" do
+    delivery = create_delivery
+
+    with_delivery_implementation(lambda { |_claimed|
+      raise LeadNotificationService::RetryableDeliveryError, "provider remained unavailable"
+    }) do
+      perform_enqueued_jobs do
+        NotificationDeliveryJob.perform_later(delivery.id)
+      end
+    end
+
+    assert_equal "failed", delivery.reload.status
+    assert_equal 5, delivery.attempt_count
+    assert_equal "provider remained unavailable", delivery.error_message
+  end
+
   private
 
   def create_delivery(channel: "email", status: "queued", queued_at: Time.current)
