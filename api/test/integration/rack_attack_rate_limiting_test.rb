@@ -90,6 +90,9 @@ class RackAttackRateLimitingTest < ActionDispatch::IntegrationTest
       post "/api/v1/leads/123/notifications", headers: token_one_headers, env: { "REMOTE_ADDR" => "203.0.113.24" }
       assert_response :too_many_requests
 
+      post "/api/v1/leads/123/notifications", headers: token_one_headers, env: { "REMOTE_ADDR" => "203.0.113.27" }
+      assert_response :too_many_requests
+
       post "/api/v1/leads/123/notifications", headers: token_two_headers, env: { "REMOTE_ADDR" => "203.0.113.27" }
       assert_response :unauthorized
     end

@@ -102,6 +102,23 @@ class PaginationContractTest < ActionDispatch::IntegrationTest
     assert_equal 100, response.parsed_body.dig("pagination", "per_page")
   end
 
+  test "falls back safely for array and hash pagination parameters" do
+    Lead.create!(brokerage: @alpha, lead_type: "contact", name: "Alpha Buyer", email: "alpha@example.com")
+
+    malformed_params = [
+      { page: [ 2 ], per_page: { value: 2 } },
+      { page: { value: 2 }, per_page: [ 2 ] }
+    ]
+
+    malformed_params.each do |request_params|
+      with_clerk_auth { get "/api/v1/leads", headers: @headers, params: request_params }
+
+      assert_response :success
+      assert_equal 1, response.parsed_body.dig("pagination", "page")
+      assert_equal 100, response.parsed_body.dig("pagination", "per_page")
+    end
+  end
+
   test "keeps the audit log's previous limit parameter as a page-size alias" do
     3.times do |index|
       AuditLogger.record!(action: "lead_updated", brokerage: @alpha, target_label: "Alpha event #{index}")

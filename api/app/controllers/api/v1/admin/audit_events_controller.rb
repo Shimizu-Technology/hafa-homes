@@ -48,7 +48,8 @@ module Api
         end
 
         def requested_page_size
-          params[:per_page].presence || params[:limit].presence || DEFAULT_PER_PAGE
+          value = params[:per_page].presence || params[:limit].presence
+          integer_pagination_param(value, fallback: DEFAULT_PER_PAGE)
         end
       end
     end
