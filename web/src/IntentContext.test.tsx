@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
-import { AdminIntentPage, ListingDetailPage } from './App'
+import { AdminIntentPage, LeadDetailPage, ListingDetailPage } from './App'
 
 vi.mock('./contexts/AuthContext', () => ({
   useAuthContext: () => ({ isClerkEnabled: true, isSignedIn: true, isLoading: false, userId: 'staff_12' }),
@@ -127,5 +127,13 @@ describe('staff intent operational context', () => {
     const returnLinks = screen.getAllByRole('link', { name: 'Back to intent' })
     expect(returnLinks.length).toBeGreaterThanOrEqual(2)
     returnLinks.forEach((link) => expect(link.getAttribute('href')).toBe(intentPath))
+  })
+
+  it('labels a converted lead detour with the exact intent return', () => {
+    vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(() => undefined)))
+
+    renderRoute(<LeadDetailPage />, `/admin/leads/42?return_to=${encodedIntentPath}`, '/admin/leads/:id')
+
+    expect(screen.getByRole('button', { name: 'Back to intent' })).toBeTruthy()
   })
 })

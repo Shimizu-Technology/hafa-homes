@@ -4882,7 +4882,7 @@ function CustomerMetric({ label, value }: { label: string; value: string }) {
   )
 }
 
-function LeadDetailPage() {
+export function LeadDetailPage() {
   const { id } = useParams()
   const { userId } = useAuthContext()
   const location = useLocation()
@@ -4894,9 +4894,11 @@ function LeadDetailPage() {
     ? 'Back to showing'
     : returnPath.startsWith('/admin/showings')
       ? 'Back to showings'
-      : returnsToCustomer
-        ? 'Back to customer'
-        : 'Back to leads'
+      : returnPath.startsWith('/admin/intent')
+        ? 'Back to intent'
+        : returnsToCustomer
+          ? 'Back to customer'
+          : 'Back to leads'
   const leadPath = `${location.pathname}${location.search}`
   const { data, isLoading, isError, refetch } = useQuery({ queryKey: ['lead', userId, id], queryFn: () => fetchLead(id || ''), enabled: Boolean(userId && id) })
   const mutation = useMutation({
