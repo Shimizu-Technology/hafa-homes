@@ -11,12 +11,18 @@ export type AppLinkTarget =
   | { type: 'agents' | 'requests' | 'saved' | 'more' }
   | { type: 'none' }
 
+const HTTPS_APP_HOSTS = new Set(['hafahomes.com'])
+
 function positiveId(value: string) {
   const id = Number(value)
   return Number.isSafeInteger(id) && id > 0 ? id : null
 }
 
 export function appLinkTarget(parsed: ParsedAppLink): AppLinkTarget {
+  if ((parsed.scheme === 'http' || parsed.scheme === 'https') && !HTTPS_APP_HOSTS.has(parsed.hostname?.toLowerCase() || '')) {
+    return { type: 'none' }
+  }
+
   const pathParts = [parsed.scheme === 'hafahomes' ? parsed.hostname : null, parsed.path]
     .filter((part): part is string => Boolean(part))
     .map((part) => part.replace(/^\/+|\/+$/g, ''))

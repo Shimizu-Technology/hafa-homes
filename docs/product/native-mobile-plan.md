@@ -212,6 +212,8 @@ Recommended behavior:
 13. Add saved searches/alerts after broker-branded foundation.
 14. Validate Flexmls/MLS access and display rules before app-store launch with real listing data.
 
+Universal-link release wiring now targets `https://hafahomes.com` for exact consumer request, listing, agent, and saved-home paths. The web deploy must publish `/.well-known/apple-app-site-association` with JSON content type before the entitled iOS build is distributed. Broker-owned domains and Android App Links remain separate release work because each needs its own verified domain association.
+
 ## Open questions
 
 - Use Expo Router or React Navigation?

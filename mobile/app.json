@@ -11,6 +11,9 @@
       "supportsTablet": false,
       "usesAppleSignIn": true,
       "bundleIdentifier": "com.shimizutechnology.hafahomes",
+      "associatedDomains": [
+        "applinks:hafahomes.com"
+      ],
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }

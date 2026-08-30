@@ -25,8 +25,9 @@ class LeadNotificationServiceTest < ActiveSupport::TestCase
     html = LeadNotificationService.send(:email_html, delivery)
     sms = LeadNotificationService.send(:sms_body, sms_delivery)
 
-    assert_includes html, "https://alpha.test/open?target=%2Faccount%2Frequests%2F#{lead.id}"
-    assert_includes sms, "https://alpha.test/open?target=%2Faccount%2Frequests%2F#{lead.id}"
+    assert_includes html, "https://alpha.test/account/requests/#{lead.id}"
+    assert_includes sms, "https://alpha.test/account/requests/#{lead.id}"
+    refute_includes html, "/open?target="
   end
 
   test "notification links fall back to configured frontend URL without a brokerage domain" do
@@ -44,7 +45,7 @@ class LeadNotificationServiceTest < ActiveSupport::TestCase
     ENV["FRONTEND_URL"] = "https://fallback.test"
     html = LeadNotificationService.send(:email_html, delivery)
 
-    assert_includes html, "https://fallback.test/open?target=%2Faccount%2Frequests%2F#{lead.id}"
+    assert_includes html, "https://fallback.test/account/requests/#{lead.id}"
   ensure
     previous ? ENV["FRONTEND_URL"] = previous : ENV.delete("FRONTEND_URL")
   end
@@ -63,7 +64,7 @@ class LeadNotificationServiceTest < ActiveSupport::TestCase
     sms = LeadNotificationService.send(:sms_body, delivery)
 
     assert_includes sms, "Your showing time changed."
-    assert_includes sms, "https://alpha.test/open?target=%2Faccount%2Frequests%2F#{lead.id}"
+    assert_includes sms, "https://alpha.test/account/requests/#{lead.id}"
   end
 
   test "manual agent SMS bodies include the staff lead link" do
