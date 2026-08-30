@@ -1,9 +1,29 @@
 # frozen_string_literal: true
 
 require "cgi"
+require "digest"
+require "json"
+require "net/http"
+require "openssl"
+require "timeout"
 
 class LeadNotificationService
   BRAND_NAME = "Hafa Homes"
+  EMAIL_PAYLOAD_KEYS = %w[from to subject html].freeze
+  RETRYABLE_RESEND_STATUS_CODES = [ 408, 425, 429, 500, 502, 503, 504 ].freeze
+  RETRYABLE_EMAIL_TRANSPORT_ERRORS = [
+    Timeout::Error,
+    Net::OpenTimeout,
+    Net::ReadTimeout,
+    SocketError,
+    EOFError,
+    Errno::ECONNREFUSED,
+    Errno::ECONNRESET,
+    OpenSSL::SSL::SSLError
+  ].freeze
+
+  class RetryableDeliveryError < StandardError; end
+  class PermanentDeliveryError < StandardError; end
 
   class << self
     def queue_request_received(lead)
@@ -104,18 +124,70 @@ class LeadNotificationService
       return delivery.mark_skipped!("Email not sent because EMAIL_NOTIFICATIONS_ENABLED is false") unless ActiveModel::Type::Boolean.new.cast(ENV["EMAIL_NOTIFICATIONS_ENABLED"])
       return delivery.mark_skipped!("Email not sent because Resend configuration is missing") unless ENV["RESEND_API_KEY"].present? && from_email.present?
 
-      response = Resend::Emails.send(
-        {
-          from: from_email,
-          to: delivery.recipient,
-          subject: email_subject(delivery),
-          html: email_html(delivery)
-        }
-      )
+      payload = persisted_email_payload(delivery)
+      response = send_resend_email!(delivery, payload)
       delivery.mark_sent!(provider_message_id: response.try(:[], "id") || response.try(:[], :id))
-    rescue StandardError => e
-      Rails.logger.error("[LeadNotificationService] Email failed delivery=#{delivery.id}: #{e.class} #{e.message}")
+    rescue RetryableDeliveryError
+      raise
+    rescue PermanentDeliveryError => e
+      Rails.logger.error("[LeadNotificationService] Permanent email failure delivery=#{delivery.id}: #{e.class} #{e.message}")
       delivery.mark_failed!(e.message)
+    rescue StandardError => e
+      Rails.logger.error("[LeadNotificationService] Local email failure delivery=#{delivery.id}: #{e.class} #{e.message}")
+      delivery.mark_failed!("Local email delivery failure: #{e.class}: #{e.message}")
+    end
+
+    def persisted_email_payload(delivery)
+      snapshot = email_payload_snapshot(delivery.metadata["email_payload"])
+      return snapshot if snapshot
+
+      payload = {
+        from: from_email,
+        to: delivery.recipient,
+        subject: email_subject(delivery),
+        html: email_html(delivery)
+      }
+      delivery.update!(metadata: delivery.metadata.merge("email_payload" => payload.stringify_keys))
+      payload
+    end
+
+    def email_payload_snapshot(snapshot)
+      return unless snapshot.is_a?(Hash) && EMAIL_PAYLOAD_KEYS.all? { |key| snapshot[key].present? }
+
+      EMAIL_PAYLOAD_KEYS.index_with { |key| snapshot.fetch(key) }.symbolize_keys
+    end
+
+    def send_resend_email!(delivery, payload)
+      Resend::Emails.send(payload, options: { idempotency_key: email_idempotency_key(delivery, payload) })
+    rescue Resend::Error::InvalidRequestError => e
+      raise PermanentDeliveryError, provider_error_message(e)
+    rescue Resend::Error => e
+      error_class = retryable_resend_error?(e) ? RetryableDeliveryError : PermanentDeliveryError
+      raise error_class, provider_error_message(e)
+    rescue *RETRYABLE_EMAIL_TRANSPORT_ERRORS => e
+      raise RetryableDeliveryError, provider_error_message(e)
+    rescue StandardError => e
+      raise PermanentDeliveryError, provider_error_message(e)
+    end
+
+    def email_idempotency_key(delivery, payload)
+      canonical_payload = EMAIL_PAYLOAD_KEYS.index_with { |key| payload.fetch(key.to_sym) }
+      digest = Digest::SHA256.hexdigest(JSON.generate(canonical_payload)).first(32)
+      "notification-delivery/#{delivery.id}/#{digest}"
+    end
+
+    def retryable_resend_error?(error)
+      return true if error.is_a?(Resend::Error::RateLimitExceededError) || error.is_a?(Resend::Error::InternalServerError)
+
+      status = error.instance_variable_get(:@code).to_i
+      return false if status == 409 && error.message.to_s.match?(/invalid.*idempot|idempot.*invalid/i)
+      return true if status == 409 && error.message.to_s.match?(/concurrent.*idempot|idempot.*concurrent/i)
+
+      RETRYABLE_RESEND_STATUS_CODES.include?(status)
+    end
+
+    def provider_error_message(error)
+      "#{error.class}: #{error.message}"
     end
 
     def deliver_sms!(delivery)

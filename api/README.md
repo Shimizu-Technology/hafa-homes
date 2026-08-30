@@ -41,13 +41,33 @@ The migration fails instead of assigning records ambiguously. Rolling the buyer-
 
 ## Production operations
 
-An application server alone is insufficient:
+Production uses Solid Queue in the primary PostgreSQL database. Puma owns queue
+execution by default, so the normal application process can deliver notifications
+and run reconciliation without a second paid service. Run exactly one execution
+owner:
 
-- run a Solid Queue worker for notification delivery;
+- default: leave `SOLID_QUEUE_IN_PUMA` unset and run Puma in production;
+- dedicated worker: set `SOLID_QUEUE_IN_PUMA=false` on Puma and run `bin/jobs` in
+  one separately managed process;
+- start with `JOB_CONCURRENCY=1`; increase it only after measuring queue latency,
+  database load, and provider limits.
+
+The notification path records durable state before enqueueing work. Email sends use
+a stable Resend idempotency key and retry transient provider errors. A five-minute
+reconciliation job re-enqueues orphaned queued delivery work. Interrupted SMS sends
+are marked failed for manual review because ClickSend does not provide an idempotency
+contract for this integration; automatically retrying an ambiguous send could text
+someone twice.
+
+Operational requirements:
+
 - schedule `bin/rails privacy:prune_anonymous_intent` daily;
 - configure and monitor Resend/ClickSend only when live sends are intended;
 - set every permitted web origin in `WEB_ORIGINS`;
 - add approved active `BrokerageDomain` records before serving a storefront;
-- monitor queued/failed `NotificationDelivery` records and failed jobs.
+- monitor queue depth, failed jobs, notification attempts, and stale queued/sending
+  `NotificationDelivery` records;
+- after enabling the Puma queue in production, watch Render memory/CPU and Neon
+  compute for 24–48 hours before changing concurrency or splitting out a worker.
 
 The staging/deploy-preview environment is intentionally deferred as of the 2026-08-16 Phase 1 refresh. A Netlify preview badge is not an end-to-end API/auth check.

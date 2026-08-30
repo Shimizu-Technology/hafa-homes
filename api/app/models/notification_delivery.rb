@@ -19,6 +19,8 @@ class NotificationDelivery < ApplicationRecord
   validates :recipient, :event_name, presence: true
 
   scope :recent_first, -> { order(created_at: :desc) }
+  scope :queued_before, ->(time) { where(status: "queued").where("COALESCE(queued_at, created_at) <= ?", time) }
+  scope :sending_before, ->(time) { where(status: "sending").where(updated_at: ..time) }
 
   def sent?
     status == "sent"
@@ -26,6 +28,35 @@ class NotificationDelivery < ApplicationRecord
 
   def queued?
     status == "queued"
+  end
+
+  def claim_for_delivery!
+    claimed = self.class
+      .where(id: id, status: "queued")
+      .update_all([ "status = 'sending', attempt_count = attempt_count + 1, last_attempt_at = ?, updated_at = ?", Time.current, Time.current ])
+    reload if claimed == 1
+    claimed == 1
+  end
+
+  def requeue_for_retry!(message)
+    requeued = self.class
+      .where(id: id, status: "sending")
+      .update_all(status: "queued", error_message: message.to_s, failed_at: nil, queued_at: Time.current, updated_at: Time.current)
+    reload if requeued == 1
+    requeued == 1
+  end
+
+  def recover_interrupted!(cutoff:)
+    with_lock do
+      return false unless status == "sending" && updated_at <= cutoff
+
+      if channel == "email"
+        update!(status: "queued", error_message: "Recovered an interrupted email delivery", failed_at: nil, queued_at: Time.current)
+      else
+        mark_failed!("Delivery was interrupted with an unknown provider outcome; review before resending")
+      end
+    end
+    true
   end
 
   def mark_sent!(provider_message_id: nil)
@@ -43,7 +74,7 @@ class NotificationDelivery < ApplicationRecord
   end
 
   def mark_skipped!(message)
-    update!(status: "skipped", error_message: message.to_s)
+    update!(status: "skipped", error_message: message.to_s, failed_at: nil)
   end
 
   private

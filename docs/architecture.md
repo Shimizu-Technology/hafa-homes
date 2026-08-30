@@ -59,7 +59,7 @@ Background Jobs
 | Database | PostgreSQL | Reliable relational data store |
 | Geo | PostGIS | Radius, map bounds, village/base proximity search |
 | Auth | Clerk | Shimizu default for user/admin auth; Rails owns authorization |
-| Jobs | Rails jobs / production worker TBD | Notifications now; sync/alerts later |
+| Jobs | Active Job + Solid Queue | Durable notifications now; sync/alerts later |
 | Maps | Mapbox | Polished mobile/web map experience |
 | Email | Resend | Transactional email behind explicit env gates |
 | SMS | ClickSend | Optional SMS behind explicit env gates |
@@ -173,7 +173,21 @@ Fields/concepts:
 - `LeadTask`: follow-up reminders/tasks with completion/reopen/archive.
 - `LeadActivity`: chronological timeline of lead, note, task, showing, and notification events.
 - `ShowingAppointment`: staff-managed showing schedule/status.
-- `NotificationDelivery`: email/SMS delivery log with gated provider sends.
+- `NotificationDelivery`: durable email/SMS delivery state with attempt history,
+  gated provider sends, and interrupted-send recovery.
+
+### Background job ownership
+
+Solid Queue uses the primary PostgreSQL database. Production must have exactly one
+execution owner: the Puma plugin is the default, or a dedicated `bin/jobs` process
+can replace it when `SOLID_QUEUE_IN_PUMA=false`. Running both is supported by Solid
+Queue but is not the intended Hafa Homes deployment because it adds cost and makes
+capacity harder to reason about before traffic exists.
+
+Email retries use a stable provider idempotency key. SMS provider failures remain
+terminal/manual-review events because the current ClickSend integration cannot
+prove that an ambiguous request was not already delivered. Reconciliation runs
+every five minutes to recover interrupted email sends and orphaned queued records.
 
 ### Brokerage / Agent tenancy
 
