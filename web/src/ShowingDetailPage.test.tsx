@@ -86,6 +86,17 @@ describe('ShowingDetailPage route states', () => {
     expect(zonedDateTimeToIso('2026-09-01T20:00', 'Pacific/Guam')).toBe('2026-09-01T10:00:00.000Z')
   })
 
+  it('preserves either repeated-hour occurrence and defaults new values to the earlier instant', () => {
+    const firstOccurrence = '2026-11-01T05:30:00.000Z'
+    const secondOccurrence = '2026-11-01T06:30:00.000Z'
+
+    expect(datetimeLocalValue(firstOccurrence, 'America/New_York')).toBe('2026-11-01T01:30')
+    expect(datetimeLocalValue(secondOccurrence, 'America/New_York')).toBe('2026-11-01T01:30')
+    expect(zonedDateTimeToIso('2026-11-01T01:30', 'America/New_York', firstOccurrence)).toBe(firstOccurrence)
+    expect(zonedDateTimeToIso('2026-11-01T01:30', 'America/New_York', secondOccurrence)).toBe(secondOccurrence)
+    expect(zonedDateTimeToIso('2026-11-01T01:30', 'America/New_York')).toBe(firstOccurrence)
+  })
+
   it('renders the exact showing with timezone and reciprocal record links', async () => {
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       if (String(input).endsWith('/api/v1/showing_appointments/81')) return response({ showing_appointment: showing })

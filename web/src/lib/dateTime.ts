@@ -31,7 +31,7 @@ export function datetimeLocalValue(value?: string, timeZone?: string) {
   return local.toISOString().slice(0, 16)
 }
 
-export function zonedDateTimeToIso(value: string, timeZone: string) {
+export function zonedDateTimeToIso(value: string, timeZone: string, originalValue?: string) {
   if (!value) return ''
   const match = value.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/)
   if (!match) return value
@@ -40,7 +40,6 @@ export function zonedDateTimeToIso(value: string, timeZone: string) {
   const intendedWallTime = Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute))
 
   try {
-    let candidate = intendedWallTime
     const formatter = new Intl.DateTimeFormat('en-US', {
       timeZone,
       year: 'numeric',
@@ -51,11 +50,35 @@ export function zonedDateTimeToIso(value: string, timeZone: string) {
       hourCycle: 'h23',
     })
 
-    for (let iteration = 0; iteration < 3; iteration += 1) {
-      const parts = formatter.formatToParts(new Date(candidate))
+    const representedWallTime = (instant: number) => {
+      const parts = formatter.formatToParts(new Date(instant))
       const part = (type: Intl.DateTimeFormatPartTypes) => Number(parts.find((item) => item.type === type)?.value)
-      const representedWallTime = Date.UTC(part('year'), part('month') - 1, part('day'), part('hour'), part('minute'))
-      const correction = intendedWallTime - representedWallTime
+      return Date.UTC(part('year'), part('month') - 1, part('day'), part('hour'), part('minute'))
+    }
+    const offsetAt = (instant: number) => representedWallTime(instant) - Math.trunc(instant / 60_000) * 60_000
+    const candidateForOffset = (offset: number) => intendedWallTime - offset
+    const matchesWallTime = (instant: number) => representedWallTime(instant) === intendedWallTime
+
+    const originalInstant = originalValue ? Date.parse(originalValue) : Number.NaN
+    if (!Number.isNaN(originalInstant)) {
+      const originalOffsetCandidate = candidateForOffset(offsetAt(originalInstant))
+      if (matchesWallTime(originalOffsetCandidate)) return new Date(originalOffsetCandidate).toISOString()
+    }
+
+    const offsets = new Set<number>()
+    for (let hours = -36; hours <= 36; hours += 6) {
+      offsets.add(offsetAt(intendedWallTime + hours * 60 * 60 * 1000))
+    }
+    const matchingCandidates = [...offsets]
+      .map(candidateForOffset)
+      .filter(matchesWallTime)
+      .sort((first, second) => first - second)
+    // A newly entered repeated wall time defaults to its earlier occurrence.
+    if (matchingCandidates.length > 0) return new Date(matchingCandidates[0]).toISOString()
+
+    let candidate = intendedWallTime
+    for (let iteration = 0; iteration < 3; iteration += 1) {
+      const correction = intendedWallTime - representedWallTime(candidate)
       candidate += correction
       if (correction === 0) break
     }
