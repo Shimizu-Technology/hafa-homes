@@ -5,8 +5,8 @@ class PublicVillageRecordsTest < ActionDispatch::IntegrationTest
     brokerage = create_brokerage(name: "Village Realty", slug: "village-realty")
     agent = Agent.create!(brokerage: brokerage, name: "Village Agent")
     @village = Village.create!(
-      name: "Yigo",
-      slug: "yigo",
+      name: "Record Test Yigo",
+      slug: "record-test-yigo",
       region: "north",
       description: "Northern village context",
       local_intel: { "summary" => "Close to Andersen." }
@@ -34,12 +34,12 @@ class PublicVillageRecordsTest < ActionDispatch::IntegrationTest
   end
 
   test "show returns the exact village record with active inventory count" do
-    get "/api/v1/villages/yigo"
+    get "/api/v1/villages/record-test-yigo"
 
     assert_response :success
     payload = response.parsed_body.fetch("village")
     assert_equal @village.id, payload.fetch("id")
-    assert_equal "yigo", payload.fetch("slug")
+    assert_equal "record-test-yigo", payload.fetch("slug")
     assert_equal "Northern village context", payload.fetch("description")
     assert_equal 1, payload.fetch("active_listings_count")
     assert_equal "Close to Andersen.", payload.dig("local_intel", "summary")
