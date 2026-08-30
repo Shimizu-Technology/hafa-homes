@@ -28,7 +28,10 @@ module Api
         end
 
         def detail(showing)
-          summary(showing).merge(lead: lead_json(showing.lead))
+          summary(showing).merge(
+            lead: lead_json(showing.lead),
+            listing: listing_json(showing.listing, include_primary_photo: true)
+          )
         end
 
         def consumer(showing)
@@ -52,19 +55,20 @@ module Api
           }
         end
 
-        def listing_json(listing)
+        def listing_json(listing, include_primary_photo: false)
           return nil unless listing
 
-          {
+          payload = {
             id: listing.id,
             title: listing.title,
             address: listing.address,
             price: listing.price&.to_f,
             listing_kind: listing.listing_kind,
             property_type: listing.property_type,
-            village: listing.village&.name,
-            primary_photo_url: listing.primary_photo_url
+            village: listing.village&.name
           }
+          payload[:primary_photo_url] = listing.primary_photo_url if include_primary_photo
+          payload
         end
 
         def brokerage_json(brokerage)

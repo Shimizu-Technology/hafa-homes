@@ -5580,11 +5580,12 @@ function LeadNotificationPanel({ lead, mutation }: { lead: Lead; mutation: Notif
 
 function ShowingScheduler({ lead, assignableAgents, mutation }: { lead: Lead; assignableAgents: Agent[]; mutation: ShowingMutation }) {
   const showing = lead.latest_showing_appointment ?? lead.showing_appointments?.[0] ?? null
+  const effectiveTimezone = showing?.timezone || 'Pacific/Guam'
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const form = new FormData(event.currentTarget)
-    const timezone = String(form.get('timezone') || 'Pacific/Guam')
+    const timezone = String(form.get('timezone') || effectiveTimezone)
     const payload: Partial<ShowingAppointment> & { lead_id: number; id?: number } = {
       lead_id: lead.id,
       id: showing?.id,
@@ -5621,8 +5622,8 @@ function ShowingScheduler({ lead, assignableAgents, mutation }: { lead: Lead; as
           </select>
         </label>
         <div className="grid gap-3 2xl:grid-cols-2">
-          <Input name="scheduled_starts_at" label="Starts" type="datetime-local" defaultValue={datetimeLocalValue(showing?.scheduled_starts_at, showing?.timezone)} required />
-          <Input name="scheduled_ends_at" label="Ends" type="datetime-local" defaultValue={datetimeLocalValue(showing?.scheduled_ends_at, showing?.timezone)} />
+          <Input name="scheduled_starts_at" label={`Starts (${effectiveTimezone})`} type="datetime-local" defaultValue={datetimeLocalValue(showing?.scheduled_starts_at, effectiveTimezone)} required />
+          <Input name="scheduled_ends_at" label={`Ends (${effectiveTimezone})`} type="datetime-local" defaultValue={datetimeLocalValue(showing?.scheduled_ends_at, effectiveTimezone)} />
         </div>
         <div className="grid gap-3 2xl:grid-cols-2">
           <label className="grid gap-2 text-sm font-semibold text-[#304942]">
@@ -5643,7 +5644,7 @@ function ShowingScheduler({ lead, assignableAgents, mutation }: { lead: Lead; as
             </select>
           </label>
         </div>
-        <input type="hidden" name="timezone" value={showing?.timezone || 'Pacific/Guam'} />
+        <input type="hidden" name="timezone" value={effectiveTimezone} />
         <Input name="location" label="Location or meeting point" defaultValue={showing?.location || lead.listing?.address || ''} />
         <label className="grid gap-2 text-sm font-semibold text-[#304942]">
           Notes for customer
@@ -5784,8 +5785,26 @@ export function ShowingDetailPage() {
           </div>
 
           <aside className="grid content-start gap-5 lg:sticky lg:top-6">
-            <section className="rounded-[2rem] bg-white p-6 shadow-sm"><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#7b8a84]">Connected customer</p><h2 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">{showing.lead?.name ?? `Lead #${showing.lead_id}`}</h2><div className="mt-4 grid gap-2 text-sm text-[#53645f]">{showing.lead?.email && <p className="flex items-center gap-2"><Mail size={15} /> {showing.lead.email}</p>}{showing.lead?.phone && <p className="flex items-center gap-2"><Phone size={15} /> {showing.lead.phone}</p>}<p className="capitalize">{leadTypeLabel(showing.lead?.lead_type)} · {showing.lead?.status?.replaceAll('_', ' ') || 'Open'}</p></div><Link to={leadPath} className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-full bg-[var(--brand-primary)] px-5 text-sm font-bold text-white">Open lead workspace <ChevronRight size={16} /></Link></section>
-            <section className="rounded-[2rem] bg-[#101f1c] p-6 text-white shadow-xl shadow-[var(--brand-primary)]/15"><UsersRound className="text-[#f5c16c]" size={24} /><h2 className="mt-4 text-xl font-semibold">Coordination team</h2><div className="mt-4 grid gap-3 text-sm leading-6 text-white/70"><p><span className="block text-xs font-bold uppercase tracking-[0.14em] text-white/42">Assigned agent</span>{showing.agent?.name ?? 'Unassigned'}</p><p><span className="block text-xs font-bold uppercase tracking-[0.14em] text-white/42">Brokerage</span>{showing.brokerage?.name ?? 'Not recorded'}</p><p><span className="block text-xs font-bold uppercase tracking-[0.14em] text-white/42">Created by</span>{showing.created_by?.full_name ?? 'Not recorded'}</p></div></section>
+            <section className="rounded-[2rem] bg-white p-6 shadow-sm">
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#7b8a84]">Connected customer</p>
+              <h2 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">{showing.lead?.name ?? `Lead #${showing.lead_id}`}</h2>
+              <div className="mt-4 grid gap-2 text-sm text-[#53645f]">
+                {showing.lead?.email && <p className="flex items-center gap-2"><Mail size={15} /> {showing.lead.email}</p>}
+                {showing.lead?.phone && <p className="flex items-center gap-2"><Phone size={15} /> {showing.lead.phone}</p>}
+                <p className="capitalize">{leadTypeLabel(showing.lead?.lead_type)} · {showing.lead?.status?.replaceAll('_', ' ') || 'Open'}</p>
+              </div>
+              <Link to={leadPath} className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-full bg-[var(--brand-primary)] px-5 text-sm font-bold text-white">Open lead workspace <ChevronRight size={16} /></Link>
+            </section>
+
+            <section className="rounded-[2rem] bg-[#101f1c] p-6 text-white shadow-xl shadow-[var(--brand-primary)]/15">
+              <UsersRound className="text-[#f5c16c]" size={24} />
+              <h2 className="mt-4 text-xl font-semibold">Coordination team</h2>
+              <div className="mt-4 grid gap-3 text-sm leading-6 text-white/70">
+                <p><span className="block text-xs font-bold uppercase tracking-[0.14em] text-white/42">Assigned agent</span>{showing.agent?.name ?? 'Unassigned'}</p>
+                <p><span className="block text-xs font-bold uppercase tracking-[0.14em] text-white/42">Brokerage</span>{showing.brokerage?.name ?? 'Not recorded'}</p>
+                <p><span className="block text-xs font-bold uppercase tracking-[0.14em] text-white/42">Created by</span>{showing.created_by?.full_name ?? 'Not recorded'}</p>
+              </div>
+            </section>
           </aside>
         </div>
       </section>

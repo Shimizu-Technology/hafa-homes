@@ -94,6 +94,28 @@ class StaffTenantIsolationTest < ActionDispatch::IntegrationTest
     refute payload.key?(:lead)
   end
 
+  test "only exact showing detail includes the primary listing photo" do
+    village = Village.create!(name: "Yigo Showing", slug: "yigo-showing-detail", region: "north")
+    listing = Listing.create!(
+      village: village,
+      title: "Showing detail home",
+      address: "123 Showing Lane",
+      external_id: "SHOWING-DETAIL-1",
+      listing_kind: "sale",
+      property_type: "house",
+      status: "active",
+      price: 600_000
+    )
+    listing.listing_photos.create!(url: "https://example.test/showing-home.jpg", position: 1)
+    showing = @alpha_lead.showing_appointments.create!(created_by: @admin, listing: listing)
+
+    summary = Api::V1::ShowingAppointmentSerializer.summary(showing)
+    detail = Api::V1::ShowingAppointmentSerializer.detail(showing)
+
+    refute summary.fetch(:listing).key?(:primary_photo_url)
+    assert_equal "https://example.test/showing-home.jpg", detail.dig(:listing, :primary_photo_url)
+  end
+
   test "platform admins retain explicit cross-brokerage visibility" do
     platform_admin = create_user(email: "platform@example.com", role: "platform_admin", clerk_id: "clerk-platform")
     headers = authorization_headers(platform_admin)
