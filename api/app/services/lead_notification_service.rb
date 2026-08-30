@@ -4,6 +4,7 @@ require "cgi"
 
 class LeadNotificationService
   BRAND_NAME = "Hafa Homes"
+  class RetryableDeliveryError < StandardError; end
 
   class << self
     def queue_request_received(lead)
@@ -110,12 +111,13 @@ class LeadNotificationService
           to: delivery.recipient,
           subject: email_subject(delivery),
           html: email_html(delivery)
-        }
+        },
+        options: { idempotency_key: "notification-delivery/#{delivery.id}" }
       )
       delivery.mark_sent!(provider_message_id: response.try(:[], "id") || response.try(:[], :id))
     rescue StandardError => e
       Rails.logger.error("[LeadNotificationService] Email failed delivery=#{delivery.id}: #{e.class} #{e.message}")
-      delivery.mark_failed!(e.message)
+      raise RetryableDeliveryError, "#{e.class}: #{e.message}"
     end
 
     def deliver_sms!(delivery)
