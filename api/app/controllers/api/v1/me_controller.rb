@@ -47,11 +47,16 @@ module Api
 
         begin
           deletion = AccountDeletion.request_for!(current_user)
-          record_audit_event(action: "account_deletion_requested", target: current_user, target_label: "User ##{current_user.id}")
         rescue ActiveRecord::ActiveRecordError => e
           Rails.logger.warn("Unable to begin account deletion for user #{current_user.id}: #{e.class} #{e.message}")
           render json: { error: "Account deletion could not be completed. Please try again or contact support." }, status: :unprocessable_entity
           return
+        end
+
+        begin
+          record_audit_event(action: "account_deletion_requested", target: current_user, target_label: "User ##{current_user.id}")
+        rescue StandardError => e
+          Rails.logger.warn("Unable to record account deletion audit event for user #{current_user.id}: #{e.class} #{e.message}")
         end
 
         begin

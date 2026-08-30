@@ -134,4 +134,23 @@ class AccountDeletionTest < ActionDispatch::IntegrationTest
   ensure
     AccountDeletionJob.define_singleton_method(:perform_later, original_perform_later) if original_perform_later
   end
+
+  test "accepts and enqueues a durable deletion when audit logging fails" do
+    user = create_user(email: "audit-outage@example.com", clerk_id: "clerk-audit-outage")
+    headers = authorization_headers(user)
+
+    with_singleton_stub(ClerkAuth, :verify, @clerk_claims) do
+      with_singleton_stub(ClerkAuth, :deletion_configured?, true) do
+        with_singleton_stub(AuditLogger, :record!, ->(**) { raise ActiveRecord::StatementInvalid, "audit unavailable" }) do
+          assert_enqueued_with(job: AccountDeletionJob) do
+            delete "/api/v1/me", headers: headers
+          end
+        end
+      end
+    end
+
+    assert_response :accepted
+    assert_equal "pending", AccountDeletion.find_by!(user: user).status
+    assert user.reload.archived?
+  end
 end
