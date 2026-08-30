@@ -196,6 +196,7 @@ class AccountDeletion < ApplicationRecord
       updated_at: anonymized_at
     )
     AuditEvent.where(target_type: "User", target_id: user_record.id).update_all(
+      target_id: nil,
       target_label: "Deleted account",
       metadata: {},
       field_changes: {},

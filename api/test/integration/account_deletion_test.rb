@@ -60,6 +60,7 @@ class AccountDeletionTest < ActionDispatch::IntegrationTest
     audit.reload
     assert_nil audit.actor_id
     assert_nil audit.actor_email
+    assert_nil audit.target_id
     assert_equal "Deleted account", audit.target_label
     assert_equal({}, audit.metadata)
     assert_equal({}, audit.field_changes)
