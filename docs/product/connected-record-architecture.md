@@ -22,7 +22,7 @@ These distinctions are product rules, not presentation details:
 - `Lead.assigned_agent` is the staff member coordinating the CRM relationship.
 - `Lead.brokerage` owns the storefront conversation and its private request history.
 - Consumer request history is scoped by both the signed-in user and the active routing brokerage.
-- A future staff customer workspace must use the composite identity `(brokerage_id, user_id)`. It must not expose a global user record to brokerage staff.
+- The staff customer workspace uses the composite identity `(brokerage_id, user_id)`. It does not expose a global user record to brokerage staff.
 - Anonymous leads must not be merged into a signed-in customer workspace by email alone.
 
 The UI must keep listing attribution separate from requested and assigned agents. External attribution agents must not automatically become links to storefront agent records or choices in request forms.
