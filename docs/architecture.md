@@ -176,6 +176,11 @@ Fields/concepts:
 - `NotificationDelivery`: durable email/SMS delivery state with attempt history,
   gated provider sends, and interrupted-send recovery.
 
+Public lead submissions use a UUID idempotency key that is scoped to the resolved
+brokerage and bound to a canonical request fingerprint. Web and native clients keep
+the key across transport retries and clear it only after a successful response, so a
+timeout cannot create a second lead or a second set of notifications.
+
 ### Background job ownership
 
 Solid Queue uses the primary PostgreSQL database. Production must have exactly one
@@ -188,6 +193,10 @@ Email retries use a stable provider idempotency key. SMS provider failures remai
 terminal/manual-review events because the current ClickSend integration cannot
 prove that an ambiguous request was not already delivered. Reconciliation runs
 every five minutes to recover interrupted email sends and orphaned queued records.
+Lead/showing writes and their `NotificationDelivery` intent rows commit in the same
+database transaction. Job enqueueing happens after commit and is recoverable through
+reconciliation; CRM activity and audit logging are best-effort secondary records and
+cannot turn a committed customer request into a false error response.
 
 ### Request throttling and bounded collections
 

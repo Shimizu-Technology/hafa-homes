@@ -47,6 +47,7 @@ import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query'
 import { apiFetch, authHeaders } from './lib/api'
 import { routes, safeInternalPath as safeReturnPath } from './lib/routes'
 import { clearPendingAccountDeletion, hasPendingAccountDeletion, markPendingAccountDeletion } from './lib/accountDeletionState'
+import { browserLeadIdempotencyManager } from './lib/leadIdempotency'
 import { datetimeLocalValue, zonedDateTimeToIso } from './lib/dateTime'
 import { useAuthContext } from './contexts/AuthContext'
 import type { Brokerage } from './contexts/BrokerageContext'
@@ -1122,9 +1123,11 @@ async function submitLead(payload: LeadPayload, retryAfterIntentReset: boolean):
     throw new ApiFetchError('Your search session refreshed after sign-in. Please view the home again and reopen this form before submitting.', 409)
   }
 
+  const idempotency = browserLeadIdempotencyManager()
+  const idempotencyToken = await idempotency.prepare(payload)
   const response = await apiFetch(`${API_URL}/api/v1/leads`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+    headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyToken.key, ...(await authHeaders()) },
     body: JSON.stringify({ lead: payload }),
   })
 
@@ -1138,6 +1141,7 @@ async function submitLead(payload: LeadPayload, retryAfterIntentReset: boolean):
   }
 
   if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to submit lead'), response.status)
+  idempotency.complete(idempotencyToken)
   clearLeadIntentCurrentContextRequired()
   return response.json()
 }

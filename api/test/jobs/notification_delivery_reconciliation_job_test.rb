@@ -11,6 +11,7 @@ class NotificationDeliveryReconciliationJobTest < ActiveSupport::TestCase
     stale_sms = create_delivery(lead:, channel: "sms", status: "sending", queued_at: 30.minutes.before(now), updated_at: 20.minutes.before(now))
     orphaned = create_delivery(lead:, channel: "email", status: "queued", queued_at: 20.minutes.before(now))
     fresh = create_delivery(lead:, channel: "email", status: "queued", queued_at: now)
+    clear_enqueued_jobs
 
     assert_enqueued_with(job: NotificationDeliveryJob, args: [ stale_email.id ]) do
       assert_enqueued_with(job: NotificationDeliveryJob, args: [ orphaned.id ]) do

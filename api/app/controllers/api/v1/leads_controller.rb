@@ -1,3 +1,6 @@
+require "digest"
+require "json"
+
 module Api
   module V1
     class LeadsController < ApplicationController
@@ -47,15 +50,25 @@ module Api
       def create
         permitted = lead_params
         normalize_blank_lead_values(permitted)
+        brokerage = current_routing_brokerage
+        unless brokerage
+          render json: { errors: [ "No active brokerage is available for lead routing" ] }, status: :unprocessable_entity
+          return
+        end
+
+        idempotency_key = request.headers["Idempotency-Key"].to_s.strip.presence
+        idempotency_fingerprint = lead_submission_fingerprint(permitted)
+        return if replay_idempotent_lead(brokerage, idempotency_key, idempotency_fingerprint)
+
         intent_session = lead_intent_session_from_token(
           permitted.delete(:intent_session_token),
           require_context: permitted[:lead_type] == "search_assist"
         )
         lead = Lead.new(permitted.except(:listing_id, :requested_agent_id))
+        lead.brokerage = brokerage
+        lead.idempotency_key = idempotency_key
+        lead.idempotency_fingerprint = idempotency_fingerprint if idempotency_key
         lead.listing = active_listing_from_params(permitted)
-        return if performed?
-
-        assign_routing_brokerage(lead)
         return if performed?
 
         assign_requested_agent_from_params(lead, permitted[:requested_agent_id])
@@ -68,8 +81,15 @@ module Api
         lead.lead_intent_session = intent_session if intent_session
         lead.queue_request_received_notification = true
 
-        if lead.save
-          mark_intent_session_converted(lead, intent_session)
+        saved = Lead.transaction do
+          next false unless lead.save
+
+          intent_session&.mark_converted!(lead)
+          true
+        end
+
+        if saved
+          record_intent_conversion_activity(lead, intent_session)
           record_audit_event(action: "lead_created", target: lead, lead: lead, metadata: { lead_type: lead.lead_type, source: lead.lead_source, lead_intent_session_id: intent_session&.id })
           render json: { lead: serialized_created_lead(lead) }, status: :created
         else
@@ -79,6 +99,10 @@ module Api
         render_intent_session_scope_mismatch(e)
       rescue InsufficientLeadIntentContextError => e
         render_insufficient_intent_context(e)
+      rescue ActiveRecord::RecordNotUnique
+        return if replay_idempotent_lead(brokerage, idempotency_key, idempotency_fingerprint)
+
+        raise
       end
 
       def update
@@ -358,14 +382,36 @@ module Api
         )
       end
 
-      def assign_routing_brokerage(lead)
-        brokerage = current_routing_brokerage
-        unless brokerage
-          render json: { errors: [ "No active brokerage is available for lead routing" ] }, status: :unprocessable_entity
-          return
+      def lead_submission_fingerprint(permitted)
+        canonical = canonical_idempotency_value(permitted.to_h)
+        Digest::SHA256.hexdigest(JSON.generate(canonical))
+      end
+
+      def canonical_idempotency_value(value)
+        case value
+        when Hash
+          value.to_h.sort.to_h.transform_values { |item| canonical_idempotency_value(item) }
+        when Array
+          value.map { |item| canonical_idempotency_value(item) }
+        else
+          value
+        end
+      end
+
+      def replay_idempotent_lead(brokerage, idempotency_key, fingerprint)
+        return false if brokerage.blank? || idempotency_key.blank?
+
+        existing = Lead.find_by(brokerage: brokerage, idempotency_key: idempotency_key)
+        return false unless existing
+
+        if existing.idempotency_fingerprint != fingerprint
+          render json: { errors: [ "Idempotency-Key was already used for a different request" ] }, status: :conflict
+          return true
         end
 
-        lead.brokerage = brokerage
+        response.set_header("Idempotency-Replayed", "true")
+        render json: { lead: serialized_created_lead(existing), idempotency_replayed: true }, status: :ok
+        true
       end
 
       def assign_requested_agent_from_params(lead, requested_agent_id)
@@ -436,16 +482,17 @@ module Api
         profile.apply_to_lead(lead)
       end
 
-      def mark_intent_session_converted(lead, intent_session)
+      def record_intent_conversion_activity(lead, intent_session)
         return unless intent_session
 
-        intent_session.mark_converted!(lead)
         LeadActivity.record!(
           lead: lead,
           action: "search_intent_captured",
           summary: "Search intent captured before lead conversion",
           metadata: Api::V1::LeadIntentSessionSerializer.summary(intent_session).to_h.except(:id, :requested_agent)
         )
+      rescue StandardError => e
+        Rails.logger.warn("Unable to record intent conversion activity for lead #{lead.id}: #{e.class} #{e.message}")
       end
 
       def serialized_created_lead(lead)

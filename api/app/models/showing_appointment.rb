@@ -23,8 +23,8 @@ class ShowingAppointment < ApplicationRecord
   before_validation :set_defaults
   before_validation :infer_context_from_lead
   after_save :sync_lead_from_schedule
+  after_save :persist_schedule_notifications
   after_commit :record_schedule_activity, on: [:create, :update]
-  after_commit :queue_schedule_notifications, on: [:create, :update]
 
   scope :upcoming, -> { where("scheduled_starts_at IS NULL OR scheduled_starts_at >= ?", Time.current).order(Arel.sql("scheduled_starts_at ASC NULLS LAST"), created_at: :desc) }
 
@@ -122,9 +122,11 @@ class ShowingAppointment < ApplicationRecord
         changes: LeadActivity.change_details(previous_changes, %w[status tour_type scheduled_starts_at scheduled_ends_at location agent_id consumer_notes internal_notes])
       }
     )
+  rescue StandardError => e
+    Rails.logger.warn("Unable to record schedule activity for showing #{id}: #{e.class} #{e.message}")
   end
 
-  def queue_schedule_notifications
+  def persist_schedule_notifications
     return unless schedule_notification_relevant?
 
     LeadNotificationService.queue_showing_update(self)

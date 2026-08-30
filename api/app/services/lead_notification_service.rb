@@ -100,7 +100,6 @@ class LeadNotificationService
           showing_status: showing_appointment&.status
         }.merge(metadata).compact
       )
-      NotificationDeliveryJob.perform_later(delivery.id)
       delivery
     end
 

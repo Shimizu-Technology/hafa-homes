@@ -10,6 +10,7 @@ class NotificationDelivery < ApplicationRecord
   has_many :lead_activities, as: :subject, dependent: :nullify
 
   after_create_commit :record_queued_activity
+  after_create_commit :enqueue_delivery, if: :queued?
   after_update_commit :record_delivery_status_activity, if: :saved_change_to_status?
 
   validates :channel, inclusion: { in: CHANNELS }
@@ -98,6 +99,8 @@ class NotificationDelivery < ApplicationRecord
       lead: lead,
       metadata: metadata
     )
+  rescue StandardError => e
+    Rails.logger.warn("Unable to record queued activity for notification delivery #{id}: #{e.class} #{e.message}")
   end
 
   def record_delivery_status_activity
@@ -126,5 +129,13 @@ class NotificationDelivery < ApplicationRecord
       lead: lead,
       metadata: metadata
     )
+  rescue StandardError => e
+    Rails.logger.warn("Unable to record status activity for notification delivery #{id}: #{e.class} #{e.message}")
+  end
+
+  def enqueue_delivery
+    NotificationDeliveryJob.perform_later(id)
+  rescue StandardError => e
+    Rails.logger.warn("Notification delivery #{id} is durable but could not be enqueued immediately: #{e.class} #{e.message}")
   end
 end

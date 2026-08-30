@@ -4,11 +4,13 @@ import { useSignInWithApple } from '@clerk/expo/apple'
 import { useSignIn, useSignUp } from '@clerk/expo/legacy'
 import { tokenCache } from '@clerk/expo/token-cache'
 import * as AppleAuthentication from 'expo-apple-authentication'
+import * as Crypto from 'expo-crypto'
 import * as Linking from 'expo-linking'
 import { StatusBar } from 'expo-status-bar'
 import * as WebBrowser from 'expo-web-browser'
 import { apiFetch } from './src/apiClient'
 import { clearPendingAccountDeletion, hasPendingAccountDeletion, markPendingAccountDeletion } from './src/accountDeletionState'
+import { createLeadIdempotencyManager } from './src/leadIdempotency'
 import { advanceNavigationGeneration, agentRecordBackTarget, beginAppLinkNavigation, closeListingTransition, isCurrentNavigationGeneration, mergeAgentListingPage, openListingFromAgentTransition, requestDetailKey } from './src/navigation'
 import { WebView } from 'react-native-webview'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -671,9 +673,15 @@ async function createLead(payload: CreateLeadPayload, getToken?: GetAuthToken, r
     throw new ApiRequestError('Your search session refreshed after sign-in. Please view the home again and reopen this form before submitting.', 409)
   }
 
+  const idempotency = createLeadIdempotencyManager({
+    storage: AsyncStorage,
+    digest: (value) => Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, value),
+    uuid: () => Crypto.randomUUID(),
+  })
+  const idempotencyToken = await idempotency.prepare(payload)
   const response = await apiFetch(`${API_URL}/api/v1/leads`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...(await authHeaders(getToken)) },
+    headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyToken.key, ...(await authHeaders(getToken)) },
     body: JSON.stringify({ lead: payload }),
   })
 
@@ -687,6 +695,7 @@ async function createLead(payload: CreateLeadPayload, getToken?: GetAuthToken, r
   }
 
   if (!response.ok) throw new ApiRequestError(await apiErrorMessage(response, 'Unable to send request'), response.status)
+  await idempotency.complete(idempotencyToken)
   await clearLeadIntentCurrentContextRequired()
   return response.json()
 }
