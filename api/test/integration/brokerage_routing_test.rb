@@ -199,7 +199,11 @@ class BrokerageRoutingTest < ActionDispatch::IntegrationTest
           event_name: "listing_detail_viewed",
           client_event_id: "listing-view-1",
           listing_id: Listing.create!(
-            village: Village.create!(name: "Yigo", slug: "yigo", region: "north"),
+            village: Village.create!(
+              name: "Sparse Showing Village",
+              slug: "sparse-showing-village",
+              region: "north"
+            ),
             brokerage: @alpha,
             agent: @alpha_agent,
             title: "Yigo home",
