@@ -47,4 +47,12 @@ class ListingSearchTest < ActionDispatch::IntegrationTest
       assert response.parsed_body.fetch("listings").pluck("id").include?(expected.id), query
     end
   end
+
+  test "does not expose inactive listings through the public detail endpoint" do
+    @north_home.update!(status: "inactive")
+
+    get "/api/v1/listings/#{@north_home.id}"
+
+    assert_response :not_found
+  end
 end

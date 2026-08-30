@@ -1,0 +1,45 @@
+import { describe, expect, it } from 'vitest'
+import { publicAnalyticsPath, routes, safeInternalPath, withReturnTo } from './routes'
+
+describe('safeInternalPath', () => {
+  it('keeps internal paths with their query and hash', () => {
+    expect(safeInternalPath('/?kind=rent&view=map#results')).toBe('/?kind=rent&view=map#results')
+  })
+
+  it('rejects external, protocol-relative, and malformed destinations', () => {
+    expect(safeInternalPath('https://example.com/private')).toBe('/')
+    expect(safeInternalPath('//example.com/private')).toBe('/')
+    expect(safeInternalPath('javascript:alert(1)')).toBe('/')
+  })
+})
+
+describe('route builders', () => {
+  it('encodes exact return context once', () => {
+    expect(routes.listing(42, '/?kind=rent&view=map')).toBe('/listings/42?return_to=%2F%3Fkind%3Drent%26view%3Dmap')
+    expect(withReturnTo('/listings/42?from=saved', '/account/saved')).toBe('/listings/42?from=saved&return_to=%2Faccount%2Fsaved')
+  })
+
+  it('appends return context before the destination fragment', () => {
+    expect(withReturnTo('/listings/42#photos', '/account/saved')).toBe('/listings/42?return_to=%2Faccount%2Fsaved#photos')
+  })
+
+  it('keeps reserved characters inside one dynamic path identifier', () => {
+    expect(routes.listing('a/b?tab=1#photos')).toBe('/listings/a%2Fb%3Ftab%3D1%23photos')
+    expect(routes.agent('agent/7')).toBe('/agents/agent%2F7')
+    expect(routes.request('request?7')).toBe('/account/requests/request%3F7')
+    expect(routes.adminLead('lead#7')).toBe('/admin/leads/lead%237')
+    expect(routes.adminShowing('showing/7')).toBe('/admin/showings/showing%2F7')
+  })
+})
+
+describe('publicAnalyticsPath', () => {
+  it('normalizes public record identifiers and removes query strings', () => {
+    expect(publicAnalyticsPath('/listings/42?email=private@example.com')).toBe('/listings/:id')
+    expect(publicAnalyticsPath('/villages/tamuning')).toBe('/villages/:slug')
+  })
+
+  it('does not permit protected routes to be captured', () => {
+    expect(publicAnalyticsPath('/admin/leads/12?q=private@example.com')).toBeNull()
+    expect(publicAnalyticsPath('/account/requests/9')).toBeNull()
+  })
+})

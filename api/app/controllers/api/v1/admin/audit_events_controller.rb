@@ -33,7 +33,7 @@ module Api
 
           return events if current_user.platform_admin?
 
-          brokerage_ids = current_user.active_brokerage_ids
+          brokerage_ids = current_user.active_brokerage_admin_ids
           agent_lead_ids = current_user.agent? ? Lead.where(assigned_agent_id: current_user.active_agent_ids).select(:id) : Lead.none
           if brokerage_ids.any?
             events.where(brokerage_id: brokerage_ids).or(events.where(lead_id: agent_lead_ids))

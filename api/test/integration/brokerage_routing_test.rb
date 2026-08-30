@@ -123,6 +123,49 @@ class BrokerageRoutingTest < ActionDispatch::IntegrationTest
     assert_equal "Dededo", buyer.buyer_search_profiles.find_by!(brokerage: @beta).desired_villages
   end
 
+  test "scopes consumer request history and exact requests to the current storefront" do
+    buyer = create_user(email: "request-buyer@example.com", clerk_id: "clerk-request-buyer")
+    alpha_request = Lead.create!(user: buyer, brokerage: @alpha, lead_type: "contact", name: "Request Buyer", email: buyer.email)
+    beta_request = Lead.create!(user: buyer, brokerage: @beta, lead_type: "showing_request", name: "Request Buyer", email: buyer.email)
+    other_buyer = create_user(email: "other-request-buyer@example.com", clerk_id: "clerk-other-request-buyer")
+    other_request = Lead.create!(user: other_buyer, brokerage: @alpha, lead_type: "contact", name: "Other Buyer", email: other_buyer.email)
+    headers = authorization_headers(buyer)
+
+    with_clerk_auth do
+      get "/api/v1/me/leads", headers: headers.merge("X-Brokerage-Host" => "alpha.test")
+    end
+    assert_response :success
+    assert_equal [ alpha_request.id ], response.parsed_body.fetch("leads").pluck("id")
+
+    with_clerk_auth do
+      get "/api/v1/me/leads/#{alpha_request.id}", headers: headers.merge("X-Brokerage-Host" => "alpha.test")
+    end
+    assert_response :success
+    assert_equal alpha_request.id, response.parsed_body.dig("lead", "id")
+
+    [ beta_request, other_request ].each do |request|
+      with_clerk_auth do
+        get "/api/v1/me/leads/#{request.id}", headers: headers.merge("X-Brokerage-Host" => "alpha.test")
+      end
+      assert_response :not_found
+    end
+  end
+
+  test "consumer request history fails closed without an active storefront" do
+    buyer = create_user(email: "unrouted-request-buyer@example.com", clerk_id: "clerk-unrouted-request-buyer")
+    request = Lead.create!(user: buyer, brokerage: @alpha, lead_type: "contact", name: "Unrouted Request Buyer", email: buyer.email)
+    headers = authorization_headers(buyer)
+
+    [ "/api/v1/me/leads", "/api/v1/me/leads/#{request.id}" ].each do |path|
+      with_clerk_auth do
+        get path, headers: headers.merge("X-Brokerage-Host" => "unknown.test")
+      end
+
+      assert_response :not_found
+      assert_equal [ "No brokerage is configured for this storefront" ], response.parsed_body.fetch("errors")
+    end
+  end
+
   test "rejects reuse of an intent session token across brokerages" do
     token = "tenant-scope-token-12345"
     params = {
