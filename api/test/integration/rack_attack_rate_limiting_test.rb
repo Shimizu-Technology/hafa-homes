@@ -64,6 +64,19 @@ class RackAttackRateLimitingTest < ActionDispatch::IntegrationTest
     assert_response :too_many_requests
   end
 
+  test "throttles intent dismissals per direct client IP" do
+    60.times do
+      post "/api/v1/lead_intent/dismiss", params: {}, env: { "REMOTE_ADDR" => "203.0.113.25" }
+      refute_equal 429, response.status
+    end
+
+    post "/api/v1/lead_intent/dismiss", params: {}, env: { "REMOTE_ADDR" => "203.0.113.25" }
+    assert_response :too_many_requests
+
+    post "/api/v1/lead_intent/dismiss", params: {}, env: { "REMOTE_ADDR" => "203.0.113.26" }
+    refute_equal 429, response.status
+  end
+
   test "throttles notification writes by credential fingerprint and isolates credentials" do
     token_one_headers = { "Authorization" => "Bearer staff-token-one" }
     token_two_headers = { "Authorization" => "Bearer staff-token-two" }
@@ -77,8 +90,47 @@ class RackAttackRateLimitingTest < ActionDispatch::IntegrationTest
       post "/api/v1/leads/123/notifications", headers: token_one_headers, env: { "REMOTE_ADDR" => "203.0.113.24" }
       assert_response :too_many_requests
 
-      post "/api/v1/leads/123/notifications", headers: token_two_headers, env: { "REMOTE_ADDR" => "203.0.113.24" }
+      post "/api/v1/leads/123/notifications", headers: token_two_headers, env: { "REMOTE_ADDR" => "203.0.113.27" }
       assert_response :unauthorized
+    end
+  end
+
+  test "throttles notification writes by IP across rotating credentials" do
+    with_singleton_stub(ClerkAuth, :verify, nil) do
+      30.times do |index|
+        post "/api/v1/leads/123/notifications",
+          headers: { "Authorization" => "Bearer rotating-token-#{index}" },
+          env: { "REMOTE_ADDR" => "203.0.113.28" }
+        assert_response :unauthorized
+      end
+
+      post "/api/v1/leads/123/notifications",
+        headers: { "Authorization" => "Bearer rotating-token-final" },
+        env: { "REMOTE_ADDR" => "203.0.113.28" }
+      assert_response :too_many_requests
+    end
+  end
+
+  test "throttles formatted variants of every protected route" do
+    protected_routes = [
+      [ "/api/v1/leads.json", 10, {} ],
+      [ "/api/v1/saved_searches.json", 10, {} ],
+      [ "/api/v1/lead_intent/events.json", 300, {} ],
+      [ "/api/v1/lead_intent/dismiss.json", 60, {} ],
+      [ "/api/v1/leads/123/notifications.json", 30, { "Authorization" => "Bearer formatted-token" } ]
+    ]
+
+    with_singleton_stub(ClerkAuth, :verify, nil) do
+      protected_routes.each_with_index do |(path, limit, headers), index|
+        remote_addr = "198.51.100.#{index + 1}"
+        limit.times do
+          post path, headers: headers, params: {}, env: { "REMOTE_ADDR" => remote_addr }
+          refute_equal 429, response.status
+        end
+
+        post path, headers: headers, params: {}, env: { "REMOTE_ADDR" => remote_addr }
+        assert_response :too_many_requests
+      end
     end
   end
 

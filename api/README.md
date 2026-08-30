@@ -80,12 +80,15 @@ high-frequency, or provider-cost-bearing:
 - saved searches: 10 per client IP per hour;
 - lead-intent events: 300 per client IP per minute;
 - lead-intent dismissals: 60 per client IP per minute;
-- staff lead notifications: 30 per bearer-token fingerprint per five minutes.
+- staff lead notifications: 30 per bearer-token fingerprint and per client IP
+  per five minutes.
 
 The corresponding `*_RATE_LIMIT` environment variables can adjust limits without
 changing the fixed windows. Throttled clients receive JSON, HTTP 429,
-`Cache-Control: no-store`, and an accurate `Retry-After` value. Bearer credentials
-are SHA-256 fingerprinted for the counter key and are never stored raw.
+`Cache-Control: no-store`, and an accurate `Retry-After` value. Protected routes
+include their optional Rails format suffixes, such as `.json`. Bearer credentials
+are SHA-256 fingerprinted for the counter key and are never stored raw; the
+parallel IP limit also covers callers that rotate invalid credentials.
 
 Counters use `Rails.cache`. The current one-process Puma topology therefore has one
 authoritative in-memory counter store. Before setting `WEB_CONCURRENCY` above one

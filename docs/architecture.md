@@ -195,7 +195,8 @@ Rack::Attack runs after Rails resolves the remote client IP. Direct connections 
 `REMOTE_ADDR` so a forged forwarded header cannot create a fresh counter; requests
 from a configured trusted proxy use Rails' resolved client address. Only selected
 write paths are throttled, and provider-cost-bearing notification writes are keyed
-by a one-way bearer-token fingerprint.
+by both client IP and a one-way bearer-token fingerprint. Optional Rails format
+suffixes are normalized before protected routes are matched.
 
 The current deployment has one Puma process and uses its `Rails.cache` for counters.
 A shared cache is required before horizontal or multi-process web scaling. The lead

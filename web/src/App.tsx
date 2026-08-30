@@ -43,7 +43,7 @@ import {
   Waves,
   X,
 } from 'lucide-react'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query'
 import { apiFetch, authHeaders } from './lib/api'
 import { useAuthContext } from './contexts/AuthContext'
 import type { Brokerage } from './contexts/BrokerageContext'
@@ -3050,7 +3050,7 @@ function SearchProfileCard({ profile, user, mutation, isLoading = false, error =
 function RequestsPage() {
   const { isClerkEnabled, isSignedIn, isLoading, userId } = useAuthContext()
   const [page, setPage] = useState(1)
-  const { data, isLoading: requestsLoading, isError } = useQuery({ queryKey: ['my-leads', userId, page], queryFn: () => fetchMyLeads(page), enabled: isClerkEnabled && isSignedIn })
+  const { data, isLoading: requestsLoading, isError } = useQuery({ queryKey: ['my-leads', userId, page], queryFn: () => fetchMyLeads(page), enabled: isClerkEnabled && isSignedIn, placeholderData: keepPreviousData })
 
   if (isLoading) return <Shell compact><StateCard>Checking account...</StateCard></Shell>
 
@@ -3702,6 +3702,7 @@ function AdminIntentPage() {
   const { data, isLoading, isError } = useQuery({
     queryKey: ['admin-lead-intent-sessions', statusFilter, identityFilter, sortBy, searchQuery, page],
     queryFn: () => fetchAdminLeadIntentSessions({ status: statusFilter || undefined, identity: identityFilter || undefined, sort: sortBy || undefined, q: searchQuery || undefined, page: String(page), per_page: '10' }),
+    placeholderData: keepPreviousData,
   })
   const { data: brokeragesData, refetch: refetchBrokerages } = useQuery({ queryKey: ['admin-brokerages', 'prompt-settings'], queryFn: fetchAdminBrokerages })
   const promptSettingsMutation = useMutation({
@@ -4176,7 +4177,7 @@ function LeadsPage() {
     page: String(page),
     per_page: '25',
   }
-  const { data, isLoading, isError, refetch } = useQuery({ queryKey: ['leads', leadQueryParams], queryFn: () => fetchLeads(leadQueryParams) })
+  const { data, isLoading, isError, refetch } = useQuery({ queryKey: ['leads', leadQueryParams], queryFn: () => fetchLeads(leadQueryParams), placeholderData: keepPreviousData })
   const statusMutation = useMutation({
     mutationFn: ({ id, status }: { id: number; status: LeadStatus }) => updateLead(id, { status }),
     onSuccess: () => refetch(),
@@ -5466,7 +5467,7 @@ function ShowingScheduler({ lead, assignableAgents, mutation }: { lead: Lead; as
 
 function AdminShowingsPage() {
   const [page, setPage] = useState(1)
-  const { data, isLoading, isError } = useQuery({ queryKey: ['showing-appointments', page], queryFn: () => fetchShowingAppointments(page) })
+  const { data, isLoading, isError } = useQuery({ queryKey: ['showing-appointments', page], queryFn: () => fetchShowingAppointments(page), placeholderData: keepPreviousData })
   const showings = data?.showing_appointments ?? []
 
   return (
@@ -5809,7 +5810,7 @@ function UserRoleCard({ user, brokerages, agents, onSave, saving }: { user: Admi
 
 function AdminAuditPage() {
   const [page, setPage] = useState(1)
-  const { data, isLoading, isError, refetch } = useQuery({ queryKey: ['audit-events', page], queryFn: () => fetchAuditEvents(page) })
+  const { data, isLoading, isError, refetch } = useQuery({ queryKey: ['audit-events', page], queryFn: () => fetchAuditEvents(page), placeholderData: keepPreviousData })
   const events = data?.audit_events ?? []
 
   return (

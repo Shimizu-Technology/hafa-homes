@@ -25,6 +25,31 @@ class PaginationContractTest < ActionDispatch::IntegrationTest
     assert_equal 1, response.parsed_body.dig("metrics", "price_watch_leads")
   end
 
+  test "uses the primary key as a stable tiebreaker across pages" do
+    tied_at = Time.zone.parse("2026-08-30 12:00:00")
+    leads = 5.times.map do |index|
+      Lead.create!(
+        brokerage: @alpha,
+        lead_type: "contact",
+        name: "Tied Buyer #{index}",
+        email: "tied-#{index}@example.com",
+        created_at: tied_at,
+        updated_at: tied_at
+      )
+    end
+
+    paged_ids = 3.times.flat_map do |page_index|
+      with_clerk_auth do
+        get "/api/v1/leads", headers: @headers, params: { page: page_index + 1, per_page: 2 }
+      end
+      assert_response :success
+      response.parsed_body.fetch("leads").pluck("id")
+    end
+
+    assert_equal leads.map(&:id).sort, paged_ids
+    assert_equal paged_ids.uniq, paged_ids
+  end
+
   test "paginates consumer requests inside the active storefront" do
     buyer = create_user(email: "buyer@example.com", clerk_id: "clerk-buyer-pagination")
     requests = 3.times.map do |index|

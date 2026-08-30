@@ -21,6 +21,10 @@ class Rack::Attack
       Digest::SHA256.hexdigest(token) if token.present?
     end
 
+    def formatless_path(request)
+      request.path.sub(/\.[^\/.]+\z/, "")
+    end
+
     private
 
     def resolved_remote_ip(request)
@@ -40,7 +44,7 @@ class Rack::Attack
     limit: limit_for.call("PUBLIC_LEAD_RATE_LIMIT", 10, 1_000),
     period: 10.minutes
   ) do |request|
-    throttle_ip(request) if request.post? && request.path == "/api/v1/leads"
+    throttle_ip(request) if request.post? && formatless_path(request) == "/api/v1/leads"
   end
 
   throttle(
@@ -48,7 +52,7 @@ class Rack::Attack
     limit: limit_for.call("SAVED_SEARCH_RATE_LIMIT", 10, 1_000),
     period: 1.hour
   ) do |request|
-    throttle_ip(request) if request.post? && request.path == "/api/v1/saved_searches"
+    throttle_ip(request) if request.post? && formatless_path(request) == "/api/v1/saved_searches"
   end
 
   throttle(
@@ -56,7 +60,7 @@ class Rack::Attack
     limit: limit_for.call("LEAD_INTENT_EVENT_RATE_LIMIT", 300, 10_000),
     period: 1.minute
   ) do |request|
-    throttle_ip(request) if request.post? && request.path == "/api/v1/lead_intent/events"
+    throttle_ip(request) if request.post? && formatless_path(request) == "/api/v1/lead_intent/events"
   end
 
   throttle(
@@ -64,7 +68,7 @@ class Rack::Attack
     limit: limit_for.call("LEAD_INTENT_DISMISS_RATE_LIMIT", 60, 1_000),
     period: 1.minute
   ) do |request|
-    throttle_ip(request) if request.post? && request.path == "/api/v1/lead_intent/dismiss"
+    throttle_ip(request) if request.post? && formatless_path(request) == "/api/v1/lead_intent/dismiss"
   end
 
   throttle(
@@ -72,9 +76,20 @@ class Rack::Attack
     limit: limit_for.call("LEAD_NOTIFICATION_RATE_LIMIT", 30, 1_000),
     period: 5.minutes
   ) do |request|
-    next unless request.post? && request.path.match?(%r{\A/api/v1/leads/\d+/notifications\z})
+    next unless request.post? && formatless_path(request).match?(%r{\A/api/v1/leads/\d+/notifications\z})
 
     bearer_fingerprint(request) || "ip:#{throttle_ip(request)}"
+  end
+
+
+  throttle(
+    "lead-notifications/ip",
+    limit: limit_for.call("LEAD_NOTIFICATION_RATE_LIMIT", 30, 1_000),
+    period: 5.minutes
+  ) do |request|
+    next unless request.post? && formatless_path(request).match?(%r{\A/api/v1/leads/\d+/notifications\z})
+
+    throttle_ip(request)
   end
 
   self.throttled_responder = lambda do |request|
