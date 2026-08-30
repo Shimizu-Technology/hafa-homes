@@ -146,6 +146,92 @@ class StaffTenantIsolationTest < ActionDispatch::IntegrationTest
     assert_equal [ assigned_event.id ], response.parsed_body.fetch("audit_events").pluck("id")
   end
 
+  test "revoked inactive and absent agent memberships deny every staff record surface" do
+    %w[revoked inactive absent].each do |membership_status|
+      customer = create_user(email: "buyer-#{membership_status}@example.test", clerk_id: "clerk-buyer-#{membership_status}")
+      agent_user = create_user(email: "agent-#{membership_status}@alpha.test", role: "agent", clerk_id: "clerk-agent-#{membership_status}")
+      membership = BrokerageMembership.create!(brokerage: @alpha, user: agent_user, role: "agent", status: "active")
+      agent = Agent.create!(brokerage: @alpha, user: agent_user, name: "#{membership_status.humanize} Agent", email: agent_user.email)
+      lead = Lead.create!(user: customer, brokerage: @alpha, assigned_agent: agent, lead_type: "contact", name: "Scoped Buyer", email: customer.email)
+      showing = lead.showing_appointments.create!(agent: agent)
+      LeadIntentSession.create!(token_digest: SecureRandom.hex(32), brokerage: @alpha, requested_agent: agent)
+      AuditLogger.record!(action: "lead_updated", target: lead, lead: lead)
+      paths = [
+        "/api/v1/leads",
+        "/api/v1/leads/#{lead.id}",
+        "/api/v1/admin/brokerages/#{@alpha.id}/customers/#{customer.id}",
+        "/api/v1/showing_appointments",
+        "/api/v1/showing_appointments/#{showing.id}",
+        "/api/v1/admin/lead_intent_sessions",
+        "/api/v1/admin/audit_events"
+      ]
+      headers = authorization_headers(agent_user)
+
+      with_clerk_auth do
+        paths.each do |path|
+          get path, headers: headers
+          assert_response :success, "Expected active agent membership to allow #{path}"
+        end
+      end
+
+      membership.destroy! if membership_status == "absent"
+      membership.update!(status: membership_status) unless membership_status == "absent"
+
+      with_clerk_auth do
+        paths.each do |path|
+          get path, headers: headers
+          assert_response :forbidden, "Expected #{membership_status} agent membership to deny #{path}"
+        end
+      end
+    end
+  end
+
+  test "active agent membership still denies staff access without a matching active agent profile" do
+    %w[inactive deleted other_brokerage].each do |profile_state|
+      agent_user = create_user(email: "profile-#{profile_state}@example.test", role: "agent", clerk_id: "clerk-profile-#{profile_state}")
+      BrokerageMembership.create!(brokerage: @alpha, user: agent_user, role: "agent", status: "active")
+      profile_brokerage = profile_state == "other_brokerage" ? @beta : @alpha
+      agent = Agent.create!(
+        brokerage: profile_brokerage,
+        user: agent_user,
+        name: "#{profile_state.humanize} Profile",
+        email: agent_user.email,
+        status: profile_state == "inactive" ? "inactive" : "active"
+      )
+      agent.destroy! if profile_state == "deleted"
+
+      customer = create_user(email: "profile-buyer-#{profile_state}@example.test", clerk_id: "clerk-profile-buyer-#{profile_state}")
+      lead = Lead.create!(
+        user: customer,
+        brokerage: profile_brokerage,
+        assigned_agent: agent.persisted? ? agent : nil,
+        lead_type: "contact",
+        name: "Profile Buyer",
+        email: customer.email
+      )
+      showing = lead.showing_appointments.create!(agent: agent.persisted? ? agent : nil)
+      LeadIntentSession.create!(token_digest: SecureRandom.hex(32), brokerage: profile_brokerage, requested_agent: agent.persisted? ? agent : nil)
+      AuditLogger.record!(action: "lead_updated", target: lead, lead: lead)
+      paths = [
+        "/api/v1/leads",
+        "/api/v1/leads/#{lead.id}",
+        "/api/v1/admin/brokerages/#{profile_brokerage.id}/customers/#{customer.id}",
+        "/api/v1/showing_appointments",
+        "/api/v1/showing_appointments/#{showing.id}",
+        "/api/v1/admin/lead_intent_sessions",
+        "/api/v1/admin/audit_events"
+      ]
+      headers = authorization_headers(agent_user)
+
+      with_clerk_auth do
+        paths.each do |path|
+          get path, headers: headers
+          assert_response :forbidden, "Expected #{profile_state} agent profile to deny #{path}"
+        end
+      end
+    end
+  end
+
   test "brokerage admins retain brokerage-wide audit visibility" do
     alpha_event = AuditLogger.record!(action: "brokerage_updated", target: @alpha, brokerage: @alpha)
     AuditLogger.record!(action: "brokerage_updated", target: @beta, brokerage: @beta)
