@@ -30,6 +30,13 @@ describe('route builders', () => {
     expect(routes.adminLead('lead#7')).toBe('/admin/leads/lead%237')
     expect(routes.adminShowing('showing/7')).toBe('/admin/showings/showing%2F7')
   })
+
+  it('preserves a request-list page through a request and related listing journey', () => {
+    const requestPath = routes.request(1, '/account/requests?page=2')
+
+    expect(requestPath).toBe('/account/requests/1?return_to=%2Faccount%2Frequests%3Fpage%3D2')
+    expect(routes.listing(27, requestPath)).toBe('/listings/27?return_to=%2Faccount%2Frequests%2F1%3Freturn_to%3D%252Faccount%252Frequests%253Fpage%253D2')
+  })
 })
 
 describe('publicAnalyticsPath', () => {

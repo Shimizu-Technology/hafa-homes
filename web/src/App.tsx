@@ -45,6 +45,7 @@ import {
 } from 'lucide-react'
 import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query'
 import { apiFetch, authHeaders } from './lib/api'
+import { routes, safeInternalPath as safeReturnPath } from './lib/routes'
 import { useAuthContext } from './contexts/AuthContext'
 import type { Brokerage } from './contexts/BrokerageContext'
 import { groupListingsByVillage } from './lib/mapClusters'
@@ -584,6 +585,7 @@ type LeadNotesPageResponse = { lead_notes: LeadNote[]; pagination: PaginationMet
 type LeadTasksPageResponse = { lead_tasks: LeadTask[]; pagination: PaginationMeta }
 type LeadActivitiesPageResponse = { lead_activities: LeadActivity[]; pagination: PaginationMeta }
 type MyLeadsResponse = { leads: Lead[]; pagination: PaginationMeta }
+type MyLeadResponse = { lead: Lead }
 type ShowingAppointmentsResponse = { showing_appointments: ShowingAppointment[]; pagination: PaginationMeta }
 type AdminDashboardResponse = {
   metrics: { total_open_leads: number; new_leads: number; unassigned_leads: number; upcoming_showings: number; overdue_followups: number }
@@ -859,6 +861,12 @@ async function fetchLead(id: string): Promise<LeadResponse> {
 async function fetchMyLeads(page = 1): Promise<MyLeadsResponse> {
   const response = await apiFetch(`${API_URL}/api/v1/me/leads?page=${page}&per_page=10`, { headers: await authHeaders() })
   if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to load your requests'), response.status)
+  return response.json()
+}
+
+async function fetchMyLead(id: string): Promise<MyLeadResponse> {
+  const response = await apiFetch(`${API_URL}/api/v1/me/leads/${encodeURIComponent(id)}`, { headers: await authHeaders() })
+  if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to load this request'), response.status)
   return response.json()
 }
 
@@ -1386,6 +1394,7 @@ function App() {
         <Route path="/saved" element={<SavedPage />} />
         <Route path="/account" element={<AccountPage />} />
         <Route path="/account/requests" element={<RequestsPage />} />
+        <Route path="/account/requests/:id" element={<RequestDetailPage />} />
         <Route path="/requests" element={<RequestsPage />} />
         <Route path="/privacy" element={<PrivacyPage />} />
         <Route path="/open" element={<OpenInAppPage />} />
@@ -2252,6 +2261,18 @@ function ListingDetailPage() {
   const fromAdmin = detailParams.get('from') === 'admin'
   const adminLeadId = detailParams.get('lead_id')
   const adminBackPath = adminLeadId ? `/admin/leads/${adminLeadId}` : '/admin/leads'
+  const listingBackPath = fromAdmin ? adminBackPath : safeReturnPath(detailParams.get('return_to'), '/')
+  const listingBackLabel = fromAdmin
+    ? 'Back to lead'
+    : listingBackPath.startsWith('/account/requests/')
+      ? 'Back to request'
+      : listingBackPath.startsWith('/account/requests')
+        ? 'Back to requests'
+        : listingBackPath.startsWith('/saved')
+          ? 'Back to saved homes'
+          : listingBackPath.startsWith('/villages/')
+            ? 'Back to village'
+            : 'Back to search'
   const [leadOpen, setLeadOpen] = useState(false)
   const [priceTrackerOpen, setPriceTrackerOpen] = useState(false)
   const { isClerkEnabled, isSignedIn, userId } = useAuthContext()
@@ -2324,7 +2345,7 @@ function ListingDetailPage() {
         <>
           <div className="mobile-detail-header sticky top-0 z-40 border-b border-white/10 bg-[var(--brand-primary)] px-4 pb-4 text-white shadow-xl shadow-[var(--brand-primary)]/15 md:hidden">
             <div className="flex items-center justify-between gap-3">
-              <Link to="/" className="inline-flex min-h-12 items-center gap-2 rounded-full bg-white/10 px-4 text-sm font-bold hover:bg-white/15 active:scale-[0.98]"><ArrowLeft size={18} /> Search</Link>
+              <Link to={listingBackPath} className="inline-flex min-h-12 items-center gap-2 rounded-full bg-white/10 px-4 text-sm font-bold hover:bg-white/15 active:scale-[0.98]"><ArrowLeft size={18} /> {listingBackLabel.replace('Back to ', '')}</Link>
               <div className="flex items-center gap-2">
                 <button onClick={() => {
                   setLeadOpen(true)
@@ -2347,7 +2368,7 @@ function ListingDetailPage() {
           )}
 
           <section className="mx-auto max-w-7xl md:px-5 md:py-6">
-            <Link to={fromAdmin ? adminBackPath : '/'} className="mb-6 hidden items-center gap-2 text-sm font-bold text-[#0f705e] md:inline-flex"><ArrowLeft size={16} /> {fromAdmin ? 'Back to lead' : 'Back to search'}</Link>
+            <Link to={listingBackPath} className="mb-6 hidden items-center gap-2 text-sm font-bold text-[#0f705e] md:inline-flex"><ArrowLeft size={16} /> {listingBackLabel}</Link>
             <div className="grid gap-6 lg:grid-cols-[1fr_390px]">
               <div>
                 <div className="relative mx-4 mt-5 overflow-hidden rounded-[2rem] bg-[var(--brand-primary)] shadow-xl shadow-[var(--brand-primary)]/10 md:mx-0 md:mt-0">
@@ -3049,8 +3070,18 @@ function SearchProfileCard({ profile, user, mutation, isLoading = false, error =
 
 function RequestsPage() {
   const { isClerkEnabled, isSignedIn, isLoading, userId } = useAuthContext()
-  const [page, setPage] = useState(1)
+  const location = useLocation()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const requestedPage = Number(searchParams.get('page') || '1')
+  const page = Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1
   const { data, isLoading: requestsLoading, isError } = useQuery({ queryKey: ['my-leads', userId, page], queryFn: () => fetchMyLeads(page), enabled: isClerkEnabled && isSignedIn, placeholderData: keepPreviousData })
+
+  function selectPage(nextPage: number) {
+    const next = new URLSearchParams(searchParams)
+    if (nextPage <= 1) next.delete('page')
+    else next.set('page', String(nextPage))
+    setSearchParams(next)
+  }
 
   if (isLoading) return <Shell compact><StateCard>Checking account...</StateCard></Shell>
 
@@ -3072,12 +3103,12 @@ function RequestsPage() {
         {requestsLoading && <StateCard>Loading requests...</StateCard>}
         {isError && <StateCard tone="error">Unable to load your requests.</StateCard>}
         <div className="grid gap-4">
-          {requests.map((lead) => <ConsumerRequestCard key={lead.id} lead={lead} />)}
+          {requests.map((lead) => <ConsumerRequestCard key={lead.id} lead={lead} returnTo={`${location.pathname}${location.search}`} />)}
         </div>
         {requests.length === 0 && !requestsLoading && <StateCard>No requests yet. Request a showing or send a price watch request from any listing.</StateCard>}
         {data?.pagination && data.pagination.total_pages > 1 && (
           <div className="mt-5 rounded-[1.5rem] bg-white p-4 shadow-sm">
-            <PaginationControls pagination={data.pagination} onPageChange={setPage} />
+            <PaginationControls pagination={data.pagination} onPageChange={selectPage} />
           </div>
         )}
       </section>
@@ -3085,11 +3116,12 @@ function RequestsPage() {
   )
 }
 
-function ConsumerRequestCard({ lead }: { lead: Lead }) {
+function ConsumerRequestCard({ lead, returnTo }: { lead: Lead; returnTo: string }) {
   const showing = lead.latest_showing_appointment
+  const requestPath = routes.request(lead.id, returnTo)
   return (
     <article className="overflow-hidden rounded-[2rem] bg-white shadow-sm md:grid md:grid-cols-[240px_1fr]">
-      {lead.listing?.primary_photo_url && <Link to={`/listings/${lead.listing.id}`}><img src={lead.listing.primary_photo_url} alt="" className="h-56 w-full object-cover md:h-full" /></Link>}
+      {lead.listing?.primary_photo_url && <Link to={requestPath} aria-label={`View request for ${lead.listing.title}`} className="block overflow-hidden"><img src={lead.listing.primary_photo_url} alt="" className="h-56 w-full object-cover transition duration-500 hover:scale-105 md:h-full" /></Link>}
       <div className="p-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
@@ -3118,8 +3150,157 @@ function ConsumerRequestCard({ lead }: { lead: Lead }) {
             {showing.consumer_notes && <p className="mt-2 text-sm text-[#66746f]">{showing.consumer_notes}</p>}
           </div>
         )}
+        <Link to={requestPath} className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-full bg-[var(--brand-primary)] px-5 text-sm font-bold text-white transition hover:-translate-y-0.5 hover:shadow-lg hover:shadow-[var(--brand-primary)]/20">
+          View request details <ChevronRight size={16} />
+        </Link>
       </div>
     </article>
+  )
+}
+
+function RequestDetailPage() {
+  const { id = '' } = useParams()
+  const [searchParams] = useSearchParams()
+  const { isClerkEnabled, isSignedIn, isLoading: authLoading, userId } = useAuthContext()
+  const returnPath = safeReturnPath(searchParams.get('return_to'), routes.requests())
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['my-lead', userId, id],
+    queryFn: () => fetchMyLead(id),
+    enabled: isClerkEnabled && isSignedIn && Boolean(id),
+    retry: (attempts, requestError) => !(requestError instanceof ApiFetchError && requestError.status === 404) && attempts < 2,
+  })
+
+  if (authLoading) return <Shell compact><StateCard>Checking account...</StateCard></Shell>
+
+  if (!isSignedIn) {
+    return (
+      <Shell compact>
+        <ContentHeader kicker="Request details" title="Sign in to view this request." description="Request records are private to your account and the brokerage storefront where you submitted them." />
+        <section className="mx-auto max-w-3xl px-5 pb-10">
+          <div className="rounded-[2rem] bg-white p-8 text-center shadow-sm">
+            <SignInButton mode="modal"><button className="rounded-full bg-[var(--brand-primary)] px-6 py-3 text-sm font-bold text-white">Sign in or create account</button></SignInButton>
+          </div>
+        </section>
+      </Shell>
+    )
+  }
+
+  if (isLoading) return <Shell compact><section className="mx-auto max-w-6xl px-5 py-10"><StateCard>Loading request...</StateCard></section></Shell>
+
+  if (error || !data?.lead) {
+    const notFound = error instanceof ApiFetchError && error.status === 404
+    return (
+      <Shell compact>
+        <section className="mx-auto max-w-4xl px-5 py-10">
+          <Link to={returnPath} className="mb-6 inline-flex min-h-11 items-center gap-2 rounded-full bg-white px-5 text-sm font-bold text-[#304942] shadow-sm"><ArrowLeft size={16} /> Back to requests</Link>
+          <StateCard tone="error">{notFound ? 'This request is not available in this brokerage storefront.' : displayErrorMessage(error, 'Unable to load this request.')}</StateCard>
+        </section>
+      </Shell>
+    )
+  }
+
+  const lead = data.lead
+  const requestPath = routes.request(lead.id, returnPath)
+  const listingPath = lead.listing ? routes.listing(lead.listing.id, requestPath) : null
+  const appointments = lead.showing_appointments ?? []
+
+  return (
+    <Shell compact>
+      <section className="mx-auto max-w-6xl px-5 pb-12 pt-7">
+        <Link to={returnPath} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-white px-5 text-sm font-bold text-[#304942] shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"><ArrowLeft size={16} /> Back to requests</Link>
+
+        <header className="relative mt-5 overflow-hidden rounded-[2.25rem] bg-[var(--brand-primary)] p-6 text-white shadow-2xl shadow-[var(--brand-primary)]/20 md:p-9">
+          <div className="absolute -right-16 -top-20 h-64 w-64 rounded-full bg-[#f5c16c]/15 blur-3xl" />
+          <div className="relative flex flex-col gap-7 md:flex-row md:items-end md:justify-between">
+            <div className="max-w-3xl">
+              <div className="flex flex-wrap items-center gap-3">
+                <span className={`inline-flex rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.16em] ${leadTypeBadgeClasses(lead.lead_type)}`}>{leadTypeLabel(lead.lead_type)}</span>
+                <span className="text-xs font-bold uppercase tracking-[0.18em] text-white/60">Request HH-{lead.id}</span>
+              </div>
+              <h1 className="mt-5 text-3xl font-semibold leading-tight tracking-[-0.05em] md:text-5xl">{lead.listing?.title ?? 'Your Håfa Homes request'}</h1>
+              <p className="mt-4 max-w-2xl text-base leading-7 text-white/72">Submitted {formatDateTime(lead.created_at)} through {lead.brokerage?.app_display_name || lead.brokerage?.name || 'this brokerage storefront'}.</p>
+            </div>
+            <div className="shrink-0 rounded-2xl bg-white/10 px-5 py-4 backdrop-blur-sm">
+              <p className="text-xs font-bold uppercase tracking-[0.16em] text-white/60">Current status</p>
+              <p className="mt-2 text-xl font-semibold">{lead.consumer_status_label ?? lead.status.replaceAll('_', ' ')}</p>
+            </div>
+          </div>
+        </header>
+
+        <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+          <div className="grid gap-6">
+            {lead.listing && listingPath && (
+              <article className="overflow-hidden rounded-[2rem] bg-white shadow-sm md:grid md:grid-cols-[260px_1fr]">
+                <Link to={listingPath} className="group block overflow-hidden">
+                  <img src={lead.listing.primary_photo_url || FALLBACK_LISTING_IMAGE} onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = FALLBACK_LISTING_IMAGE }} alt="" className="h-60 w-full object-cover transition duration-700 ease-out group-hover:scale-105 md:h-full" />
+                </Link>
+                <div className="p-6">
+                  <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#0f705e]">Related listing</p>
+                  <h2 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">{lead.listing.title}</h2>
+                  {lead.listing.address && <p className="mt-2 flex items-start gap-2 text-sm font-semibold text-[#66746f]"><MapPin className="mt-0.5 shrink-0" size={16} /> {lead.listing.address}{lead.listing.village ? ` · ${lead.listing.village}` : ''}</p>}
+                  <p className="mt-4 text-2xl font-bold text-[var(--brand-primary)]">{currency(lead.listing.price, lead.listing.listing_kind)}</p>
+                  {(lead.listing.agent || lead.listing.brokerage) && <p className="mt-3 text-xs leading-5 text-[#7b8a84]">Listing attribution: {lead.listing.agent?.name ?? 'Listing agent'} · {lead.listing.brokerage?.name ?? 'Listing brokerage'}</p>}
+                  <Link to={listingPath} className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-full border border-[#d7ded9] px-5 text-sm font-bold text-[var(--brand-primary)] transition hover:border-[var(--brand-primary)]">Open listing <ChevronRight size={16} /></Link>
+                </div>
+              </article>
+            )}
+
+            <section className="rounded-[2rem] bg-white p-6 shadow-sm md:p-7">
+              <div className="flex items-center gap-3">
+                <div className="grid h-11 w-11 place-items-center rounded-2xl bg-[#e9f5ef] text-[#0f705e]"><ClipboardList size={21} /></div>
+                <div><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#7b8a84]">Request record</p><h2 className="mt-1 text-2xl font-semibold tracking-[-0.04em]">What you asked for</h2></div>
+              </div>
+              <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <LeadMeta icon={<MessageSquare size={16} />} label="Request type" value={leadTypeLabel(lead.lead_type)} />
+                <LeadMeta icon={<Phone size={16} />} label="Preferred contact" value={lead.preferred_contact_method || 'Not provided'} />
+                <LeadMeta icon={<Clock3 size={16} />} label="Preferred time" value={lead.preferred_time || lead.preferred_tour_date || 'Flexible'} />
+              </div>
+              {lead.message && <div className="mt-4 rounded-2xl border border-[#e3e9e5] p-4"><p className="text-xs font-bold uppercase tracking-[0.16em] text-[#7b8a84]">Your message</p><p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[#3d4d48]">{lead.message}</p></div>}
+              {lead.qualification_summary && <div className="mt-4 rounded-2xl bg-[#e9f5ef] p-4"><p className="text-xs font-bold uppercase tracking-[0.16em] text-[#0f705e]">Search profile shared</p><p className="mt-2 text-sm font-semibold leading-6 text-[#304942]">{lead.qualification_summary}</p></div>}
+            </section>
+
+            <section className="rounded-[2rem] bg-white p-6 shadow-sm md:p-7">
+              <div className="flex flex-wrap items-end justify-between gap-3">
+                <div><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#7b8a84]">Showing coordination</p><h2 className="mt-1 text-2xl font-semibold tracking-[-0.04em]">Appointments</h2></div>
+                <span className="rounded-full bg-[#f6f1e8] px-3 py-1 text-xs font-bold text-[#66746f]">{appointments.length} {appointments.length === 1 ? 'appointment' : 'appointments'}</span>
+              </div>
+              {appointments.length === 0 ? (
+                <p className="mt-5 rounded-2xl bg-[#f6f1e8] p-4 text-sm leading-6 text-[#66746f]">No appointment has been scheduled yet. Your brokerage can coordinate one as the request progresses.</p>
+              ) : (
+                <div className="mt-5 grid gap-4">
+                  {appointments.map((showing) => (
+                    <article key={showing.id} className="rounded-2xl border border-[#e3e9e5] p-5">
+                      <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-lg font-semibold">{formatDateTime(showing.scheduled_starts_at)}</p><p className="mt-1 text-sm text-[#66746f]">{showing.tour_type.replaceAll('_', ' ')}{showing.timezone ? ` · ${showing.timezone}` : ''}</p></div><span className="rounded-full bg-[#e9f5ef] px-3 py-1 text-xs font-bold uppercase tracking-wide text-[#0f705e]">{showing.status.replaceAll('_', ' ')}</span></div>
+                      {showing.location && <p className="mt-4 flex items-start gap-2 text-sm text-[#3d4d48]"><MapPin className="mt-0.5 shrink-0 text-[#0f705e]" size={16} /> {showing.location}</p>}
+                      {showing.consumer_notes && <p className="mt-3 rounded-xl bg-[#f6f1e8] p-3 text-sm leading-6 text-[#66746f]">{showing.consumer_notes}</p>}
+                    </article>
+                  ))}
+                </div>
+              )}
+            </section>
+          </div>
+
+          <aside className="grid content-start gap-5 lg:sticky lg:top-6">
+            <section className="rounded-[2rem] bg-white p-6 shadow-sm">
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#7b8a84]">Your brokerage team</p>
+              <h2 className="mt-2 text-xl font-semibold tracking-[-0.03em]">Who is helping</h2>
+              <div className="mt-5 grid gap-3">
+                <LeadMeta icon={<UserRound size={16} />} label="Requested agent" value={lead.requested_agent?.name ?? 'No preference selected'} />
+                <LeadMeta icon={<UsersRound size={16} />} label="Coordinating agent" value={lead.assigned_agent?.name ?? 'Pending assignment'} />
+                <LeadMeta icon={<Building2 size={16} />} label="Conversation owner" value={lead.brokerage?.name ?? 'This brokerage'} />
+              </div>
+              <p className="mt-4 text-xs leading-5 text-[#7b8a84]">These roles belong to the brokerage handling your request. Listing attribution is shown separately on the property record.</p>
+            </section>
+
+            <section className="rounded-[2rem] bg-[#101f1c] p-6 text-white shadow-xl shadow-[var(--brand-primary)]/15">
+              <ShieldCheck size={24} className="text-[#f5c16c]" />
+              <h2 className="mt-4 text-xl font-semibold">Private to this storefront</h2>
+              <p className="mt-3 text-sm leading-6 text-white/68">This request is connected only to your signed-in account and the brokerage storefront where you submitted it. Other broker storefronts cannot open it.</p>
+            </section>
+          </aside>
+        </div>
+      </section>
+    </Shell>
   )
 }
 

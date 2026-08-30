@@ -225,7 +225,7 @@ class LeadNotificationService
       lead = delivery.lead
       showing = delivery.showing_appointment || lead&.showing_appointments&.order(Arel.sql("scheduled_starts_at DESC NULLS LAST"), created_at: :desc)&.first
       greeting = delivery.recipient_role == "agent" ? (lead&.assigned_agent&.name || showing&.agent&.name || "Team") : (lead&.name.presence || "there")
-      cta_path = delivery.recipient_role == "agent" ? "/admin/leads/#{lead&.id}" : "/account/requests"
+      cta_path = delivery.recipient_role == "agent" ? "/admin/leads/#{lead&.id}" : consumer_request_path(lead)
       cta_url = delivery.recipient_role == "agent" ? "#{frontend_url(delivery.lead)}#{cta_path}" : app_link_url(cta_path, lead: delivery.lead)
       body = email_body_copy(delivery, showing, greeting: greeting)
 
@@ -359,10 +359,14 @@ class LeadNotificationService
 
       case delivery.event_name
       when "showing_update"
-        "Hafa Homes: #{showing&.status.to_s.humanize} showing for #{listing}. #{format_time(showing&.scheduled_starts_at, timezone: showing&.timezone)}. View details: #{app_link_url('/account/requests', lead: lead)}"
+        "Hafa Homes: #{showing&.status.to_s.humanize} showing for #{listing}. #{format_time(showing&.scheduled_starts_at, timezone: showing&.timezone)}. View details: #{app_link_url(consumer_request_path(lead), lead: lead)}"
       else
-        "Hafa Homes: update for #{listing}. View details: #{app_link_url('/account/requests', lead: lead)}"
+        "Hafa Homes: update for #{listing}. View details: #{app_link_url(consumer_request_path(lead), lead: lead)}"
       end
+    end
+
+    def consumer_request_path(lead)
+      lead&.id ? "/account/requests/#{lead.id}" : "/account/requests"
     end
 
     def format_time(value, timezone: "Pacific/Guam")
