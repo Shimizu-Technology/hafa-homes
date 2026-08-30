@@ -95,11 +95,17 @@ The consumer projection does not include staff notes, internal showing notes, de
 - Village detail resolves through `GET /api/v1/villages/:slug` and renders explicit loading, listing-loading, empty, error, and unavailable states. Unknown slugs no longer appear as a generic empty Guam village.
 - Listing detail links reciprocally to its village while preserving the listing's own nested return path. Village listing cards likewise return to the exact village record.
 
+### Staff intent context slice
+
+- The intent queue's status, visitor identity, sort, and pagination are canonical URL state. Invalid or unknown values are removed, and changing an operational filter resets pagination.
+- Free-text intent search remains in component memory and is removed from canonical and return URLs because it can contain names, email addresses, listing identifiers, or other private investigation text.
+- Top and latest listing links carry the exact intent queue through the admin listing route. Listing detail retains its admin-view behavior, labels the origin as search intent, and returns to that queue instead of the lead inbox.
+- Converted-lead links also preserve the intent origin, and query caches include the authenticated staff identity.
+
 ## Planned slices
 
-1. Preserve the staff intent queue's operational status, identity, sort, and page in the URL while keeping free-text search local; listing detours must return to that exact queue, not the lead inbox.
-2. Publish and verify the iOS universal-link contract for exact consumer records, then use canonical HTTPS record URLs in new notifications while retaining the existing `/open` handoff for previously issued links.
-3. Add further bounded related-record summaries with separately pageable collections as volume grows.
+1. Publish and verify the iOS universal-link contract for exact consumer records, then use canonical HTTPS record URLs in new notifications while retaining the existing `/open` handoff for previously issued links.
+2. Add further bounded related-record summaries with separately pageable collections as volume grows.
 
 ## Deliberate deferrals
 

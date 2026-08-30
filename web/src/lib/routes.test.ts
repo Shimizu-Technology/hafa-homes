@@ -43,6 +43,13 @@ describe('route builders', () => {
     expect(routes.adminLead(42, customer)).toContain('return_to=%2Fadmin%2Fbrokerages%2F2%2Fcustomers%2F7')
   })
 
+  it('preserves staff intent context through an admin listing detour', () => {
+    const intent = routes.adminIntent('status=active&identity=signed_in&sort=views_desc&page=2')
+
+    expect(intent).toBe('/admin/intent?status=active&identity=signed_in&sort=views_desc&page=2')
+    expect(routes.adminListing(27, intent)).toBe('/listings/27?from=admin&return_to=%2Fadmin%2Fintent%3Fstatus%3Dactive%26identity%3Dsigned_in%26sort%3Dviews_desc%26page%3D2')
+  })
+
   it('preserves a request-list page through a request and related listing journey', () => {
     const requestPath = routes.request(1, '/account/requests?page=2')
 

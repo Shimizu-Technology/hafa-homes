@@ -32,6 +32,7 @@ export const routes = {
     return `/${query ? `?${query}` : ''}`
   },
   listing: (listingId: number | string, returnTo?: string | null) => withReturnTo(`/listings/${routeId(listingId)}`, returnTo),
+  adminListing: (listingId: number | string, returnTo?: string | null) => withReturnTo(`/listings/${routeId(listingId)}?from=admin`, returnTo),
   village: (slug: string, returnTo?: string | null) => withReturnTo(`/villages/${encodeURIComponent(slug)}`, returnTo),
   agent: (agentId: number | string, returnTo?: string | null) => withReturnTo(`/agents/${routeId(agentId)}`, returnTo),
   requests: () => '/account/requests',
@@ -39,6 +40,10 @@ export const routes = {
   adminLeads: (params?: URLSearchParams | string) => {
     const query = typeof params === 'string' ? params : params?.toString()
     return `/admin/leads${query ? `?${query}` : ''}`
+  },
+  adminIntent: (params?: URLSearchParams | string) => {
+    const query = typeof params === 'string' ? params : params?.toString()
+    return `/admin/intent${query ? `?${query}` : ''}`
   },
   adminLead: (leadId: number | string, returnTo?: string | null) => withReturnTo(`/admin/leads/${routeId(leadId)}`, returnTo),
   adminCustomer: (brokerageId: number | string, userId: number | string, returnTo?: string | null) => withReturnTo(`/admin/brokerages/${routeId(brokerageId)}/customers/${routeId(userId)}`, returnTo),
