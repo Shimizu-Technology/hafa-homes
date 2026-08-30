@@ -46,7 +46,7 @@ import {
 import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query'
 import { apiFetch, authHeaders } from './lib/api'
 import { routes, safeInternalPath as safeReturnPath } from './lib/routes'
-import { datetimeLocalValue } from './lib/dateTime'
+import { datetimeLocalValue, zonedDateTimeToIso } from './lib/dateTime'
 import { useAuthContext } from './contexts/AuthContext'
 import type { Brokerage } from './contexts/BrokerageContext'
 import { groupListingsByVillage } from './lib/mapClusters'
@@ -5583,13 +5583,14 @@ function ShowingScheduler({ lead, assignableAgents, mutation }: { lead: Lead; as
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const form = new FormData(event.currentTarget)
+    const timezone = String(form.get('timezone') || 'Pacific/Guam')
     const payload: Partial<ShowingAppointment> & { lead_id: number; id?: number } = {
       lead_id: lead.id,
       id: showing?.id,
       agent_id: form.get('agent_id') ? Number(form.get('agent_id')) : null,
-      scheduled_starts_at: String(form.get('scheduled_starts_at') || ''),
-      scheduled_ends_at: String(form.get('scheduled_ends_at') || ''),
-      timezone: String(form.get('timezone') || 'Pacific/Guam'),
+      scheduled_starts_at: zonedDateTimeToIso(String(form.get('scheduled_starts_at') || ''), timezone),
+      scheduled_ends_at: zonedDateTimeToIso(String(form.get('scheduled_ends_at') || ''), timezone),
+      timezone,
       tour_type: String(form.get('tour_type') || 'in_person') as ShowingAppointment['tour_type'],
       status: String(form.get('status') || 'proposed') as ShowingAppointment['status'],
       location: String(form.get('location') || ''),

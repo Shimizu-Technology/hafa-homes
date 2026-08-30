@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { ShowingDetailPage } from './App'
 import App from './App'
-import { datetimeLocalValue } from './lib/dateTime'
+import { datetimeLocalValue, zonedDateTimeToIso } from './lib/dateTime'
 
 vi.mock('./contexts/AuthContext', () => ({
   useAuthContext: () => ({ isClerkEnabled: true, isSignedIn: true, isLoading: false, userId: 'staff_7' }),
@@ -82,6 +82,8 @@ afterEach(() => {
 describe('ShowingDetailPage route states', () => {
   it('preserves the saved appointment timezone in datetime-local values', () => {
     expect(datetimeLocalValue('2026-08-31T00:00:00Z', 'Pacific/Honolulu')).toBe('2026-08-30T14:00')
+    expect(zonedDateTimeToIso('2026-08-30T14:00', 'Pacific/Honolulu')).toBe('2026-08-31T00:00:00.000Z')
+    expect(zonedDateTimeToIso('2026-09-01T20:00', 'Pacific/Guam')).toBe('2026-09-01T10:00:00.000Z')
   })
 
   it('renders the exact showing with timezone and reciprocal record links', async () => {
