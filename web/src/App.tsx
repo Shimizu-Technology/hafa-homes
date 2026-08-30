@@ -4506,6 +4506,7 @@ function LeadDetailPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const returnPath = safeReturnPath(searchParams.get('return_to'), '/admin/leads')
+  const leadReturnLabel = returnPath.startsWith('/admin/showings/') ? 'Back to showing' : returnPath.startsWith('/admin/showings') ? 'Back to showings' : 'Back to leads'
   const { data, isLoading, isError, refetch } = useQuery({ queryKey: ['lead', id], queryFn: () => fetchLead(id || ''), enabled: Boolean(id) })
   const mutation = useMutation({
     mutationFn: (payload: LeadUpdatePayload) => updateLead(data!.lead.id, payload),
@@ -4541,7 +4542,7 @@ function LeadDetailPage() {
   return (
     <AdminShell>
       <section className="mx-auto max-w-7xl px-4 pb-10 pt-6 sm:px-5">
-        <button onClick={() => navigate(returnPath)} className="mb-6 inline-flex min-h-11 items-center gap-2 rounded-full bg-white px-5 text-sm font-bold text-[#304942]"><ArrowLeft size={16} /> {returnPath.startsWith('/admin/showings/') ? 'Back to showing' : 'Back to leads'}</button>
+        <button onClick={() => navigate(returnPath)} className="mb-6 inline-flex min-h-11 items-center gap-2 rounded-full bg-white px-5 text-sm font-bold text-[#304942]"><ArrowLeft size={16} /> {leadReturnLabel}</button>
         {isLoading && <StateCard>Loading lead...</StateCard>}
         {isError && <StateCard tone="error">Unable to load this lead.</StateCard>}
         {mutation.isError && <StateCard tone="error">{displayErrorMessage(mutation.error, 'Unable to update lead right now.')}</StateCard>}
@@ -5714,6 +5715,7 @@ export function ShowingDetailPage() {
   const { userId } = useAuthContext()
   const [searchParams] = useSearchParams()
   const returnPath = safeReturnPath(searchParams.get('return_to'), '/admin/showings')
+  const returnLabel = returnPath === '/admin' ? 'Back to dashboard' : returnPath.startsWith('/admin/leads/') ? 'Back to lead' : 'Back to showing schedule'
   const { data, isLoading, error } = useQuery({
     queryKey: ['showing-appointment', userId, id],
     queryFn: () => fetchShowingAppointment(id),
@@ -5728,7 +5730,7 @@ export function ShowingDetailPage() {
     return (
       <AdminShell>
         <section className="mx-auto max-w-7xl px-4 py-10 sm:px-5">
-          <Link to={returnPath} className="mb-6 inline-flex min-h-11 items-center gap-2 rounded-full bg-white px-5 text-sm font-bold text-[#304942] shadow-sm"><ArrowLeft size={16} /> Back to showing schedule</Link>
+          <Link to={returnPath} className="mb-6 inline-flex min-h-11 items-center gap-2 rounded-full bg-white px-5 text-sm font-bold text-[#304942] shadow-sm"><ArrowLeft size={16} /> {returnLabel}</Link>
           <StateCard tone="error">{notFound ? 'This showing is not available in your staff workspace.' : displayErrorMessage(error, 'Unable to load this showing.')}</StateCard>
         </section>
       </AdminShell>
@@ -5743,7 +5745,7 @@ export function ShowingDetailPage() {
   return (
     <AdminShell>
       <section className="mx-auto max-w-7xl px-4 pb-12 pt-6 sm:px-5">
-        <Link to={returnPath} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-white px-5 text-sm font-bold text-[#304942] shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"><ArrowLeft size={16} /> Back to showing schedule</Link>
+        <Link to={returnPath} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-white px-5 text-sm font-bold text-[#304942] shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"><ArrowLeft size={16} /> {returnLabel}</Link>
 
         <header className="relative mt-5 overflow-hidden rounded-[2.25rem] bg-[var(--brand-primary)] p-6 text-white shadow-2xl shadow-[var(--brand-primary)]/20 md:p-9">
           <div className="absolute -right-16 -top-20 h-64 w-64 rounded-full bg-[#f5c16c]/15 blur-3xl" />

@@ -56,12 +56,12 @@ const showing = {
   created_by: { id: 7, full_name: 'Bea Broker', email: 'bea@example.test', role: 'brokerage_admin' },
 }
 
-function renderRoute() {
+function renderRoute(initialEntry = '/admin/showings/81?return_to=%2Fadmin%2Fshowings%3Fpage%3D3') {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, retryDelay: 0 } } })
 
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={['/admin/showings/81?return_to=%2Fadmin%2Fshowings%3Fpage%3D3']}>
+      <MemoryRouter initialEntries={[initialEntry]}>
         <Routes>
           <Route path="/admin/showings/:id" element={<ShowingDetailPage />} />
         </Routes>
@@ -100,6 +100,14 @@ describe('ShowingDetailPage route states', () => {
     expect(screen.getByRole('link', { name: 'Back to showing schedule' }).getAttribute('href')).toBe('/admin/showings?page=3')
     expect(screen.getByRole('link', { name: 'Open lead workspace' }).getAttribute('href')).toBe('/admin/leads/42?return_to=%2Fadmin%2Fshowings%2F81%3Freturn_to%3D%252Fadmin%252Fshowings%253Fpage%253D3')
     expect(screen.getByRole('link', { name: 'Open listing' }).getAttribute('href')).toBe('/listings/27?return_to=%2Fadmin%2Fshowings%2F81%3Freturn_to%3D%252Fadmin%252Fshowings%253Fpage%253D3')
+  })
+
+  it('labels a dashboard return without misidentifying it as the schedule', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => response({ showing_appointment: showing })))
+
+    renderRoute('/admin/showings/81?return_to=%2Fadmin')
+
+    expect(await screen.findByRole('link', { name: 'Back to dashboard' })).toBeTruthy()
   })
 
   it('labels the reciprocal listing return for a staff showing', async () => {
