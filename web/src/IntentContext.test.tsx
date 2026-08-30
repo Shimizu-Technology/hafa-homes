@@ -134,7 +134,7 @@ describe('staff intent operational context', () => {
 
     await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/admin/intent'))
     expect(intentRequestUrls.every((url) => !url.includes('page=100'))).toBe(true)
-    expect(intentRequestUrls.at(-1)).toContain('page=1')
+    expect(new URL(intentRequestUrls.at(-1)!, window.location.origin).searchParams.get('page')).toBe('1')
   })
 
   it('removes intent page values outside JavaScript safe integer range before querying', async () => {
@@ -153,7 +153,7 @@ describe('staff intent operational context', () => {
 
     await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/admin/intent'))
     expect(intentRequestUrls.every((url) => !url.includes('page=9007199254740992'))).toBe(true)
-    expect(intentRequestUrls.at(-1)).toContain('page=1')
+    expect(new URL(intentRequestUrls.at(-1)!, window.location.origin).searchParams.get('page')).toBe('1')
   })
 
   it('labels an admin listing detour with the exact intent return', async () => {
