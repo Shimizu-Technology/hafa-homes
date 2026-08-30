@@ -66,7 +66,7 @@ The consumer projection does not include staff notes, internal showing notes, de
 - The record separates customer-visible notes from internal notes and presents the appointment timezone, coordination roles, customer summary, and related listing.
 - The lead scheduler renders existing datetime inputs in the appointment's saved timezone and preserves that timezone on update.
 - Related lead and listing links carry a validated return path to the exact showing; the lead workspace honors that return path.
-- The staff serializer adds only a bounded lead summary. The consumer serializer explicitly removes that summary together with internal notes and creator data.
+- Only the exact staff detail serializer adds a bounded lead summary; collection and consumer projections never construct that nested PII. The consumer serializer also removes internal notes and creator data.
 
 ## Planned slices
 

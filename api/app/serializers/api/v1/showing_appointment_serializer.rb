@@ -20,7 +20,6 @@ module Api
             internal_notes: showing.internal_notes,
             created_at: showing.created_at,
             updated_at: showing.updated_at,
-            lead: lead_json(showing.lead),
             listing: listing_json(showing.listing),
             brokerage: brokerage_json(showing.brokerage),
             agent: agent_json(showing.agent),
@@ -28,10 +27,14 @@ module Api
           }
         end
 
+        def detail(showing)
+          summary(showing).merge(lead: lead_json(showing.lead))
+        end
+
         def consumer(showing)
           return nil unless showing
 
-          summary(showing).except(:internal_notes, :created_by, :created_by_id, :lead)
+          summary(showing).except(:internal_notes, :created_by, :created_by_id)
         end
 
         private

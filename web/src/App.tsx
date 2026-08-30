@@ -5661,11 +5661,12 @@ function ShowingScheduler({ lead, assignableAgents, mutation }: { lead: Lead; as
 }
 
 function AdminShowingsPage() {
+  const { userId } = useAuthContext()
   const location = useLocation()
   const [searchParams, setSearchParams] = useSearchParams()
   const requestedPage = Number(searchParams.get('page') || '1')
   const page = Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1
-  const { data, isLoading, isError } = useQuery({ queryKey: ['showing-appointments', page], queryFn: () => fetchShowingAppointments(page), placeholderData: keepPreviousData })
+  const { data, isLoading, isError } = useQuery({ queryKey: ['showing-appointments', userId, page], queryFn: () => fetchShowingAppointments(page), placeholderData: keepPreviousData })
   const showings = data?.showing_appointments ?? []
 
   function selectPage(nextPage: number) {
@@ -5709,10 +5710,11 @@ function AdminShowingsPage() {
 
 export function ShowingDetailPage() {
   const { id = '' } = useParams()
+  const { userId } = useAuthContext()
   const [searchParams] = useSearchParams()
   const returnPath = safeReturnPath(searchParams.get('return_to'), '/admin/showings')
   const { data, isLoading, error } = useQuery({
-    queryKey: ['showing-appointment', id],
+    queryKey: ['showing-appointment', userId, id],
     queryFn: () => fetchShowingAppointment(id),
     enabled: Boolean(id),
     retry: (attempts, showingError) => !(showingError instanceof ApiFetchError && showingError.status === 404) && attempts < 2,

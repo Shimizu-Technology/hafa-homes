@@ -11,7 +11,7 @@ module Api
 
       def index
         showings = staff_showing_appointment_scope
-          .includes(:lead, :brokerage, :agent, :created_by, listing: [:village, :listing_photos])
+          .includes(:brokerage, :agent, :created_by, listing: [:village, :listing_photos])
           .order(Arel.sql("scheduled_starts_at DESC NULLS LAST"), created_at: :desc)
 
         response = paginated_response(showings, :showing_appointments, default_per_page: 100, max_per_page: 100) do |showing|
@@ -21,7 +21,7 @@ module Api
       end
 
       def show
-        render json: { showing_appointment: ShowingAppointmentSerializer.summary(@showing_appointment) }
+        render json: { showing_appointment: ShowingAppointmentSerializer.detail(@showing_appointment) }
       end
 
       def create
