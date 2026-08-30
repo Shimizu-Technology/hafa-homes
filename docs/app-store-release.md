@@ -17,6 +17,7 @@ _Last updated: 2026-08-16 while preparing the iOS `1.0.3` release candidate in P
 - A local iOS build was also attempted, but local Xcode `16.4` / Swift `6.1` cannot build Expo SDK 56's `ExpoModulesJSI` Swift package because it declares Swift tools `6.2`. Use EAS cloud for future production builds unless local Xcode is upgraded.
 - Production API env is configured in EAS: `EXPO_PUBLIC_API_URL=https://hafa-homes.onrender.com`
 - Production brokerage routing is explicit in EAS: `EXPO_PUBLIC_BROKERAGE_SLUG=hafa-homes-demo`
+- EAS production builds fail before dependency installation unless the API is public HTTPS, Clerk uses a `pk_live_` key, brokerage routing is explicit, Apple authentication is enabled, and a public Mapbox token is present. Run `npm run preflight:production` from `mobile/` with the production environment before starting a release.
 - Production Mapbox token is configured in EAS as a sensitive variable.
 
 ## Current mobile feature set to release/review

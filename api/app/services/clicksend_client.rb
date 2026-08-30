@@ -47,7 +47,7 @@ class ClicksendClient
         message_id = json.dig("data", "messages", 0, "message_id") || "unknown"
         { success: true, message_id: message_id }
       else
-        { success: false, error: json["response_code"].presence || json["response_msg"].presence || "api_error" }
+        { success: false, error: provider_error_code(json["response_code"]) }
       end
     end
 
@@ -92,11 +92,18 @@ class ClicksendClient
       json = JSON.parse(response.body) rescue {}
       return { success: true, json: json } if response.code.to_i == 200
 
-      Rails.logger.error("[ClicksendClient] HTTP #{response.code}: #{response.body}")
+      Rails.logger.error("[ClicksendClient] HTTP #{response.code}")
       { success: false, error: "http_#{response.code}" }
     rescue StandardError => e
-      Rails.logger.error("[ClicksendClient] HTTP error: #{e.class} #{e.message}")
-      { success: false, error: e.message }
+      Rails.logger.error("[ClicksendClient] HTTP error: #{e.class}")
+      { success: false, error: "network_error" }
+    end
+
+    def provider_error_code(value)
+      normalized = value.to_s.strip.upcase
+      return normalized.downcase if normalized.match?(/\A[A-Z][A-Z0-9_]{0,39}\z/)
+
+      "provider_rejected"
     end
   end
 end

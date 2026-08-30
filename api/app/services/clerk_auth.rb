@@ -154,7 +154,7 @@ class ClerkAuth
       return jwks if jwks.present?
 
       issuer = ENV.fetch("CLERK_ISSUER", nil)
-      return "#{issuer}/.well-known/jwks.json" if issuer.present?
+      return "#{issuer.delete_suffix('/')}/.well-known/jwks.json" if issuer.present?
 
       Rails.logger.warn("Neither CLERK_JWKS_URL nor CLERK_ISSUER configured")
       nil
