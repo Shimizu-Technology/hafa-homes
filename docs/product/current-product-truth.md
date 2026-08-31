@@ -1,6 +1,6 @@
 # Hafa Homes current product truth
 
-_Last verified: 2026-08-31 after the connected-record, tenancy, deletion, notification-reliability, and release-preflight work._
+_Last verified: 2026-08-31 after iOS `1.0.4 (20)` entered internal TestFlight._
 
 The canonical re-review, findings, rationale, and remediation sequence are in `2026-08-16-review-findings-and-remediation-plan.md`.
 
@@ -9,7 +9,7 @@ This is the canonical, implementation-backed description of Hafa Homes. Older PR
 | Capability | Current state | Pilot requirement |
 |---|---|---|
 | Public web search | Working | Replace demonstration inventory with authorized market data |
-| iOS application | `1.0.3 (17)` is live; `1.0.4` is the next TestFlight train | Validate the new build on a physical iPhone before broader distribution |
+| iOS application | `1.0.3 (17)` is live; `1.0.4 (20)` is valid and in internal TestFlight | Complete and explicitly accept the physical-iPhone matrix before broader distribution |
 | Android | Expo codebase works cross-platform; no public release | Play Console release and policy completion |
 | Listing inventory | Demonstration facts and stock imagery, visibly labeled | Written MLS/IDX/feed authorization and compliant attribution |
 | Brokerage routing | Domain/native-slug resolution implemented | Add the pilot's approved domains and build-time native slug |
@@ -24,7 +24,7 @@ This is the canonical, implementation-backed description of Hafa Homes. Older PR
 | First-party intent | Working with progressive prompts and retention pruning | Schedule pruning and calibrate prompt settings with pilot data |
 | Broker CRM | Leads, assignments, notes, tasks, activities, showings, notifications, users, and audit views work | Pilot role mapping, training, and acceptance testing |
 | Account deletion | Local PII is tombstoned before provider deletion, recreation is blocked, and provider cleanup is retried durably | Monitor the reconciliation job and complete broker/legal retention review |
-| Consumer notifications | Lead/showing delivery intents are transactional and reconciled; new links use canonical HTTPS record URLs | Enable verified providers/domains and verify the Håfa Homes Apple association file before distributing `1.0.4` |
+| Consumer notifications | Lead/showing delivery intents are transactional and reconciled; new links use canonical HTTPS record URLs; the Håfa Homes Apple association file is deployed and verified through Apple's CDN | Enable verified providers/domains and validate notification-to-installed-app behavior on a physical iPhone before broader distribution |
 | MLS synchronization | Monitor/data concepts only | Provider adapter, credentials, reconciliation, and compliance rules |
 | Property management | Not implemented | Explicitly deferred until search/CRM pilot validation |
 
