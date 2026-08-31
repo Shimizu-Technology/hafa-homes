@@ -1,6 +1,6 @@
 # App Store / TestFlight Release Notes
 
-_Last updated: 2026-08-31 while preparing the iOS `1.0.4` TestFlight release._
+_Last updated: 2026-08-31 after submitting iOS `1.0.4 (20)` to internal TestFlight._
 
 ## Current status
 
@@ -9,11 +9,13 @@ _Last updated: 2026-08-31 while preparing the iOS `1.0.4` TestFlight release._
 - iOS bundle ID: `com.shimizutechnology.hafahomes`
 - App Store Connect app ID: `6773042903`
 - iOS `1.0.3 (17)` is live on the App Store as of 2026-08-18.
-- iOS `1.0.4` is the next TestFlight train; EAS remote versioning should assign build `18` or later.
+- iOS `1.0.4 (20)` is valid in App Store Connect and available to configured internal TestFlight testers.
+- EAS submission ID for the `1.0.4` upload: `8b6cbfe4-bbbc-4a82-aa1f-06cefed3d2b8`.
+- App Store Connect build ID for `1.0.4 (20)`: `6907a818-f5bb-4850-b69d-7e6591dbeb4c`.
 - EAS build ID for `1.0.3 (17)`: `164ddb57-1bc6-4c20-a06c-2c568244de66`.
 - EAS submission ID for the `1.0.3` App Store upload: `f9027b93-eca1-4eb0-b2e2-94229b5a14c6`.
 - App Store Connect submission ID for `1.0.3`: `c126d23c-13e1-4cf1-8cc2-2f6a82b26df3`.
-- A local iOS build was also attempted, but local Xcode `16.4` / Swift `6.1` cannot build Expo SDK 56's `ExpoModulesJSI` Swift package because it declares Swift tools `6.2`. Use EAS cloud for future production builds unless local Xcode is upgraded.
+- The `1.0.4 (20)` archive was produced successfully with a local EAS production build and Xcode `26.6` after the monthly EAS cloud iOS quota was exhausted. Local EAS builds do not receive an EAS build ID.
 - Production API env is configured in EAS: `EXPO_PUBLIC_API_URL=https://hafa-homes.onrender.com`
 - Production brokerage routing is explicit in EAS: `EXPO_PUBLIC_BROKERAGE_SLUG=hafa-homes-demo`
 - EAS production builds fail before dependency installation unless the API is public HTTPS, Clerk uses a `pk_live_` key, brokerage routing is explicit, Apple authentication is enabled, and a public Mapbox token is present. Run `npm run preflight:production` from `mobile/` with the production environment before starting a release.
@@ -129,11 +131,30 @@ Local release validation completed on 2026-08-16:
 
 The repository does not contain evidence of the planned physical-iPhone smoke test before public release. Treat that as historical process debt and complete the physical-device matrix for `1.0.4` before any broader rollout.
 
-## Planned 1.0.4 TestFlight build
+## Submitted 1.0.4 TestFlight build
 
-`mobile/app.json` declares version `1.0.4`. EAS uses remote app-version numbering with `autoIncrement`, so the production build must resolve to build `18` or later. This train includes the connected-record navigation, stricter tenant and staff boundaries, durable account deletion, transactional notification intents with submission idempotency, canonical HTTPS universal links, and production configuration preflight.
+```text
+Version: 1.0.4
+Build number: 20
+Source commit: b848e2e82f3e43040e205cf118c45608ff0d2329
+Implementation PRs: #24 through #39
+Build method: Local EAS production build with Xcode 26.6
+EAS build ID: None; local builds do not receive one
+EAS submission ID: 8b6cbfe4-bbbc-4a82-aa1f-06cefed3d2b8
+App Store Connect build ID: 6907a818-f5bb-4850-b69d-7e6591dbeb4c
+App Store Connect processing state: VALID
+App Store Connect beta state: BETA_INTERNAL_TESTING
+Internal TestFlight state: IN_BETA_TESTING
+External TestFlight state: READY_FOR_BETA_SUBMISSION; not submitted externally
+IPA SHA-256: 979e9e6f967e399a27d414c897f9193d8385e12b6c0df8df54492d9782e2e2bd
+Signed associated domain: applinks:hafahomes.com
+```
 
-Before starting the build, merge every implementation PR, confirm the production web/API deploys, verify `https://hafahomes.com/.well-known/apple-app-site-association` returns the expected JSON directly, run the full repository gates, and complete local web plus fresh-simulator QA. Submit to TestFlight for Leon's testing. Do not broaden rollout until Leon completes and explicitly accepts the physical-device matrix. Do not submit this train to public App Review as part of that operation.
+This train includes connected-record navigation, stricter tenant and staff boundaries, durable account deletion, transactional notification intents with submission idempotency, canonical HTTPS universal links, and production configuration preflight. The production API, apex association file, and Apple CDN association response were verified before submission. Repository gates, local web QA, and fresh-simulator QA passed.
+
+The first cloud attempt exhausted the free monthly iOS build quota after EAS advanced the remote build number. The first local attempt then exposed an App Store provisioning profile that predated the Associated Domains capability. The profile was regenerated with that capability, and the succeeding local EAS build resolved to build `20`. The uploaded archive passed integrity and code-signing verification; its signed entitlements contain `applinks:hafahomes.com`.
+
+Build `20` is for internal physical-device acceptance. Do not submit it for external beta review or public App Review until Leon completes and explicitly accepts the physical-iPhone matrix.
 
 ## Native Apple/Clerk setup for the next build
 
