@@ -1,9 +1,6 @@
-import type { LeadIdempotencyToken } from './leadIdempotency'
+import type { createLeadIdempotencyManager } from './leadIdempotency'
 
-type LeadIdempotencyManager = {
-  prepare: (payload: unknown, ownerId?: string) => Promise<LeadIdempotencyToken>
-  complete: (token: LeadIdempotencyToken) => void | Promise<void>
-}
+type LeadIdempotencyManager = ReturnType<typeof createLeadIdempotencyManager>
 
 export type LeadSubmissionConflict = {
   reset_session?: boolean

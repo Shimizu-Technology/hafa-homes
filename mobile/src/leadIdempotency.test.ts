@@ -16,6 +16,10 @@ describe('lead submission idempotency', () => {
       .toBe(stableJson({ nested: { a: 1, b: 2 }, email: 'buyer@example.test' }))
   })
 
+  it('orders keys by code point instead of the runtime locale', () => {
+    expect(stableJson({ ä: 1, z: 2 })).toBe('{"z":2,"ä":1}')
+  })
+
   it('reuses a pending key and rotates it only after success', async () => {
     const uuid = vi.fn()
       .mockReturnValueOnce('11111111-1111-4111-8111-111111111111')

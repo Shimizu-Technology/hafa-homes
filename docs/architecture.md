@@ -178,8 +178,9 @@ Fields/concepts:
 
 Public lead submissions use a UUID idempotency key that is scoped to the resolved
 brokerage and bound to a canonical request fingerprint. Web and native clients keep
-the key across transport retries and clear it only after a successful response, so a
-timeout cannot create a second lead or a second set of notifications.
+the key across transport retries and clear it after a successful response or when the
+API explicitly returns `reset_idempotency_key: true`, so a timeout cannot create a
+second lead or a second set of notifications.
 
 ### Background job ownership
 
