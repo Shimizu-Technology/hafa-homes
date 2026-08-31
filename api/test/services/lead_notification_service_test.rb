@@ -30,7 +30,7 @@ class LeadNotificationServiceTest < ActiveSupport::TestCase
     refute_includes html, "/open?target="
   end
 
-  test "notification links fall back to configured frontend URL without a brokerage domain" do
+  test "consumer notification links use the associated Hafa Homes domain" do
     brokerage = create_brokerage(name: "Alpha Realty", slug: "alpha")
     lead = Lead.create!(brokerage: brokerage, lead_type: "contact", name: "Buyer", email: "buyer@example.com")
     delivery = LeadNotificationService.queue_manual(
@@ -45,8 +45,8 @@ class LeadNotificationServiceTest < ActiveSupport::TestCase
     ENV["FRONTEND_URL"] = "https://fallback.test/"
     html = LeadNotificationService.send(:email_html, delivery)
 
-    assert_includes html, "https://fallback.test/account/requests/#{lead.id}"
-    refute_includes html, "https://fallback.test//account"
+    assert_includes html, "https://hafahomes.com/account/requests/#{lead.id}"
+    refute_includes html, "https://fallback.test/account/requests/#{lead.id}"
   ensure
     previous ? ENV["FRONTEND_URL"] = previous : ENV.delete("FRONTEND_URL")
   end

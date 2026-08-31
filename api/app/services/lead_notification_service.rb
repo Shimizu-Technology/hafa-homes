@@ -388,7 +388,10 @@ class LeadNotificationService
     end
 
     def app_link_url(path, lead:)
-      "#{frontend_url(lead).delete_suffix('/')}#{path}"
+      hostname = brokerage_hostname(lead)
+      return "https://#{hostname}#{path}" if hostname
+
+      "https://hafahomes.com#{path}"
     end
 
     def strip_leading_greeting(body, greeting)
@@ -400,10 +403,15 @@ class LeadNotificationService
     end
 
     def frontend_url(lead = nil)
-      hostname = lead&.brokerage&.brokerage_domains&.active&.order(primary: :desc, id: :asc)&.pick(:hostname)
-      return "https://#{hostname}" if hostname.present? && hostname != "localhost"
+      hostname = brokerage_hostname(lead)
+      return "https://#{hostname}" if hostname
 
       ENV.fetch("FRONTEND_URL") { ENV.fetch("WEB_ORIGIN", "http://localhost:5173").split(",").first.strip }
+    end
+
+    def brokerage_hostname(lead)
+      hostname = lead&.brokerage&.brokerage_domains&.active&.order(primary: :desc, id: :asc)&.pick(:hostname)
+      hostname if hostname.present? && hostname != "localhost"
     end
 
     def h(value)

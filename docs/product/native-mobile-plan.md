@@ -177,7 +177,7 @@ Still future:
 - editable safe consumer profile fields, including phone and preferred contact.
 - prefill showing/contact forms from signed-in profile data.
 - consumer/admin form option parity, including `Flexible` preferred time.
-- app-first deep links/universal links from emails/SMS into Requests/listings with web fallback.
+- broader universal-link coverage for broker-owned domains and future Android App Links.
 - saved searches/alerts.
 - notification preferences.
 - public App Store auth hardening with production Apple credentials.
@@ -202,7 +202,7 @@ Recommended behavior:
 3. Prefill showing/contact forms from signed-in profile data.
 4. Add `Flexible` to consumer preferred-time options so mobile/web/admin stay in parity.
 5. Fix notification copy so manual emails do not duplicate greetings.
-6. Add app-first notification link handling: universal links for installed app, web fallback for everyone else.
+6. Verify Håfa Homes universal links on a physical TestFlight device, then plan broker-domain and Android App Links separately.
 7. Keep `/web` live as the demo/admin/web/SEO surface.
 8. Build admin user lifecycle and audit-log hardening for broker demos.
 9. Build domain-first broker-branded website/app configuration in the shared platform.
