@@ -42,6 +42,7 @@ describe('production mobile environment validation', () => {
       'https://169.254.169.254',
       'https://100.64.0.1',
       'https://[::1]',
+      'https://[::]',
       'https://[::ffff:127.0.0.1]',
       'https://localhost.',
       'https://service.localhost',
