@@ -25,7 +25,7 @@ export async function submitLeadRequest({ endpoint, payload, ownerId, authHeader
   })
 
   let conflictPayload: LeadSubmissionConflict | null = null
-  if (response.status === 409) {
+  if (response.status === 409 || response.status === 422) {
     conflictPayload = await response.clone().json().catch(() => null) as LeadSubmissionConflict | null
     if (conflictPayload?.reset_idempotency_key) await idempotency.complete(idempotencyToken)
   } else if (response.ok) {

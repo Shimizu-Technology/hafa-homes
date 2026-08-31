@@ -15,6 +15,10 @@ export type LeadIdempotencyToken = {
   key: string
 }
 
+export function serverDirectedIdempotencyReset(status: number, payload: { reset_idempotency_key?: boolean } | null) {
+  return (status === 409 || status === 422) && payload?.reset_idempotency_key === true
+}
+
 const STORAGE_PREFIX = 'hafaHomes:leadSubmission:'
 const pendingStorageOperations = new Map<string, Promise<unknown>>()
 

@@ -12,7 +12,7 @@ const payload = {
 }
 
 describe('lead submission request flow', () => {
-  it('rotates the pending key after a server-directed idempotency reset', async () => {
+  it.each([409, 422])('rotates the pending key after a %i server-directed reset', async (resetStatus) => {
     const values = new Map<string, string>()
     let sequence = 0
     const idempotency = createLeadIdempotencyManager({
@@ -29,7 +29,7 @@ describe('lead submission request flow', () => {
       keys.push(new Headers(init?.headers).get('Idempotency-Key') || '')
       if (keys.length === 1) {
         return new Response(JSON.stringify({ reset_idempotency_key: true }), {
-          status: 409,
+          status: resetStatus,
           headers: { 'Content-Type': 'application/json' },
         })
       }

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createLeadIdempotencyManager, stableJson } from './leadIdempotency'
+import { createLeadIdempotencyManager, serverDirectedIdempotencyReset, stableJson } from './leadIdempotency'
 
 function memoryStorage() {
   const values = new Map<string, string>()
@@ -18,6 +18,13 @@ describe('lead submission idempotency', () => {
 
   it('orders keys by code point instead of the runtime locale', () => {
     expect(stableJson({ ä: 1, z: 2 })).toBe('{"z":2,"ä":1}')
+  })
+
+  it('recognizes both conflict and malformed-key reset responses', () => {
+    expect(serverDirectedIdempotencyReset(409, { reset_idempotency_key: true })).toBe(true)
+    expect(serverDirectedIdempotencyReset(422, { reset_idempotency_key: true })).toBe(true)
+    expect(serverDirectedIdempotencyReset(422, null)).toBe(false)
+    expect(serverDirectedIdempotencyReset(400, { reset_idempotency_key: true })).toBe(false)
   })
 
   it('reuses a pending key and rotates it only after success', async () => {

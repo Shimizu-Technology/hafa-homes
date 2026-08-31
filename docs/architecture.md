@@ -177,9 +177,11 @@ Fields/concepts:
   gated provider sends, and interrupted-send recovery.
 
 Public lead submissions use a UUID idempotency key that is scoped to the resolved
-brokerage and bound to a canonical request fingerprint. Web and native clients keep
-the key across transport retries and clear it after a successful response or when the
-API explicitly returns `reset_idempotency_key: true`, so a timeout cannot create a
+brokerage, canonical request fingerprint, and authenticated user when authorization
+is present. Anonymous submissions use an explicit anonymous owner scope and depend on
+the unguessable UUID remaining with the originating client. Web and native clients
+keep the key across transport retries and clear it after a successful response or when
+the API explicitly returns `reset_idempotency_key: true`, so a timeout cannot create a
 second lead or a second set of notifications.
 
 ### Background job ownership

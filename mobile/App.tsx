@@ -10,7 +10,7 @@ import { StatusBar } from 'expo-status-bar'
 import * as WebBrowser from 'expo-web-browser'
 import { apiFetch } from './src/apiClient'
 import { clearPendingAccountDeletion, hasPendingAccountDeletion, markPendingAccountDeletion } from './src/accountDeletionState'
-import { createLeadIdempotencyManager } from './src/leadIdempotency'
+import { createLeadIdempotencyManager, serverDirectedIdempotencyReset } from './src/leadIdempotency'
 import { advanceNavigationGeneration, agentRecordBackTarget, beginAppLinkNavigation, closeListingTransition, isCurrentNavigationGeneration, mergeAgentListingPage, openListingFromAgentTransition, requestDetailKey } from './src/navigation'
 import { WebView } from 'react-native-webview'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -686,13 +686,13 @@ async function createLead(payload: CreateLeadPayload, getToken?: GetAuthToken, o
     body: JSON.stringify({ lead: payload }),
   })
 
-  if (response.status === 409) {
+  if (response.status === 409 || response.status === 422) {
     const conflictPayload = await response.clone().json().catch(() => null) as { reset_session?: boolean; reset_idempotency_key?: boolean } | null
-    if (conflictPayload?.reset_idempotency_key) {
+    if (serverDirectedIdempotencyReset(response.status, conflictPayload)) {
       await idempotency.complete(idempotencyToken)
       throw new ApiRequestError('Please try submitting again.', response.status)
     }
-    if (retryAfterIntentReset && payload.intent_session_token && conflictPayload?.reset_session) {
+    if (response.status === 409 && retryAfterIntentReset && payload.intent_session_token && conflictPayload?.reset_session) {
       await clearLeadIntentSessionToken()
       await markLeadIntentCurrentContextRequired()
       throw new ApiRequestError('Your search session refreshed after sign-in. Please view the home again and reopen this form before submitting.', response.status)

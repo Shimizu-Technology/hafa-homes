@@ -58,7 +58,10 @@ module Api
 
         idempotency_key = request.headers["Idempotency-Key"].to_s.strip.presence
         if idempotency_key && !Lead::IDEMPOTENCY_KEY_FORMAT.match?(idempotency_key)
-          render json: { errors: [ "Idempotency key is invalid" ] }, status: :unprocessable_entity
+          render json: {
+            errors: [ "Idempotency key is invalid" ],
+            reset_idempotency_key: true
+          }, status: :unprocessable_entity
           return
         end
         idempotency_fingerprint = lead_submission_fingerprint(permitted, user: current_user)

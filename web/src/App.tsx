@@ -1135,10 +1135,10 @@ async function submitLead(payload: LeadPayload, ownerId: string | undefined, ret
     fetcher: apiFetch,
   })
 
+  if (conflictPayload?.reset_idempotency_key) {
+    throw new ApiFetchError('Please try submitting again.', response.status)
+  }
   if (response.status === 409) {
-    if (conflictPayload?.reset_idempotency_key) {
-      throw new ApiFetchError('Please try submitting again.', response.status)
-    }
     if (retryAfterIntentReset && payload.intent_session_token && conflictPayload?.reset_session) {
       clearLeadIntentSessionToken()
       markLeadIntentCurrentContextRequired()

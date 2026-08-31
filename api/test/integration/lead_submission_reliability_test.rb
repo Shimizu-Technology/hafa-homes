@@ -89,6 +89,7 @@ class LeadSubmissionReliabilityTest < ActionDispatch::IntegrationTest
 
     assert_response :unprocessable_entity
     assert_includes response.parsed_body.fetch("errors"), "Idempotency key is invalid"
+    assert_equal true, response.parsed_body.fetch("reset_idempotency_key")
   end
 
   test "keeps a committed lead and queued delivery when immediate job enqueue fails" do
