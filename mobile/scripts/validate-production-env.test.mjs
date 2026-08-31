@@ -42,9 +42,24 @@ describe('production mobile environment validation', () => {
       'https://169.254.169.254',
       'https://100.64.0.1',
       'https://[::1]',
+      'https://[::ffff:127.0.0.1]',
+      'https://localhost.',
       'https://service.localhost',
     ]) {
       expect(productionEnvironmentErrors({ ...valid, EXPO_PUBLIC_API_URL: apiUrl }).some((error) => error.includes('API_URL'))).toBe(true)
     }
+  })
+
+  it('rejects provider key prefixes without token material', () => {
+    const errors = productionEnvironmentErrors({
+      ...valid,
+      EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY: 'pk_live_',
+      EXPO_PUBLIC_MAPBOX_TOKEN: 'pk.',
+    })
+
+    expect(errors).toEqual(expect.arrayContaining([
+      'EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY must be a live Clerk publishable key',
+      'EXPO_PUBLIC_MAPBOX_TOKEN must be a public Mapbox token',
+    ]))
   })
 })

@@ -8,6 +8,14 @@ require "uri"
 class ClicksendClient
   BASE_URL = "https://rest.clicksend.com/v3"
   DEFAULT_SENDER_ID = "HafaHomes"
+  PROVIDER_RESPONSE_CODES = %w[
+    SUCCESS MISSING_CREDENTIALS ACCOUNT_NOT_ACTIVATED INVALID_RECIPIENT THROTTLED
+    INVALID_SENDER_ID INSUFFICIENT_CREDIT INVALID_CREDENTIALS COUNTRY_NOT_ENABLED
+    ALREADY_EXISTS EMPTY_MESSAGE TOO_MANY_RECIPIENTS MISSING_REQUIRED_FIELDS
+    INVALID_SCHEDULE NOT_ENOUGH_PERMISSION_TO_LIST_ID INTERNAL_ERROR INVALID_LANG
+    INVALID_VOICE SUBJECT_REQUIRED INVALID_MEDIA_FILE SOMETHING_IS_WRONG
+    REGISTRATION_NEEDED LINK_GENERATION_FAILED ADDRESS_LENGTH_EXCEEDED
+  ].freeze
 
   class << self
     def configured?
@@ -101,7 +109,7 @@ class ClicksendClient
 
     def provider_error_code(value)
       normalized = value.to_s.strip.upcase
-      return normalized.downcase if normalized.match?(/\A[A-Z][A-Z0-9_]{0,39}\z/)
+      return normalized.downcase if PROVIDER_RESPONSE_CODES.include?(normalized)
 
       "provider_rejected"
     end

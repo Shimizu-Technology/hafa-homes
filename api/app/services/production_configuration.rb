@@ -3,6 +3,7 @@ require "uri"
 
 class ProductionConfiguration
   class ConfigurationError < StandardError; end
+  CGNAT_RANGE = IPAddr.new("100.64.0.0/10")
 
   class << self
     def validate!(environment = ENV)
@@ -17,7 +18,7 @@ class ProductionConfiguration
       frontend_url = environment["FRONTEND_URL"].to_s.strip
 
       errors << "CLERK_ISSUER must be a public HTTPS URL" unless public_https_url?(issuer)
-      errors << "CLERK_SECRET_KEY must be a live Clerk secret key" unless secret_key.start_with?("sk_live_")
+      errors << "CLERK_SECRET_KEY must be a live Clerk secret key" unless secret_key.match?(/\Ask_live_\S+\z/)
       errors << "WEB_ORIGINS or WEB_ORIGIN must contain only public HTTPS origins" unless web_origins.any? && web_origins.all? { |origin| public_https_url?(origin) }
       if frontend_url.present? && !public_https_url?(frontend_url)
         errors << "FRONTEND_URL must be a public HTTPS origin"
@@ -63,9 +64,14 @@ class ProductionConfiguration
     end
 
     def local_hostname?(hostname)
-      hostname == "localhost" || hostname.end_with?(".local") || IPAddr.new(hostname).private? || IPAddr.new(hostname).loopback?
+      normalized = hostname.delete_prefix("[").delete_suffix("]").delete_suffix(".").downcase
+      address = IPAddr.new(normalized)
+      address = address.native if address.ipv4_mapped?
+
+      normalized == "localhost" || normalized.end_with?(".local") || address.private? || address.loopback? ||
+        address.link_local? || address.to_i.zero? || CGNAT_RANGE.include?(address)
     rescue IPAddr::InvalidAddressError
-      false
+      normalized == "localhost" || normalized.end_with?(".local")
     end
   end
 end

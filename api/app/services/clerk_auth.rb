@@ -145,7 +145,7 @@ class ClerkAuth
       Rails.cache.write(JWKS_CACHE_KEY, jwks, expires_in: JWKS_CACHE_TTL)
       jwks
     rescue HTTParty::Error, Timeout::Error => e
-      Rails.logger.error("Error fetching Clerk JWKS: #{e.message}")
+      Rails.logger.error("Error fetching Clerk JWKS: #{e.class}")
       nil
     end
 

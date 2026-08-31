@@ -28,12 +28,25 @@ class ProductionConfigurationTest < ActiveSupport::TestCase
     refute_includes error.message, "private-value"
   end
 
+  test "rejects an empty live Clerk key prefix" do
+    error = assert_raises(ProductionConfiguration::ConfigurationError) do
+      ProductionConfiguration.validate!(valid_environment.merge("CLERK_SECRET_KEY" => "sk_live_"))
+    end
+
+    assert_includes error.message, "CLERK_SECRET_KEY"
+  end
+
   test "rejects issuer credentials, paths, queries, and fragments" do
     [
       "https://user:pass@example.clerk.accounts.dev",
       "https://example.clerk.accounts.dev/path",
       "https://example.clerk.accounts.dev?tenant=test",
-      "https://example.clerk.accounts.dev#issuer"
+      "https://example.clerk.accounts.dev#issuer",
+      "https://[::ffff:127.0.0.1]",
+      "https://localhost.",
+      "https://100.64.0.1",
+      "https://169.254.169.254",
+      "https://[::]"
     ].each do |issuer|
       assert_raises(ProductionConfiguration::ConfigurationError) do
         ProductionConfiguration.validate!(valid_environment.merge("CLERK_ISSUER" => issuer))
