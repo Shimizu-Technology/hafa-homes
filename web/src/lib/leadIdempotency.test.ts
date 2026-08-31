@@ -69,6 +69,23 @@ describe('lead submission idempotency', () => {
     })
   })
 
+  it('continues with a non-persisted key when storage writes fail', async () => {
+    const manager = createLeadIdempotencyManager({
+      storage: {
+        getItem: () => null,
+        setItem: () => { throw new Error('storage unavailable') },
+        removeItem: () => undefined,
+      },
+      digest: async () => 'write-failure-digest',
+      uuid: () => '22222222-2222-4222-8222-222222222222',
+    })
+
+    await expect(manager.prepare({ lead_type: 'contact' })).resolves.toEqual({
+      fingerprint: 'write-failure-digest',
+      key: '22222222-2222-4222-8222-222222222222',
+    })
+  })
+
   it('does not turn successful submission cleanup into an error', async () => {
     const manager = createLeadIdempotencyManager({
       storage: {

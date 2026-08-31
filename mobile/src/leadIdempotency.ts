@@ -16,6 +16,7 @@ export type LeadIdempotencyToken = {
 }
 
 const STORAGE_PREFIX = 'hafaHomes:leadSubmission:'
+const pendingPreparations = new Map<string, Promise<LeadIdempotencyToken>>()
 
 export function stableJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`
@@ -33,18 +34,33 @@ export function createLeadIdempotencyManager({ storage, digest, uuid }: Dependen
     async prepare(payload: unknown, ownerId?: string): Promise<LeadIdempotencyToken> {
       const fingerprint = await digest(stableJson({ owner: ownerId || 'anonymous', payload }))
       const storageKey = `${STORAGE_PREFIX}${fingerprint}`
-      const key = uuid()
+      const pending = pendingPreparations.get(storageKey)
+      if (pending) return pending
 
-      try {
-        const existing = await storage.getItem(storageKey)
+      const preparation = (async () => {
+        let existing: string | null = null
+        try {
+          existing = await storage.getItem(storageKey)
+        } catch {
+          // A privacy setting or storage fault must not block a lead submission.
+        }
         if (existing) return { fingerprint, key: existing }
 
-        await storage.setItem(storageKey, key)
-      } catch {
-        // A privacy setting or storage fault must not block a lead submission.
-      }
+        const key = uuid()
+        try {
+          await storage.setItem(storageKey, key)
+        } catch {
+          // Continue with a non-persisted key when storage cannot be written.
+        }
+        return { fingerprint, key }
+      })()
 
-      return { fingerprint, key }
+      pendingPreparations.set(storageKey, preparation)
+      try {
+        return await preparation
+      } finally {
+        if (pendingPreparations.get(storageKey) === preparation) pendingPreparations.delete(storageKey)
+      }
     },
 
     async complete(token: LeadIdempotencyToken) {

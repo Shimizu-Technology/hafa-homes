@@ -69,6 +69,51 @@ describe('lead submission idempotency', () => {
     })
   })
 
+  it('continues with a non-persisted key when storage writes fail', async () => {
+    const manager = createLeadIdempotencyManager({
+      storage: {
+        getItem: async () => null,
+        setItem: async () => { throw new Error('storage unavailable') },
+        removeItem: async () => undefined,
+      },
+      digest: async () => 'write-failure-digest',
+      uuid: () => '22222222-2222-4222-8222-222222222222',
+    })
+
+    await expect(manager.prepare({ lead_type: 'contact' })).resolves.toEqual({
+      fingerprint: 'write-failure-digest',
+      key: '22222222-2222-4222-8222-222222222222',
+    })
+  })
+
+  it('shares one key across concurrent preparations for the same request', async () => {
+    let releaseRead: (() => void) | undefined
+    const readGate = new Promise<void>((resolve) => { releaseRead = resolve })
+    const setItem = vi.fn(async () => undefined)
+    const uuid = vi.fn()
+      .mockReturnValueOnce('11111111-1111-4111-8111-111111111111')
+      .mockReturnValueOnce('22222222-2222-4222-8222-222222222222')
+    const manager = createLeadIdempotencyManager({
+      storage: {
+        getItem: async () => { await readGate; return null },
+        setItem,
+        removeItem: async () => undefined,
+      },
+      digest: async () => 'concurrent-digest',
+      uuid,
+    })
+    const payload = { lead_type: 'contact', email: 'buyer@example.test' }
+
+    const first = manager.prepare(payload, 'user-1')
+    const second = manager.prepare(payload, 'user-1')
+    releaseRead?.()
+    const [firstToken, secondToken] = await Promise.all([first, second])
+
+    expect(secondToken.key).toBe(firstToken.key)
+    expect(uuid).toHaveBeenCalledTimes(1)
+    expect(setItem).toHaveBeenCalledTimes(1)
+  })
+
   it('does not turn successful submission cleanup into an error', async () => {
     const manager = createLeadIdempotencyManager({
       storage: {

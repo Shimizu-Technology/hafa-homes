@@ -673,15 +673,16 @@ async function createLead(payload: CreateLeadPayload, getToken?: GetAuthToken, o
     throw new ApiRequestError('Your search session refreshed after sign-in. Please view the home again and reopen this form before submitting.', 409)
   }
 
+  const requestAuthHeaders = await authHeaders(getToken)
   const idempotency = createLeadIdempotencyManager({
     storage: AsyncStorage,
     digest: (value) => Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, value),
     uuid: () => Crypto.randomUUID(),
   })
-  const idempotencyToken = await idempotency.prepare(payload, ownerId)
+  const idempotencyToken = await idempotency.prepare(payload, requestAuthHeaders.Authorization ? ownerId : undefined)
   const response = await apiFetch(`${API_URL}/api/v1/leads`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyToken.key, ...(await authHeaders(getToken)) },
+    headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyToken.key, ...requestAuthHeaders },
     body: JSON.stringify({ lead: payload }),
   })
 

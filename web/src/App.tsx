@@ -48,6 +48,7 @@ import { apiFetch, authHeaders } from './lib/api'
 import { routes, safeInternalPath as safeReturnPath } from './lib/routes'
 import { clearPendingAccountDeletion, hasPendingAccountDeletion, markPendingAccountDeletion } from './lib/accountDeletionState'
 import { browserLeadIdempotencyManager } from './lib/leadIdempotency'
+import { submitLeadRequest } from './lib/leadSubmission'
 import { datetimeLocalValue, zonedDateTimeToIso } from './lib/dateTime'
 import { useAuthContext } from './contexts/AuthContext'
 import type { Brokerage } from './contexts/BrokerageContext'
@@ -1123,18 +1124,19 @@ async function submitLead(payload: LeadPayload, ownerId: string | undefined, ret
     throw new ApiFetchError('Your search session refreshed after sign-in. Please view the home again and reopen this form before submitting.', 409)
   }
 
+  const requestAuthHeaders = await authHeaders()
   const idempotency = browserLeadIdempotencyManager()
-  const idempotencyToken = await idempotency.prepare(payload, ownerId)
-  const response = await apiFetch(`${API_URL}/api/v1/leads`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyToken.key, ...(await authHeaders()) },
-    body: JSON.stringify({ lead: payload }),
+  const { response, conflictPayload } = await submitLeadRequest({
+    endpoint: `${API_URL}/api/v1/leads`,
+    payload,
+    ownerId,
+    authHeaders: requestAuthHeaders,
+    idempotency,
+    fetcher: apiFetch,
   })
 
   if (response.status === 409) {
-    const conflictPayload = await response.clone().json().catch(() => null) as { reset_session?: boolean; reset_idempotency_key?: boolean } | null
     if (conflictPayload?.reset_idempotency_key) {
-      idempotency.complete(idempotencyToken)
       throw new ApiFetchError('Please try submitting again.', response.status)
     }
     if (retryAfterIntentReset && payload.intent_session_token && conflictPayload?.reset_session) {
@@ -1145,7 +1147,6 @@ async function submitLead(payload: LeadPayload, ownerId: string | undefined, ret
   }
 
   if (!response.ok) throw new ApiFetchError(await apiErrorMessage(response, 'Unable to submit lead'), response.status)
-  idempotency.complete(idempotencyToken)
   clearLeadIntentCurrentContextRequired()
   return response.json()
 }
