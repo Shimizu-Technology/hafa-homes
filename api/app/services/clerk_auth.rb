@@ -81,7 +81,7 @@ class ClerkAuth
         phone: primary_phone&.dig("phone_number").presence || unsafe_metadata["phone"].presence || public_metadata["phone"].presence
       }
     rescue HTTParty::Error, Timeout::Error => e
-      Rails.logger.warn("Clerk API profile fetch failed for #{clerk_user_id}: #{e.message}")
+      Rails.logger.warn("Clerk API profile fetch failed: #{e.class}")
       nil
     end
 
@@ -112,10 +112,10 @@ class ClerkAuth
         return { success: true, status: response.code }
       end
 
-      Rails.logger.warn("Clerk API account deletion failed for #{clerk_user_id}: #{response.code} #{response.body.to_s.truncate(240)}")
+      Rails.logger.warn("Clerk API account deletion failed: HTTP #{response.code}")
       { success: false, status: response.code, message: "Unable to delete Clerk account" }
     rescue HTTParty::Error, Timeout::Error => e
-      Rails.logger.warn("Clerk API account deletion failed for #{clerk_user_id}: #{e.message}")
+      Rails.logger.warn("Clerk API account deletion failed: #{e.class}")
       { success: false, status: :network_error, message: "Unable to reach Clerk" }
     end
 
@@ -145,7 +145,7 @@ class ClerkAuth
       Rails.cache.write(JWKS_CACHE_KEY, jwks, expires_in: JWKS_CACHE_TTL)
       jwks
     rescue HTTParty::Error, Timeout::Error => e
-      Rails.logger.error("Error fetching Clerk JWKS: #{e.message}")
+      Rails.logger.error("Error fetching Clerk JWKS: #{e.class}")
       nil
     end
 
@@ -154,7 +154,7 @@ class ClerkAuth
       return jwks if jwks.present?
 
       issuer = ENV.fetch("CLERK_ISSUER", nil)
-      return "#{issuer}/.well-known/jwks.json" if issuer.present?
+      return "#{issuer.delete_suffix('/')}/.well-known/jwks.json" if issuer.present?
 
       Rails.logger.warn("Neither CLERK_JWKS_URL nor CLERK_ISSUER configured")
       nil

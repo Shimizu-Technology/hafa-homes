@@ -8,6 +8,14 @@ require "uri"
 class ClicksendClient
   BASE_URL = "https://rest.clicksend.com/v3"
   DEFAULT_SENDER_ID = "HafaHomes"
+  PROVIDER_RESPONSE_CODES = %w[
+    SUCCESS MISSING_CREDENTIALS ACCOUNT_NOT_ACTIVATED INVALID_RECIPIENT THROTTLED
+    INVALID_SENDER_ID INSUFFICIENT_CREDIT INVALID_CREDENTIALS COUNTRY_NOT_ENABLED
+    ALREADY_EXISTS EMPTY_MESSAGE TOO_MANY_RECIPIENTS MISSING_REQUIRED_FIELDS
+    INVALID_SCHEDULE NOT_ENOUGH_PERMISSION_TO_LIST_ID INTERNAL_ERROR INVALID_LANG
+    INVALID_VOICE SUBJECT_REQUIRED INVALID_MEDIA_FILE SOMETHING_IS_WRONG
+    REGISTRATION_NEEDED LINK_GENERATION_FAILED ADDRESS_LENGTH_EXCEEDED
+  ].freeze
 
   class << self
     def configured?
@@ -47,7 +55,7 @@ class ClicksendClient
         message_id = json.dig("data", "messages", 0, "message_id") || "unknown"
         { success: true, message_id: message_id }
       else
-        { success: false, error: json["response_code"].presence || json["response_msg"].presence || "api_error" }
+        { success: false, error: provider_error_code(json["response_code"]) }
       end
     end
 
@@ -92,11 +100,18 @@ class ClicksendClient
       json = JSON.parse(response.body) rescue {}
       return { success: true, json: json } if response.code.to_i == 200
 
-      Rails.logger.error("[ClicksendClient] HTTP #{response.code}: #{response.body}")
+      Rails.logger.error("[ClicksendClient] HTTP #{response.code}")
       { success: false, error: "http_#{response.code}" }
     rescue StandardError => e
-      Rails.logger.error("[ClicksendClient] HTTP error: #{e.class} #{e.message}")
-      { success: false, error: e.message }
+      Rails.logger.error("[ClicksendClient] HTTP error: #{e.class}")
+      { success: false, error: "network_error" }
+    end
+
+    def provider_error_code(value)
+      normalized = value.to_s.strip.upcase
+      return normalized.downcase if PROVIDER_RESPONSE_CODES.include?(normalized)
+
+      "provider_rejected"
     end
   end
 end

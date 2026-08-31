@@ -33,7 +33,9 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "doctor": "expo-doctor",
-    "audit:production": "node scripts/audit-production.mjs"
+    "audit:production": "node scripts/audit-production.mjs",
+    "preflight:production": "EAS_BUILD_PROFILE=production node scripts/validate-production-env.mjs",
+    "eas-build-pre-install": "node scripts/validate-production-env.mjs"
   },
   "engines": {
     "node": ">=22.12.0"
