@@ -17,6 +17,18 @@ describe('appLinkTarget', () => {
     expect(appLinkTarget({ scheme: 'hafahomes', hostname: null, path: 'account/requests/43' })).toEqual({ type: 'request', requestId: 43 })
   })
 
+  it('opens exact records from Hafa Homes HTTPS universal links', () => {
+    expect(appLinkTarget({ scheme: 'https', hostname: 'hafahomes.com', path: 'account/requests/43' })).toEqual({ type: 'request', requestId: 43 })
+    expect(appLinkTarget({ scheme: 'https', hostname: 'hafahomes.com', path: 'listings/27' })).toEqual({ type: 'listing', listingId: 27 })
+    expect(appLinkTarget({ scheme: 'https', hostname: 'hafahomes.com', path: 'agents/8' })).toEqual({ type: 'agent', agentId: 8 })
+  })
+
+  it('rejects record-looking HTTPS links from unassociated hosts', () => {
+    expect(appLinkTarget({ scheme: 'https', hostname: 'example.com', path: 'account/requests/43' })).toEqual({ type: 'none' })
+    expect(appLinkTarget({ scheme: 'http', hostname: 'hafahomes.com', path: 'account/requests/43' })).toEqual({ type: 'none' })
+    expect(appLinkTarget({ scheme: 'mailto', hostname: null, path: 'account/requests/43' })).toEqual({ type: 'none' })
+  })
+
   it('opens exact listings and rejects invalid record ids', () => {
     expect(appLinkTarget({ scheme: 'hafahomes', hostname: 'listings', path: '27' })).toEqual({ type: 'listing', listingId: 27 })
     expect(appLinkTarget({ scheme: 'hafahomes', hostname: 'listings', path: '0' })).toEqual({ type: 'none' })

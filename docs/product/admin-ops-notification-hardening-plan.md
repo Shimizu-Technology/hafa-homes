@@ -137,6 +137,7 @@ Notes:
 
 - Custom scheme links like `hafahomes://requests` can be useful internally, but email/SMS should generally use HTTPS universal links for reliable fallback.
 - Domain-first broker sites may need broker-specific app-link handling later; start with Hafa Homes first.
+- Hafa Homes uses `applinks:hafahomes.com`; `www.hafahomes.com` is intentionally excluded because it redirects instead of serving the association file directly. The legacy `/open?target=` route remains available for already-sent links.
 
 Acceptance criteria:
 

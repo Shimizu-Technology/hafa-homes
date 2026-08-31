@@ -1,0 +1,37 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": [
+          "4T358A5S74.com.shimizutechnology.hafahomes"
+        ],
+        "components": [
+          {
+            "/": "/account/requests",
+            "comment": "Signed-in consumer request history"
+          },
+          {
+            "/": "/account/requests/*",
+            "comment": "Exact signed-in consumer request records"
+          },
+          {
+            "/": "/listings/*",
+            "comment": "Exact public listing records"
+          },
+          {
+            "/": "/agents",
+            "comment": "Storefront agent directory"
+          },
+          {
+            "/": "/agents/*",
+            "comment": "Exact storefront agent records"
+          },
+          {
+            "/": "/saved",
+            "comment": "Signed-in saved homes"
+          }
+        ]
+      }
+    ]
+  }
+}
