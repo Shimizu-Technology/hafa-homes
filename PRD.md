@@ -1,5 +1,7 @@
 # Hafa Homes PRD
 
+> Historical planning snapshot: this document describes the original PWA-first MVP. The shipped product now includes a Rails API, React web/PWA and admin CRM, and a dedicated Expo mobile app. Use `docs/product/current-product-truth.md` for current scope and status.
+
 ## Executive Summary
 
 Hafa Homes is a Guam-first housing platform inspired by the Hawaii-focused Locations LLC app. The first milestone is a polished mobile-first PWA demo backed by a real Rails API foundation and seed data, so Mike and the potential investor can evaluate the product before MLS access is finalized.

@@ -1,5 +1,7 @@
 # Hafa Homes Product Brief
 
+> Product-origin snapshot. The thesis remains useful, but implementation status in this document is historical. Use `current-product-truth.md` for current behavior.
+
 ## Name
 
 **Hafa Homes**

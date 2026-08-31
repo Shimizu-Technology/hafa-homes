@@ -247,6 +247,8 @@ See `docs/android-play-store-release-plan.md`.
 
 ### Phase 12 — Domain-first broker-branded website/app foundation
 
+Status: **Foundation implemented.** Domain and native-slug routing, fail-closed tenant resolution, scoped agents/CRM data, and partial runtime web branding are on `main`. Complete per-broker copy, assets, manifests/icons, analytics, native metadata, and pilot acceptance remain before calling the product turnkey white-label.
+
 Recommended branch:
 
 ```bash
@@ -267,7 +269,7 @@ Recommended scope:
 - brokerage-scoped listing/search page
 - agent roster/profile pages
 - brokerage-routed lead forms
-- slug preview fallback for local/dev/demo only
+- explicit native slug routing for configured builds and local preview; unknown or inactive domains/slugs fail closed
 - “Powered by Hafa Homes” footer option
 - Expo/EAS broker-branded app configuration plan
 

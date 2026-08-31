@@ -154,13 +154,13 @@ This keeps Hafa Homes flexible enough for:
 
 ## Native app positioning
 
-The current product is a PWA, which is ideal for fast iteration. But Mike is right that native iOS/Android app presence may become a sales differentiator because brokerages may say they already have a website.
+Historical note: this section predates the dedicated Expo/React Native app and is retained as product rationale. The current product has both a web/PWA surface and a native codebase, with iOS released publicly.
 
 Positioning:
 
 - PWA/web app now for speed and validation
 - iOS/Android packaging later once product and MLS access are validated
-- likely path: Capacitor wrapper around the React app, unless native-only needs justify a rewrite
+- implemented path: dedicated Expo/React Native app backed by the shared Rails API
 
 Native app selling points:
 

@@ -161,9 +161,9 @@ Potential features:
 
 ## Native app packaging
 
-Once validated, Hafa Homes can be packaged as iOS/Android.
+Historical note: this packaging idea was superseded by the dedicated Expo/React Native app, which now ships on iOS and shares API/domain contracts with the web product.
 
-Likely path:
+The earlier option was to:
 
 - keep React/Vite app as core
 - wrap with Capacitor
@@ -171,7 +171,7 @@ Likely path:
 - evaluate push notifications
 - publish to App Store / Google Play after MLS/product validation
 
-Native app is a sales differentiator, but PWA remains the fastest iteration path.
+The PWA remains useful for broker sites, admin, SEO, and fast iteration; native release work belongs in `/mobile` and the App Store/Android release plans.
 
 ## Meeting source
 

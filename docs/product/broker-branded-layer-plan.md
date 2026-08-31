@@ -210,15 +210,14 @@ Add one central resolver so tenant logic is not scattered across controllers/com
 Example service:
 
 ```ruby
-BrokerageTenantResolver.call(host:, slug: nil, default_to_hafa_homes: true)
+BrokerageTenantResolver.call(host:, slug: nil)
 ```
 
 Resolution order:
 
 1. custom domain host via `BrokerageDomain.active`.
 2. explicit slug fallback for preview/dev routes.
-3. optional default Hafa Homes tenant.
-4. safe not-found/unconfigured tenant response.
+3. safe not-found/unconfigured tenant response. Explicit unknown or inactive domains and slugs fail closed; they never fall through to Hafa Homes.
 
 This service should normalize hosts:
 

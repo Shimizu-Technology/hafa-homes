@@ -1,6 +1,6 @@
 # Hafa Homes current product truth
 
-_Last verified: 2026-08-16 during the PR #21 Phase 1 refresh._
+_Last verified: 2026-08-31 after the connected-record, tenancy, deletion, notification-reliability, and release-preflight work._
 
 The canonical re-review, findings, rationale, and remediation sequence are in `2026-08-16-review-findings-and-remediation-plan.md`.
 
@@ -9,7 +9,7 @@ This is the canonical, implementation-backed description of Hafa Homes. Older PR
 | Capability | Current state | Pilot requirement |
 |---|---|---|
 | Public web search | Working | Replace demonstration inventory with authorized market data |
-| iOS application | `1.0.2 (15)` recorded as live | Submit a new build after pilot branding and data are approved |
+| iOS application | `1.0.3 (17)` is live; `1.0.4` is the next TestFlight train | Validate the new build on a physical iPhone before broader distribution |
 | Android | Expo codebase works cross-platform; no public release | Play Console release and policy completion |
 | Listing inventory | Demonstration facts and stock imagery, visibly labeled | Written MLS/IDX/feed authorization and compliant attribution |
 | Brokerage routing | Domain/native-slug resolution implemented | Add the pilot's approved domains and build-time native slug |
@@ -19,9 +19,12 @@ This is the canonical, implementation-backed description of Hafa Homes. Older PR
 | Showing and price-watch requests | Working without forced registration | Configure notification providers and broker recipients |
 | Price watch | Human follow-up request | Automated price-change alerts remain future work |
 | Saved homes | Working for signed-in users | No external blocker |
+| Connected records | Exact consumer requests, listings, villages, storefront agents, staff leads/showings, and brokerage customer workspaces have scoped reciprocal navigation | Add only workflow-backed records; keep growing collections bounded and pageable |
 | Buyer/search profile | Working and brokerage-scoped | Broker privacy/retention review |
 | First-party intent | Working with progressive prompts and retention pruning | Schedule pruning and calibrate prompt settings with pilot data |
 | Broker CRM | Leads, assignments, notes, tasks, activities, showings, notifications, users, and audit views work | Pilot role mapping, training, and acceptance testing |
+| Account deletion | Local PII is tombstoned before provider deletion, recreation is blocked, and provider cleanup is retried durably | Monitor the reconciliation job and complete broker/legal retention review |
+| Consumer notifications | Lead/showing delivery intents are transactional and reconciled; new links use canonical HTTPS record URLs | Enable verified providers/domains and verify the Håfa Homes Apple association file before distributing `1.0.4` |
 | MLS synchronization | Monitor/data concepts only | Provider adapter, credentials, reconciliation, and compliance rules |
 | Property management | Not implemented | Explicitly deferred until search/CRM pilot validation |
 
