@@ -65,8 +65,8 @@ Background Jobs
 | SMS | ClickSend | Optional SMS behind explicit env gates |
 | Hosting | Netlify + Render + Neon | Shimizu default demo/client stack |
 
-Production boot validates the live Clerk issuer/secret contract and conditionally
-requires provider credentials when email or SMS delivery is enabled. The EAS
+Production boot validates public web/notification origins, the live Clerk
+issuer/secret contract, and conditionally requires provider credentials when email or SMS delivery is enabled. The EAS
 production build hook independently rejects localhost/non-HTTPS APIs, test Clerk
 keys, implicit brokerage routing, disabled Apple auth, or missing Mapbox config.
 

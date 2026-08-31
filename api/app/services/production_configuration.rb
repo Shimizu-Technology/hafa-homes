@@ -10,9 +10,18 @@ class ProductionConfiguration
       issuer = environment["CLERK_ISSUER"].to_s.strip
       secret_key = environment["CLERK_SECRET_KEY"].to_s.strip
       jwks_url = environment["CLERK_JWKS_URL"].to_s.strip
+      web_origins = environment.fetch("WEB_ORIGINS", environment["WEB_ORIGIN"]).to_s
+        .split(",")
+        .map(&:strip)
+        .reject(&:blank?)
+      frontend_url = environment["FRONTEND_URL"].to_s.strip
 
       errors << "CLERK_ISSUER must be a public HTTPS URL" unless public_https_url?(issuer)
       errors << "CLERK_SECRET_KEY must be a live Clerk secret key" unless secret_key.start_with?("sk_live_")
+      errors << "WEB_ORIGINS or WEB_ORIGIN must contain only public HTTPS origins" unless web_origins.any? && web_origins.all? { |origin| public_https_url?(origin) }
+      if frontend_url.present? && !public_https_url?(frontend_url)
+        errors << "FRONTEND_URL must be a public HTTPS origin"
+      end
 
       if jwks_url.present?
         expected_jwks = "#{issuer.delete_suffix('/')}/.well-known/jwks.json"

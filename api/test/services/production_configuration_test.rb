@@ -5,6 +5,7 @@ class ProductionConfigurationTest < ActiveSupport::TestCase
     {
       "CLERK_ISSUER" => "https://example.clerk.accounts.dev",
       "CLERK_SECRET_KEY" => "sk_live_example",
+      "WEB_ORIGIN" => "https://hafahomes.com",
       "EMAIL_NOTIFICATIONS_ENABLED" => "false",
       "LIVE_SMS_ENABLED" => "false"
     }
@@ -38,6 +39,27 @@ class ProductionConfigurationTest < ActiveSupport::TestCase
         ProductionConfiguration.validate!(valid_environment.merge("CLERK_ISSUER" => issuer))
       end
     end
+  end
+
+  test "requires public web and notification origins" do
+    [
+      {},
+      { "WEB_ORIGIN" => "http://localhost:5173" },
+      { "WEB_ORIGINS" => "https://hafahomes.com,http://localhost:5173" },
+      { "FRONTEND_URL" => "https://hafahomes.com/path" }
+    ].each do |overrides|
+      environment = valid_environment.merge(overrides)
+      environment.delete("WEB_ORIGIN") if overrides.empty? || overrides.key?("WEB_ORIGINS")
+
+      assert_raises(ProductionConfiguration::ConfigurationError) do
+        ProductionConfiguration.validate!(environment)
+      end
+    end
+
+    assert ProductionConfiguration.validate!(valid_environment.merge(
+      "WEB_ORIGINS" => "https://hafahomes.com, https://broker.example",
+      "FRONTEND_URL" => "https://hafahomes.com/"
+    ))
   end
 
   test "rejects a stale JWKS override and accepts the issuer-derived URL" do
