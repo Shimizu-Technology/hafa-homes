@@ -93,25 +93,48 @@ describe('lead submission idempotency', () => {
     const uuid = vi.fn()
       .mockReturnValueOnce('11111111-1111-4111-8111-111111111111')
       .mockReturnValueOnce('22222222-2222-4222-8222-222222222222')
-    const manager = createLeadIdempotencyManager({
-      storage: {
-        getItem: async () => { await readGate; return null },
-        setItem,
-        removeItem: async () => undefined,
-      },
+    const storage = {
+      getItem: async () => { await readGate; return null },
+      setItem,
+      removeItem: async () => undefined,
+    }
+    const dependencies = {
+      storage,
       digest: async () => 'concurrent-digest',
       uuid,
-    })
+    }
+    const firstManager = createLeadIdempotencyManager(dependencies)
+    const secondManager = createLeadIdempotencyManager(dependencies)
     const payload = { lead_type: 'contact', email: 'buyer@example.test' }
 
-    const first = manager.prepare(payload, 'user-1')
-    const second = manager.prepare(payload, 'user-1')
+    const first = firstManager.prepare(payload, 'user-1')
+    const second = secondManager.prepare(payload, 'user-1')
     releaseRead?.()
     const [firstToken, secondToken] = await Promise.all([first, second])
 
     expect(secondToken.key).toBe(firstToken.key)
     expect(uuid).toHaveBeenCalledTimes(1)
     expect(setItem).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not remove a newer key during delayed cleanup', async () => {
+    const values = new Map<string, string>()
+    const manager = createLeadIdempotencyManager({
+      storage: {
+        getItem: async (key) => values.get(key) ?? null,
+        setItem: async (key, value) => { values.set(key, value) },
+        removeItem: async (key) => { values.delete(key) },
+      },
+      digest: async () => 'delayed-cleanup-digest',
+      uuid: () => '11111111-1111-4111-8111-111111111111',
+    })
+    const firstToken = await manager.prepare({ lead_type: 'contact' })
+    const storageKey = [...values.keys()][0]
+    values.set(storageKey, '22222222-2222-4222-8222-222222222222')
+
+    await manager.complete(firstToken)
+
+    expect(values.get(storageKey)).toBe('22222222-2222-4222-8222-222222222222')
   })
 
   it('does not turn successful submission cleanup into an error', async () => {

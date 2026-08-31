@@ -44,8 +44,9 @@ export function createLeadIdempotencyManager({ storage, digest, uuid }: Dependen
     },
 
     complete(token: LeadIdempotencyToken) {
+      const storageKey = `${STORAGE_PREFIX}${token.fingerprint}`
       try {
-        storage.removeItem(`${STORAGE_PREFIX}${token.fingerprint}`)
+        if (storage.getItem(storageKey) === token.key) storage.removeItem(storageKey)
       } catch {
         // The API already accepted the lead; storage cleanup must not turn success into an error.
       }

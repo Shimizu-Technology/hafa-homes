@@ -100,4 +100,24 @@ describe('lead submission idempotency', () => {
     const token = await manager.prepare({ lead_type: 'contact' })
     expect(() => manager.complete(token)).not.toThrow()
   })
+
+  it('does not remove a newer key during delayed cleanup', async () => {
+    const values = new Map<string, string>()
+    const manager = createLeadIdempotencyManager({
+      storage: {
+        getItem: (key) => values.get(key) ?? null,
+        setItem: (key, value) => { values.set(key, value) },
+        removeItem: (key) => { values.delete(key) },
+      },
+      digest: async () => 'delayed-cleanup-digest',
+      uuid: () => '11111111-1111-4111-8111-111111111111',
+    })
+    const firstToken = await manager.prepare({ lead_type: 'contact' })
+    const storageKey = [...values.keys()][0]
+    values.set(storageKey, '22222222-2222-4222-8222-222222222222')
+
+    manager.complete(firstToken)
+
+    expect(values.get(storageKey)).toBe('22222222-2222-4222-8222-222222222222')
+  })
 })
