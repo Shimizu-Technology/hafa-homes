@@ -89,12 +89,13 @@ describe('lead submission idempotency', () => {
   it('shares one key across concurrent preparations for the same request', async () => {
     let releaseRead: (() => void) | undefined
     const readGate = new Promise<void>((resolve) => { releaseRead = resolve })
-    const setItem = vi.fn(async () => undefined)
+    let storedValue: string | null = null
+    const setItem = vi.fn(async (_key: string, value: string) => { storedValue = value })
     const uuid = vi.fn()
       .mockReturnValueOnce('11111111-1111-4111-8111-111111111111')
       .mockReturnValueOnce('22222222-2222-4222-8222-222222222222')
     const storage = {
-      getItem: async () => { await readGate; return null },
+      getItem: async () => { await readGate; return storedValue },
       setItem,
       removeItem: async () => undefined,
     }
@@ -135,6 +136,50 @@ describe('lead submission idempotency', () => {
     await manager.complete(firstToken)
 
     expect(values.get(storageKey)).toBe('22222222-2222-4222-8222-222222222222')
+  })
+
+  it('serializes delayed cleanup with repeated completion and replacement preparation', async () => {
+    let releaseFirstRemoval: (() => void) | undefined
+    let signalFirstRemoval: (() => void) | undefined
+    const firstRemovalGate = new Promise<void>((resolve) => { releaseFirstRemoval = resolve })
+    const firstRemovalStarted = new Promise<void>((resolve) => { signalFirstRemoval = resolve })
+    const values = new Map<string, string>()
+    let removalCount = 0
+    const manager = createLeadIdempotencyManager({
+      storage: {
+        getItem: async (key) => values.get(key) ?? null,
+        setItem: async (key, value) => { values.set(key, value) },
+        removeItem: async (key) => {
+          removalCount += 1
+          if (removalCount === 1) {
+            signalFirstRemoval?.()
+            await firstRemovalGate
+          }
+          values.delete(key)
+        },
+      },
+      digest: async () => 'serialized-cleanup-digest',
+      uuid: vi.fn()
+        .mockReturnValueOnce('11111111-1111-4111-8111-111111111111')
+        .mockReturnValueOnce('22222222-2222-4222-8222-222222222222'),
+    })
+    const payload = { lead_type: 'contact' }
+    const firstToken = await manager.prepare(payload)
+    const firstCompletion = manager.complete(firstToken)
+    await firstRemovalStarted
+
+    const repeatedCompletion = manager.complete(firstToken)
+    const replacementPreparation = manager.prepare(payload)
+    releaseFirstRemoval?.()
+    const [, , replacementToken] = await Promise.all([
+      firstCompletion,
+      repeatedCompletion,
+      replacementPreparation,
+    ])
+    const storageKey = [...values.keys()][0]
+
+    expect(replacementToken.key).toBe('22222222-2222-4222-8222-222222222222')
+    expect(values.get(storageKey)).toBe(replacementToken.key)
   })
 
   it('does not turn successful submission cleanup into an error', async () => {

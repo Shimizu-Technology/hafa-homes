@@ -16,7 +16,19 @@ export type LeadIdempotencyToken = {
 }
 
 const STORAGE_PREFIX = 'hafaHomes:leadSubmission:'
-const pendingPreparations = new Map<string, Promise<LeadIdempotencyToken>>()
+const pendingStorageOperations = new Map<string, Promise<unknown>>()
+
+async function serializeStorageOperation<T>(storageKey: string, operation: () => Promise<T>): Promise<T> {
+  const previous = pendingStorageOperations.get(storageKey) ?? Promise.resolve()
+  const current = previous.catch(() => undefined).then(operation)
+  pendingStorageOperations.set(storageKey, current)
+
+  try {
+    return await current
+  } finally {
+    if (pendingStorageOperations.get(storageKey) === current) pendingStorageOperations.delete(storageKey)
+  }
+}
 
 export function stableJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`
@@ -34,10 +46,7 @@ export function createLeadIdempotencyManager({ storage, digest, uuid }: Dependen
     async prepare(payload: unknown, ownerId?: string): Promise<LeadIdempotencyToken> {
       const fingerprint = await digest(stableJson({ owner: ownerId || 'anonymous', payload }))
       const storageKey = `${STORAGE_PREFIX}${fingerprint}`
-      const pending = pendingPreparations.get(storageKey)
-      if (pending) return pending
-
-      const preparation = (async () => {
+      return serializeStorageOperation(storageKey, async () => {
         let existing: string | null = null
         try {
           existing = await storage.getItem(storageKey)
@@ -53,23 +62,18 @@ export function createLeadIdempotencyManager({ storage, digest, uuid }: Dependen
           // Continue with a non-persisted key when storage cannot be written.
         }
         return { fingerprint, key }
-      })()
-
-      pendingPreparations.set(storageKey, preparation)
-      try {
-        return await preparation
-      } finally {
-        if (pendingPreparations.get(storageKey) === preparation) pendingPreparations.delete(storageKey)
-      }
+      })
     },
 
     async complete(token: LeadIdempotencyToken) {
       const storageKey = `${STORAGE_PREFIX}${token.fingerprint}`
-      try {
-        if (await storage.getItem(storageKey) === token.key) await storage.removeItem(storageKey)
-      } catch {
-        // The API already accepted the lead; storage cleanup must not turn success into an error.
-      }
+      await serializeStorageOperation(storageKey, async () => {
+        try {
+          if (await storage.getItem(storageKey) === token.key) await storage.removeItem(storageKey)
+        } catch {
+          // The API already accepted the lead; storage cleanup must not turn success into an error.
+        }
+      })
     },
   }
 }
