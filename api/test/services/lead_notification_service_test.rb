@@ -42,10 +42,11 @@ class LeadNotificationServiceTest < ActiveSupport::TestCase
     )
 
     previous = ENV["FRONTEND_URL"]
-    ENV["FRONTEND_URL"] = "https://fallback.test"
+    ENV["FRONTEND_URL"] = "https://fallback.test/"
     html = LeadNotificationService.send(:email_html, delivery)
 
     assert_includes html, "https://fallback.test/account/requests/#{lead.id}"
+    refute_includes html, "https://fallback.test//account"
   ensure
     previous ? ENV["FRONTEND_URL"] = previous : ENV.delete("FRONTEND_URL")
   end

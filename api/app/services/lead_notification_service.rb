@@ -388,7 +388,7 @@ class LeadNotificationService
     end
 
     def app_link_url(path, lead:)
-      "#{frontend_url(lead)}#{path}"
+      "#{frontend_url(lead).delete_suffix('/')}#{path}"
     end
 
     def strip_leading_greeting(body, greeting)
