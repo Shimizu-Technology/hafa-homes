@@ -102,10 +102,17 @@ The consumer projection does not include staff notes, internal showing notes, de
 - Top and latest listing links carry the exact intent queue through the admin listing route. Listing detail retains its admin-view behavior, labels the origin as search intent, and returns to that queue instead of the lead inbox.
 - Converted-lead links also preserve the intent origin, and query caches include the authenticated staff identity.
 
+### iOS universal-link slice
+
+- The Håfa Homes iOS app declares `applinks:hafahomes.com`, and the web build publishes the matching Apple association file for consumer request, listing, storefront-agent, agent-directory, and saved-home routes.
+- New consumer notifications use canonical HTTPS record URLs. A Håfa Homes URL opens the installed app when iOS has verified the association and otherwise remains a normal web URL; broker-domain links continue to use their broker-branded web destination.
+- The native parser accepts only the trusted Håfa Homes HTTPS host or the existing `hafahomes` custom scheme. Plain HTTP and record-looking links from unrelated hosts are ignored.
+- The legacy `/open?target=` handoff remains available for notifications that were issued before canonical HTTPS links shipped.
+- The association file must be deployed with a successful JSON response before an entitled iOS build is distributed. Broker-owned domains and Android App Links remain separate release work.
+
 ## Planned slices
 
-1. Publish and verify the iOS universal-link contract for exact consumer records, then use canonical HTTPS record URLs in new notifications while retaining the existing `/open` handoff for previously issued links.
-2. Add further bounded related-record summaries with separately pageable collections as volume grows.
+1. Add further bounded related-record summaries with separately pageable collections as volume grows.
 
 ## Deliberate deferrals
 
