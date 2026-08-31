@@ -4,11 +4,13 @@ import { useSignInWithApple } from '@clerk/expo/apple'
 import { useSignIn, useSignUp } from '@clerk/expo/legacy'
 import { tokenCache } from '@clerk/expo/token-cache'
 import * as AppleAuthentication from 'expo-apple-authentication'
+import * as Crypto from 'expo-crypto'
 import * as Linking from 'expo-linking'
 import { StatusBar } from 'expo-status-bar'
 import * as WebBrowser from 'expo-web-browser'
 import { apiFetch } from './src/apiClient'
 import { clearPendingAccountDeletion, hasPendingAccountDeletion, markPendingAccountDeletion } from './src/accountDeletionState'
+import { createLeadIdempotencyManager, serverDirectedIdempotencyReset } from './src/leadIdempotency'
 import { advanceNavigationGeneration, agentRecordBackTarget, beginAppLinkNavigation, closeListingTransition, isCurrentNavigationGeneration, mergeAgentListingPage, openListingFromAgentTransition, requestDetailKey } from './src/navigation'
 import { WebView } from 'react-native-webview'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -662,7 +664,7 @@ type CreateLeadPayload = {
   message: string
 }
 
-async function createLead(payload: CreateLeadPayload, getToken?: GetAuthToken, retryAfterIntentReset = true) {
+async function createLead(payload: CreateLeadPayload, getToken?: GetAuthToken, ownerId?: string, retryAfterIntentReset = true) {
   if (payload.lead_type === 'search_assist' && !payload.intent_session_token) {
     throw new ApiRequestError('Your search session refreshed. Please keep browsing or reopen the prompt so we can attach the right search context.', 409)
   }
@@ -671,15 +673,26 @@ async function createLead(payload: CreateLeadPayload, getToken?: GetAuthToken, r
     throw new ApiRequestError('Your search session refreshed after sign-in. Please view the home again and reopen this form before submitting.', 409)
   }
 
+  const requestAuthHeaders = await authHeaders(getToken)
+  const idempotency = createLeadIdempotencyManager({
+    storage: AsyncStorage,
+    digest: (value) => Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, value),
+    uuid: () => Crypto.randomUUID(),
+  })
+  const idempotencyToken = await idempotency.prepare(payload, requestAuthHeaders.Authorization ? ownerId : undefined)
   const response = await apiFetch(`${API_URL}/api/v1/leads`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...(await authHeaders(getToken)) },
+    headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyToken.key, ...requestAuthHeaders },
     body: JSON.stringify({ lead: payload }),
   })
 
-  if (response.status === 409 && retryAfterIntentReset && payload.intent_session_token) {
-    const conflictPayload = await response.clone().json().catch(() => null) as { reset_session?: boolean } | null
-    if (conflictPayload?.reset_session) {
+  if (response.status === 409 || response.status === 422) {
+    const conflictPayload = await response.clone().json().catch(() => null) as { reset_session?: boolean; reset_idempotency_key?: boolean } | null
+    if (serverDirectedIdempotencyReset(response.status, conflictPayload)) {
+      await idempotency.complete(idempotencyToken)
+      throw new ApiRequestError('Please try submitting again.', response.status)
+    }
+    if (response.status === 409 && retryAfterIntentReset && payload.intent_session_token && conflictPayload?.reset_session) {
       await clearLeadIntentSessionToken()
       await markLeadIntentCurrentContextRequired()
       throw new ApiRequestError('Your search session refreshed after sign-in. Please view the home again and reopen this form before submitting.', response.status)
@@ -687,6 +700,7 @@ async function createLead(payload: CreateLeadPayload, getToken?: GetAuthToken, r
   }
 
   if (!response.ok) throw new ApiRequestError(await apiErrorMessage(response, 'Unable to send request'), response.status)
+  await idempotency.complete(idempotencyToken)
   await clearLeadIntentCurrentContextRequired()
   return response.json()
 }
@@ -1683,7 +1697,7 @@ function ProgressiveLeadPromptSheet({ prompt, auth, selectedAgent, onDismiss, on
             qualification_notes: notes.trim(),
             intent_session_token: token,
             message: `Progressive search assist prompt: ${activePrompt.trigger || 'search_intent'}`,
-          }, auth.isSignedIn ? auth.getToken : undefined)
+          }, auth.isSignedIn ? auth.getToken : undefined, auth.userId)
         } catch (leadError) {
           if (!profileSaved) throw leadError
 
@@ -3630,7 +3644,7 @@ function ShowingRequestSheet({ listing, auth, requestedAgent, open, onOpenAuth, 
         qualification_notes: qualificationNotes.trim(),
         intent_session_token: token || undefined,
         message: `${message.trim()}\n\nListing: ${listing.title} — ${listing.address}, ${listing.village.name}`,
-      }, auth.isSignedIn ? auth.getToken : undefined)
+      }, auth.isSignedIn ? auth.getToken : undefined, auth.userId)
       setSubmitted(true)
     } catch (submitError) {
       console.warn('Unable to submit showing request', submitError)
@@ -3862,7 +3876,7 @@ function PriceAlertSheet({ listing, auth, requestedAgent, open, onClose }: { lis
         already_working_with_agent: alreadyWorkingWithAgent,
         intent_session_token: token || undefined,
         message: `Target price: ${targetPrice.trim()}\n\nListing: ${listing.title} — ${listing.address}, ${listing.village.name}`,
-      }, auth.isSignedIn ? auth.getToken : undefined)
+      }, auth.isSignedIn ? auth.getToken : undefined, auth.userId)
       setSubmitted(true)
     } catch (submitError) {
       console.warn('Unable to submit price watch request', submitError)

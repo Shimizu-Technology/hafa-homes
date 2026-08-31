@@ -5,6 +5,7 @@ class Lead < ApplicationRecord
   PURCHASE_TIMELINES = %w[asap 1_3_months 3_6_months 6_plus_months just_browsing].freeze
   BUYER_STATUSES = %w[first_time upgrading relocating investor renter military selling other].freeze
   AGENT_RELATIONSHIP_STATUSES = %w[yes no not_sure].freeze
+  IDEMPOTENCY_KEY_FORMAT = /\A[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\z/i
 
   belongs_to :listing, optional: true
   belongs_to :user, optional: true
@@ -20,8 +21,8 @@ class Lead < ApplicationRecord
 
   attr_accessor :queue_request_received_notification
 
+  after_create :persist_request_received_notifications, if: :queue_request_received_notification?
   after_commit :record_created_activity, on: :create
-  after_commit :queue_request_received_notifications, on: :create, if: :queue_request_received_notification?
 
   validates :lead_type, :name, :email, presence: true
   validates :status, inclusion: { in: STATUSES }
@@ -33,6 +34,8 @@ class Lead < ApplicationRecord
   validates :budget_min, :budget_max, :desired_baths, numericality: { greater_than_or_equal_to: 0 }, allow_nil: true
   validates :desired_beds, numericality: { only_integer: true, greater_than_or_equal_to: 0 }, allow_nil: true
   validates :quality_score, numericality: { only_integer: true, greater_than_or_equal_to: 0, less_than_or_equal_to: 100 }
+  validates :idempotency_key, format: { with: IDEMPOTENCY_KEY_FORMAT }, allow_nil: true
+  validates :idempotency_fingerprint, presence: true, if: :idempotency_key?
   validate :requested_agent_matches_routing_brokerage
   validate :assigned_agent_matches_routing_brokerage
   validate :budget_range_is_ordered
@@ -257,9 +260,11 @@ class Lead < ApplicationRecord
       summary: "Lead created",
       metadata: { lead_type: lead_type, lead_source: lead_source, source_campaign: source_campaign }
     )
+  rescue StandardError => e
+    Rails.logger.warn("Unable to record created activity for lead #{id}: #{e.class} #{e.message}")
   end
 
-  def queue_request_received_notifications
+  def persist_request_received_notifications
     LeadNotificationService.queue_request_received(self)
   end
 end

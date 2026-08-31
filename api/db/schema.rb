@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_08_31_060500) do
+ActiveRecord::Schema[8.1].define(version: 2026_08_31_063100) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -293,6 +293,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_31_060500) do
     t.integer "desired_beds"
     t.text "desired_villages"
     t.string "email"
+    t.string "idempotency_fingerprint"
+    t.string "idempotency_key"
     t.datetime "last_contacted_at"
     t.bigint "lead_intent_session_id"
     t.string "lead_source", default: "hafa_homes", null: false
@@ -321,6 +323,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_31_060500) do
     t.index ["assigned_agent_id", "created_at"], name: "index_leads_on_assigned_agent_id_and_created_at"
     t.index ["assigned_agent_id"], name: "index_leads_on_assigned_agent_id"
     t.index ["brokerage_id", "created_at"], name: "index_leads_on_brokerage_id_and_created_at"
+    t.index ["brokerage_id", "idempotency_key"], name: "index_leads_on_brokerage_and_idempotency_key", unique: true, where: "(idempotency_key IS NOT NULL)"
     t.index ["brokerage_id"], name: "index_leads_on_brokerage_id"
     t.index ["created_at"], name: "index_leads_on_created_at"
     t.index ["lead_intent_session_id"], name: "index_leads_on_lead_intent_session_id"

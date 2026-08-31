@@ -64,6 +64,8 @@ Added a safe notification foundation for request and showing workflows:
 - Phone inputs default toward Guam `+1671` formatting; Rails normalizes Guam phone numbers before SMS delivery, including legacy/raw local numbers already on leads.
 - Initial request-received notifications only queue for consumer-initiated API lead creation; staff/scripted lead creation stays quiet unless explicitly opted in.
 - Notification jobs atomically claim queued deliveries before provider calls to avoid duplicate live email/SMS sends if jobs overlap or retry.
+- Lead/showing records and their notification intents are persisted atomically. A queue outage after commit leaves visible `queued` deliveries for the recurring reconciler instead of losing the send or returning a false request failure.
+- Web and native lead forms retain a brokerage-scoped UUID idempotency key across transport retries, then clear it after success or an explicit `reset_idempotency_key: true` response. Authenticated retries are bound to the same user; anonymous requests use the explicit anonymous owner scope and the originating client's unguessable UUID. Same-owner, same-payload retries return the original lead, while key reuse across users or changed content is rejected, preventing duplicate requests and notifications after timeouts.
 
 This follows the starter-app Resend/ClickSend pattern: important sends should be visible and resendable from the dashboard, while live SMS/email remains opt-in via environment config.
 
