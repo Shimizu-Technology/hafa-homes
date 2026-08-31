@@ -1,6 +1,6 @@
 # App Store / TestFlight Release Notes
 
-_Last updated: 2026-08-16 while preparing the iOS `1.0.3` release candidate in PR #22._
+_Last updated: 2026-08-31 while preparing the iOS `1.0.4` TestFlight release._
 
 ## Current status
 
@@ -8,12 +8,11 @@ _Last updated: 2026-08-16 while preparing the iOS `1.0.3` release candidate in P
 - EAS project ID: `d1d219fa-fb79-47c5-9dc2-339645c6b00a`
 - iOS bundle ID: `com.shimizutechnology.hafahomes`
 - App Store Connect app ID: `6773042903`
-- iOS `1.0.2 (15)` is approved/live on the App Store.
-- iOS `1.0.3` is the current release candidate; its EAS build, TestFlight validation, and App Review submission are pending.
-- iOS `1.0.1 (11)` is the previous approved/live App Store build.
-- EAS build ID for `1.0.2 (15)`: `23e1f238-9906-4c54-bebb-0ac666b5df39`.
-- EAS submission ID for the App Store upload: `1ae27913-c0f6-4520-8975-a43ed52644db`.
-- The App Store version was submitted with automatic release enabled and released after approval.
+- iOS `1.0.3 (17)` is live on the App Store as of 2026-08-18.
+- iOS `1.0.4` is the next TestFlight train; EAS remote versioning should assign build `18` or later.
+- EAS build ID for `1.0.3 (17)`: `164ddb57-1bc6-4c20-a06c-2c568244de66`.
+- EAS submission ID for the `1.0.3` App Store upload: `f9027b93-eca1-4eb0-b2e2-94229b5a14c6`.
+- App Store Connect submission ID for `1.0.3`: `c126d23c-13e1-4cf1-8cc2-2f6a82b26df3`.
 - A local iOS build was also attempted, but local Xcode `16.4` / Swift `6.1` cannot build Expo SDK 56's `ExpoModulesJSI` Swift package because it declares Swift tools `6.2`. Use EAS cloud for future production builds unless local Xcode is upgraded.
 - Production API env is configured in EAS: `EXPO_PUBLIC_API_URL=https://hafa-homes.onrender.com`
 - Production brokerage routing is explicit in EAS: `EXPO_PUBLIC_BROKERAGE_SLUG=hafa-homes-demo`
@@ -75,13 +74,14 @@ then bump `expo.version` in `mobile/app.json`, for example from `1.0.0` to `1.0.
 ## Current live build
 
 ```text
-Version: 1.0.1
-Build number: 11
-EAS build ID: 24a33127-0dae-46e0-8bb1-727918e643c2
-Status: Previous approved/live App Store build
+Version: 1.0.3
+Build number: 17
+Source commit: 63951b5f0f5f64949fbbbaa84cfcc1acb1a62a4f
+EAS build ID: 164ddb57-1bc6-4c20-a06c-2c568244de66
+Status: Live on the App Store since 2026-08-18
 ```
 
-Build `11` replaced rejected build `10` and was the public iOS release before `1.0.2 (15)`.
+The public App Store lookup confirms version `1.0.3`; build `17` is the matching finished EAS production build.
 
 ## Submitted 1.0.2 build
 
@@ -103,17 +103,20 @@ Submission metadata notes:
 - What's New mentions first-party search context, smarter search-assist prompts, better request routing, request history, map/listing navigation, app icon presentation, and the in-app `hafahomes.com` link.
 - Review notes clarify that price watch is currently a request workflow, not automated price-alert notifications, and that the app uses standard HTTPS/TLS encryption only.
 
-## Prepared 1.0.3 release candidate
+## Released 1.0.3 build
 
 ```text
 Version: 1.0.3
 Release PR: #22
-Build number: Pending EAS production build
-TestFlight status: Pending upload and physical-device smoke test
-App Review status: Not submitted
+Build number: 17
+Source commit: 63951b5f0f5f64949fbbbaa84cfcc1acb1a62a4f
+EAS build ID: 164ddb57-1bc6-4c20-a06c-2c568244de66
+EAS submission ID: f9027b93-eca1-4eb0-b2e2-94229b5a14c6
+App Store Connect submission ID: c126d23c-13e1-4cf1-8cc2-2f6a82b26df3
+App Store status: Live as of 2026-08-18
 ```
 
-This candidate is based on the product-hardening work merged in PR #21 and includes the current Guam search, brokerage routing, agent/account, showing-request, local-intel, and mortgage-calculator flows. Before upload, the production configuration was verified with a live Clerk key, Apple Sign-In enabled, the production API URL, the explicit `hafa-homes-demo` brokerage slug, and the production Mapbox token.
+This build is based on the product-hardening work merged in PR #21 and includes the Guam search, brokerage routing, agent/account, showing-request, local-intel, and mortgage-calculator flows available at that release. Before upload, the production configuration was verified with a live Clerk key, Apple Sign-In enabled, the production API URL, the explicit `hafa-homes-demo` brokerage slug, and the production Mapbox token.
 
 Local release validation completed on 2026-08-16:
 
@@ -124,7 +127,13 @@ Local release validation completed on 2026-08-16:
 - Read-only production API smoke checks passed for health, brokerage context, listings/search, listing detail, and agents.
 - Computer Use QA on an iOS Simulator passed for search, listing detail and photos, local intel, map rendering, agents, showing-request form, mortgage calculator, account-gated saved/request screens, More, and auth entry.
 
-The remaining release gate is a TestFlight smoke test on a physical iPhone using the uploaded production build, including native Apple Sign-In, authenticated saved homes, request history, profile, and account deletion.
+The repository does not contain evidence of the planned physical-iPhone smoke test before public release. Treat that as historical process debt and complete the physical-device matrix for `1.0.4` before any broader rollout.
+
+## Planned 1.0.4 TestFlight build
+
+`mobile/app.json` declares version `1.0.4`. EAS uses remote app-version numbering with `autoIncrement`, so the production build must resolve to build `18` or later. This train includes the connected-record navigation, stricter tenant and staff boundaries, durable account deletion, transactional notification intents with submission idempotency, canonical HTTPS universal links, and production configuration preflight.
+
+Before starting the build, merge every implementation PR, confirm the production web/API deploys, verify `https://hafahomes.com/.well-known/apple-app-site-association` returns the expected JSON directly, run the full repository gates, and complete local web plus fresh-simulator QA. Submit to TestFlight for Leon's testing. Do not broaden rollout until Leon completes and explicitly accepts the physical-device matrix. Do not submit this train to public App Review as part of that operation.
 
 ## Native Apple/Clerk setup for the next build
 

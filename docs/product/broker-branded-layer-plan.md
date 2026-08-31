@@ -171,7 +171,7 @@ Rules:
 - One brokerage can have multiple domains.
 - A host belongs to only one brokerage.
 - One domain can be marked primary per brokerage.
-- Unknown hosts should fall back to Hafa Homes or show a safe not-found/tenant-unconfigured state.
+- Non-authoritative infrastructure hosts may use the Hafa Homes fallback. Explicit storefront hosts with unknown or inactive domains must fail closed and show the safe not-found/tenant-unconfigured state; they must never route to Hafa Homes.
 
 ### Brokerage branding/config
 
@@ -210,15 +210,14 @@ Add one central resolver so tenant logic is not scattered across controllers/com
 Example service:
 
 ```ruby
-BrokerageTenantResolver.call(host:, slug: nil, default_to_hafa_homes: true)
+BrokerageTenantResolver.call(host:, slug: nil)
 ```
 
 Resolution order:
 
 1. custom domain host via `BrokerageDomain.active`.
 2. explicit slug fallback for preview/dev routes.
-3. optional default Hafa Homes tenant.
-4. safe not-found/unconfigured tenant response.
+3. safe not-found/unconfigured tenant response. Explicit unknown or inactive domains and slugs fail closed; they never fall through to Hafa Homes.
 
 This service should normalize hosts:
 

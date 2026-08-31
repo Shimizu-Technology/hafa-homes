@@ -2,6 +2,8 @@
 
 _Last updated: 2026-06-28 after PR #19 buyer/search profile prompt personalization merged to `main`._
 
+> Archived status snapshot. It is retained for implementation history and does not describe current `main`. Use `current-product-truth.md` and `connected-record-architecture.md` for the current product and architecture.
+
 ## Source context
 
 Product direction comes from repo docs plus Leon/Mike/John notes:

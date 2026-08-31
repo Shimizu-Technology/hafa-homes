@@ -1,8 +1,10 @@
 # Hafa Homes Build Plan
 
+> Historical planning snapshot: this checklist predates the Expo app, production web/API deployments, multi-broker routing, and CRM. Use `docs/product/current-product-truth.md`, `docs/roadmap.md`, and the repository CI for current implementation status.
+
 ## Status
 
-Current phase: **Frontend MVP build-out**
+Archived phase: **Original frontend MVP build-out**
 
 ## Repo Structure
 
@@ -10,6 +12,7 @@ Current phase: **Frontend MVP build-out**
 hafa-homes/
   api/      # Rails API
   web/      # React/Vite PWA
+  mobile/   # Expo/React Native app
   docs/     # Product and architecture docs
 ```
 

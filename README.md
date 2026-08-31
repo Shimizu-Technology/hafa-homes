@@ -2,7 +2,7 @@
 
 The canonical implementation-backed status is maintained in [docs/product/current-product-truth.md](docs/product/current-product-truth.md). Older PRDs and plans are historical context when they disagree with that file.
 
-**Hafa Homes** is a proposed Guam-first housing and real estate platform inspired by the Hawaii-focused Locations LLC app.
+**Hafa Homes** is a Guam-first, broker-branded housing search and lead-intelligence platform inspired by the local context of Hawaii-focused Locations LLC, not by a goal to clone its product.
 
 The goal is to build a polished, mobile-first experience for finding homes, rentals, neighborhoods, and real estate guidance on Guam — with local filters and workflows that national housing apps do not handle well. The product has evolved into a broker-first platform direction: Hafa Homes is the reference app, while the shared backend/web/mobile codebases can power broker-owned-domain websites, broker-branded app experiences, lead CRM, and future property-management workflows.
 
