@@ -1110,11 +1110,11 @@ async function saveSearch(payload: { name: string; email: string; alert_frequenc
   return response.json()
 }
 
-async function createLead(payload: LeadPayload): Promise<{ lead: Lead }> {
-  return submitLead(payload, true)
+async function createLead(payload: LeadPayload, ownerId?: string): Promise<{ lead: Lead }> {
+  return submitLead(payload, ownerId, true)
 }
 
-async function submitLead(payload: LeadPayload, retryAfterIntentReset: boolean): Promise<{ lead: Lead }> {
+async function submitLead(payload: LeadPayload, ownerId: string | undefined, retryAfterIntentReset: boolean): Promise<{ lead: Lead }> {
   if (payload.lead_type === 'search_assist' && !payload.intent_session_token) {
     throw new ApiFetchError('Your search session refreshed. Please keep browsing or reopen the prompt so we can attach the right search context.', 409)
   }
@@ -1124,7 +1124,7 @@ async function submitLead(payload: LeadPayload, retryAfterIntentReset: boolean):
   }
 
   const idempotency = browserLeadIdempotencyManager()
-  const idempotencyToken = await idempotency.prepare(payload)
+  const idempotencyToken = await idempotency.prepare(payload, ownerId)
   const response = await apiFetch(`${API_URL}/api/v1/leads`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyToken.key, ...(await authHeaders()) },
@@ -1133,7 +1133,10 @@ async function submitLead(payload: LeadPayload, retryAfterIntentReset: boolean):
 
   if (response.status === 409) {
     const conflictPayload = await response.clone().json().catch(() => null) as { reset_session?: boolean; reset_idempotency_key?: boolean } | null
-    if (conflictPayload?.reset_idempotency_key) idempotency.complete(idempotencyToken)
+    if (conflictPayload?.reset_idempotency_key) {
+      idempotency.complete(idempotencyToken)
+      throw new ApiFetchError('Please try submitting again.', response.status)
+    }
     if (retryAfterIntentReset && payload.intent_session_token && conflictPayload?.reset_session) {
       clearLeadIntentSessionToken()
       markLeadIntentCurrentContextRequired()
@@ -1489,12 +1492,13 @@ function ProgressiveLeadPrompt() {
   const [prompt, setPrompt] = useState<LeadIntentPrompt | null>(null)
   const [dismissedKey, setDismissedKey] = useState<string | null>(null)
   const [conversionModalOpen, setConversionModalOpen] = useState(false)
+  const { isClerkEnabled, isSignedIn, userId } = useAuthContext()
   const mutation = useMutation({
     mutationFn: async (variables: { profilePayload?: SearchProfilePayload; leadPayload?: LeadPayload; createLeadRequested: boolean; profilePrompt: boolean }) => {
       const profileResponse = variables.profilePrompt && variables.profilePayload ? await updateSearchProfile(variables.profilePayload) : null
       if (variables.createLeadRequested && variables.leadPayload) {
         try {
-          const leadResponse = await createLead(variables.leadPayload)
+          const leadResponse = await createLead(variables.leadPayload, userId ?? undefined)
           return { search_profile: profileResponse?.search_profile, lead: leadResponse.lead, profile_only: false, follow_up_failed: false }
         } catch (leadError) {
           if (!profileResponse) throw leadError
@@ -1512,7 +1516,6 @@ function ProgressiveLeadPrompt() {
       return { search_profile: profileResponse?.search_profile, lead: undefined, profile_only: true, follow_up_failed: false }
     },
   })
-  const { isClerkEnabled, isSignedIn, userId } = useAuthContext()
   const { data: meData } = useQuery({
     queryKey: ['me', userId, 'progressive-lead-prompt'],
     queryFn: fetchMe,
@@ -6749,10 +6752,10 @@ function QualificationFields({ compact = false, defaultBudgetMax, searchProfile 
 }
 
 function PriceTrackerModal({ listing, open, onClose }: { listing: Listing; open: boolean; onClose: () => void }) {
-  const mutation = useMutation({ mutationFn: createLead })
+  const { isClerkEnabled, isSignedIn, userId } = useAuthContext()
+  const mutation = useMutation({ mutationFn: (payload: LeadPayload) => createLead(payload, userId ?? undefined) })
   const submittingRef = useRef(false)
   const [submitting, setSubmitting] = useState(false)
-  const { isClerkEnabled, isSignedIn, userId } = useAuthContext()
   const canSelectAgent = isClerkEnabled && isSignedIn
   const { data: meData } = useQuery({
     queryKey: ['me', userId, 'price-tracker-prefill'],
@@ -6907,8 +6910,8 @@ function PriceTrackerModal({ listing, open, onClose }: { listing: Listing; open:
 }
 
 function LeadModal({ listing, open, onClose }: { listing: Listing; open: boolean; onClose: () => void }) {
-  const mutation = useMutation({ mutationFn: createLead })
   const { isClerkEnabled, isSignedIn, userId } = useAuthContext()
+  const mutation = useMutation({ mutationFn: (payload: LeadPayload) => createLead(payload, userId ?? undefined) })
   const canSelectAgent = isClerkEnabled && isSignedIn
   const { data: meData } = useQuery({
     queryKey: ['me', userId, 'lead-prefill'],

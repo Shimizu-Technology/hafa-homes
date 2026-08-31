@@ -664,7 +664,7 @@ type CreateLeadPayload = {
   message: string
 }
 
-async function createLead(payload: CreateLeadPayload, getToken?: GetAuthToken, retryAfterIntentReset = true) {
+async function createLead(payload: CreateLeadPayload, getToken?: GetAuthToken, ownerId?: string, retryAfterIntentReset = true) {
   if (payload.lead_type === 'search_assist' && !payload.intent_session_token) {
     throw new ApiRequestError('Your search session refreshed. Please keep browsing or reopen the prompt so we can attach the right search context.', 409)
   }
@@ -678,7 +678,7 @@ async function createLead(payload: CreateLeadPayload, getToken?: GetAuthToken, r
     digest: (value) => Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, value),
     uuid: () => Crypto.randomUUID(),
   })
-  const idempotencyToken = await idempotency.prepare(payload)
+  const idempotencyToken = await idempotency.prepare(payload, ownerId)
   const response = await apiFetch(`${API_URL}/api/v1/leads`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyToken.key, ...(await authHeaders(getToken)) },
@@ -687,7 +687,10 @@ async function createLead(payload: CreateLeadPayload, getToken?: GetAuthToken, r
 
   if (response.status === 409) {
     const conflictPayload = await response.clone().json().catch(() => null) as { reset_session?: boolean; reset_idempotency_key?: boolean } | null
-    if (conflictPayload?.reset_idempotency_key) await idempotency.complete(idempotencyToken)
+    if (conflictPayload?.reset_idempotency_key) {
+      await idempotency.complete(idempotencyToken)
+      throw new ApiRequestError('Please try submitting again.', response.status)
+    }
     if (retryAfterIntentReset && payload.intent_session_token && conflictPayload?.reset_session) {
       await clearLeadIntentSessionToken()
       await markLeadIntentCurrentContextRequired()
@@ -1693,7 +1696,7 @@ function ProgressiveLeadPromptSheet({ prompt, auth, selectedAgent, onDismiss, on
             qualification_notes: notes.trim(),
             intent_session_token: token,
             message: `Progressive search assist prompt: ${activePrompt.trigger || 'search_intent'}`,
-          }, auth.isSignedIn ? auth.getToken : undefined)
+          }, auth.isSignedIn ? auth.getToken : undefined, auth.userId)
         } catch (leadError) {
           if (!profileSaved) throw leadError
 
@@ -3640,7 +3643,7 @@ function ShowingRequestSheet({ listing, auth, requestedAgent, open, onOpenAuth, 
         qualification_notes: qualificationNotes.trim(),
         intent_session_token: token || undefined,
         message: `${message.trim()}\n\nListing: ${listing.title} — ${listing.address}, ${listing.village.name}`,
-      }, auth.isSignedIn ? auth.getToken : undefined)
+      }, auth.isSignedIn ? auth.getToken : undefined, auth.userId)
       setSubmitted(true)
     } catch (submitError) {
       console.warn('Unable to submit showing request', submitError)
@@ -3872,7 +3875,7 @@ function PriceAlertSheet({ listing, auth, requestedAgent, open, onClose }: { lis
         already_working_with_agent: alreadyWorkingWithAgent,
         intent_session_token: token || undefined,
         message: `Target price: ${targetPrice.trim()}\n\nListing: ${listing.title} — ${listing.address}, ${listing.village.name}`,
-      }, auth.isSignedIn ? auth.getToken : undefined)
+      }, auth.isSignedIn ? auth.getToken : undefined, auth.userId)
       setSubmitted(true)
     } catch (submitError) {
       console.warn('Unable to submit price watch request', submitError)

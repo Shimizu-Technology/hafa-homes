@@ -178,7 +178,7 @@ class LeadSubmissionReliabilityTest < ActionDispatch::IntegrationTest
     original = NotificationDelivery.method(:create!)
     NotificationDelivery.define_singleton_method(:create!) { |*| raise ActiveRecord::StatementInvalid, "database unavailable" }
 
-    assert_no_difference -> { ShowingAppointment.count } do
+    assert_no_difference [ -> { ShowingAppointment.count }, -> { NotificationDelivery.count } ] do
       assert_raises(ActiveRecord::StatementInvalid) do
         ShowingAppointment.create!(
           lead: lead,
@@ -191,7 +191,6 @@ class LeadSubmissionReliabilityTest < ActionDispatch::IntegrationTest
     end
 
     assert_equal "new", lead.reload.status
-    assert_equal 0, NotificationDelivery.where(showing_appointment_id: nil, lead: lead).count
   ensure
     NotificationDelivery.define_singleton_method(:create!, original) if original
   end

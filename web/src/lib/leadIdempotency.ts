@@ -26,14 +26,20 @@ export function stableJson(value: unknown): string {
 
 export function createLeadIdempotencyManager({ storage, digest, uuid }: Dependencies) {
   return {
-    async prepare(payload: unknown): Promise<LeadIdempotencyToken> {
-      const fingerprint = await digest(stableJson(payload))
+    async prepare(payload: unknown, ownerId?: string): Promise<LeadIdempotencyToken> {
+      const fingerprint = await digest(stableJson({ owner: ownerId || 'anonymous', payload }))
       const storageKey = `${STORAGE_PREFIX}${fingerprint}`
-      const existing = storage.getItem(storageKey)
-      if (existing) return { fingerprint, key: existing }
-
       const key = uuid()
-      storage.setItem(storageKey, key)
+
+      try {
+        const existing = storage.getItem(storageKey)
+        if (existing) return { fingerprint, key: existing }
+
+        storage.setItem(storageKey, key)
+      } catch {
+        // A privacy setting or storage fault must not block a lead submission.
+      }
+
       return { fingerprint, key }
     },
 
