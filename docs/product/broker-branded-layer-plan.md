@@ -171,7 +171,7 @@ Rules:
 - One brokerage can have multiple domains.
 - A host belongs to only one brokerage.
 - One domain can be marked primary per brokerage.
-- Unknown hosts should fall back to Hafa Homes or show a safe not-found/tenant-unconfigured state.
+- Non-authoritative infrastructure hosts may use the Hafa Homes fallback. Explicit storefront hosts with unknown or inactive domains must fail closed and show the safe not-found/tenant-unconfigured state; they must never route to Hafa Homes.
 
 ### Brokerage branding/config
 

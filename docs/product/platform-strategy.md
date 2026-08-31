@@ -159,7 +159,7 @@ Historical note: this section predates the dedicated Expo/React Native app and i
 Positioning:
 
 - PWA/web app now for speed and validation
-- iOS/Android packaging later once product and MLS access are validated
+- current packaging status: iOS is released; Android remains pending product and MLS validation
 - implemented path: dedicated Expo/React Native app backed by the shared Rails API
 
 Native app selling points:

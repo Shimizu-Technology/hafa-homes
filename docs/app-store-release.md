@@ -133,7 +133,7 @@ The repository does not contain evidence of the planned physical-iPhone smoke te
 
 `mobile/app.json` declares version `1.0.4`. EAS uses remote app-version numbering with `autoIncrement`, so the production build must resolve to build `18` or later. This train includes the connected-record navigation, stricter tenant and staff boundaries, durable account deletion, transactional notification intents with submission idempotency, canonical HTTPS universal links, and production configuration preflight.
 
-Before starting the build, merge every implementation PR, confirm the production web/API deploys, verify `https://hafahomes.com/.well-known/apple-app-site-association` returns the expected JSON directly, run the full repository gates, and complete local web plus fresh-simulator QA. Submit to TestFlight for Leon's testing; do not submit this train to public App Review as part of that operation.
+Before starting the build, merge every implementation PR, confirm the production web/API deploys, verify `https://hafahomes.com/.well-known/apple-app-site-association` returns the expected JSON directly, run the full repository gates, and complete local web plus fresh-simulator QA. Submit to TestFlight for Leon's testing. Do not broaden rollout until Leon completes and explicitly accepts the physical-device matrix. Do not submit this train to public App Review as part of that operation.
 
 ## Native Apple/Clerk setup for the next build
 
