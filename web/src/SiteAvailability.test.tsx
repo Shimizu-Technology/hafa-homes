@@ -34,8 +34,8 @@ describe('site availability before app startup', () => {
     expect(fetcher).toHaveBeenCalledWith('https://api.example.test/api/v1/listings')
   })
 
-  it('keeps the existing privacy policy available during the pause without API access', async () => {
-    window.history.replaceState(null, '', '/privacy')
+  it.each(['/privacy', '/privacy/'])('keeps the existing privacy policy at %s available without API access', async (path) => {
+    window.history.replaceState(null, '', path)
     const fetcher = vi.fn().mockResolvedValue(response('paused'))
     vi.stubGlobal('fetch', fetcher)
     render(<SiteAvailability><BackendApp /></SiteAvailability>)

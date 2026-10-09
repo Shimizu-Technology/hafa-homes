@@ -9,6 +9,7 @@ type Availability = 'loading' | 'available' | 'paused' | 'unavailable'
 export function SiteAvailability({ children }: { children: ReactNode }) {
   const [state, setState] = useState<Availability>('loading')
   const [attempt, setAttempt] = useState(0)
+  const isPrivacyRoute = window.location.pathname.replace(/\/+$/, '') === '/privacy'
 
   useEffect(() => {
     const controller = new AbortController()
@@ -48,7 +49,7 @@ export function SiteAvailability({ children }: { children: ReactNode }) {
       </header>
       <section className="mx-auto flex w-full max-w-5xl flex-1 items-center px-6 py-12 sm:px-10 sm:py-20">
         <div className="max-w-2xl">
-          {state !== 'loading' && window.location.pathname === '/privacy' ? <PausedPrivacy /> : <>
+          {state !== 'loading' && isPrivacyRoute ? <PausedPrivacy /> : <>
           <p className="mb-5 text-sm font-semibold uppercase tracking-[0.18em] text-[#0f705e]">{state === 'paused' ? 'Temporarily paused' : 'Hafa Homes'}</p>
           <h1 className="text-4xl font-semibold leading-[1.12] tracking-[-0.04em] text-[#0f3d35] sm:text-6xl">{title}</h1>
           <div aria-live="polite" className="mt-6 max-w-xl text-lg leading-8 text-[#52645d]">
@@ -72,7 +73,7 @@ export function SiteAvailability({ children }: { children: ReactNode }) {
           </>}
         </div>
       </section>
-      <footer className="mx-auto w-full max-w-5xl px-6 pb-7 text-sm text-[#52645d] sm:px-10">Hafa Homes · Find your home on Guam. <a className="ml-4 inline-flex min-h-12 items-center underline underline-offset-4" href={window.location.pathname === '/privacy' ? '/' : '/privacy'}>{window.location.pathname === '/privacy' ? 'Back to Hafa Homes' : 'Privacy policy'}</a></footer>
+      <footer className="mx-auto w-full max-w-5xl px-6 pb-7 text-sm text-[#52645d] sm:px-10">Hafa Homes · Find your home on Guam. <a className="ml-4 inline-flex min-h-12 items-center underline underline-offset-4" href={isPrivacyRoute ? '/' : '/privacy'}>{isPrivacyRoute ? 'Back to Hafa Homes' : 'Privacy policy'}</a></footer>
     </main>
   )
 }
