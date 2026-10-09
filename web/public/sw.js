@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hafa-homes-shell-v1'
+const CACHE_NAME = 'hafa-homes-shell-v2'
 const APP_SHELL = ['/', '/manifest.json', '/favicon.svg', '/hafa-homes-mark.svg', '/hafa-homes-logo.svg']
 
 self.addEventListener('install', (event) => {
@@ -19,6 +19,10 @@ self.addEventListener('fetch', (event) => {
 
   if (request.method !== 'GET') return
   if (url.pathname.startsWith('/api/')) return
+  if (url.pathname === '/service-status.json') {
+    event.respondWith(fetch(request, { cache: 'no-store' }))
+    return
+  }
 
   if (request.mode === 'navigate') {
     event.respondWith(fetch(request).then((response) => {
