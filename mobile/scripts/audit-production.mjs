@@ -1,6 +1,14 @@
 import { execFileSync } from 'node:child_process'
 
 const allowedAdvisories = new Map([
+  [1240912, {
+    expires: '2026-10-24',
+    reason: 'GHSA-86w9-cpqp-85rv has no patched node-forge release. Expo CLI uses it for developer certificate/signing tooling, not app-user signature verification. The affected signing utilities and node-forge are absent from the verified iOS/Android production source maps. See mobile/README.md for paths and evidence.',
+  }],
+  [1240992, {
+    expires: '2026-10-24',
+    reason: 'GHSA-vfj7-8cjw-p6xm has no patched braces release. Metro file watchers reach it through micromatch for trusted build-configuration globs, not app-user patterns. braces, micromatch, and metro-file-map are absent from the verified iOS/Android production source maps. See mobile/README.md for paths and evidence.',
+  }],
   [1138808, {
     expires: '2026-11-16',
     reason: 'No patched image-size release exists yet. The affected ICNS parser is only reached by Metro while processing trusted repository assets during development/builds, not by app users at runtime.',
