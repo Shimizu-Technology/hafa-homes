@@ -41,7 +41,7 @@ N07: isolated available status mounted the original runtime against an owned HTT
 
 Screenshots retained outside Git: `Desktop/hafa-homes-ios-release-2026-10-10/native-pause.jpg` and `native-modal-paused.jpg`. Request log contains only status requests during paused/failed phases; original listing/intent calls occur only during available fixture phases. Production status remains paused throughout.
 
-Signed build attempts 21 and 22 failed in CocoaPods because the installed JSON 3 gem rejects ActiveSupport 7.2's `quirks_mode` argument. A process-scoped Ruby preload selects the already installed JSON 2 gem; shared Ruby gems were not changed. Build 23 is now archiving using existing EAS signing credentials. No IPA has been uploaded yet.
+Signed build attempts 21 and 22 failed in CocoaPods because the installed JSON 3 gem rejects ActiveSupport 7.2's `quirks_mode` argument. A process-scoped Ruby preload selects the already installed JSON 2 gem; shared Ruby gems were not changed. Build 23 later reached Xcode archiving and stalled in SwiftBuild compiler-probe output capture; no IPA was uploaded from that attempt.
 
 ## Signed production delivery
 
@@ -57,4 +57,4 @@ Local attempt 24 reproduced the compiler-probe pipe stall despite regular-file o
 
 Public App Review and external beta review were not requested from Apple. N10 remains blocked: physical-iPhone acceptance is incomplete, and the paused app has email support rather than a functioning ordinary account-deletion initiation route. Apple's [account deletion requirements](https://developer.apple.com/help/app-review/guideline-reference/5-1-1-account-deletion) apply to existing accounts too. The public binary remains `1.0.3 (17)` and does not receive this pause screen. Store availability and existing public metadata were not changed.
 
-After merge/upload, production static status still reports paused and the Render API returns HTTP 503. Native QA servers and the isolated database were removed, and the owned simulator was shut down and deleted. Borrowed resources were left unchanged. Apple verification window and task worktree are cleaned at task completion; signed artifacts, screenshots, and a structured release manifest remain in `Desktop/hafa-homes-ios-release-2026-10-10/`.
+After merge/upload, production static status still reports paused and the Render API returns HTTP 503. Native QA servers and the isolated database were removed, and the owned simulator was shut down and deleted. Borrowed resources were left unchanged. The owned Apple verification window is closed; the clean task worktree is removed after this delivery-record PR merges; signed artifacts, screenshots, and a structured release manifest remain in `Desktop/hafa-homes-ios-release-2026-10-10/`.
