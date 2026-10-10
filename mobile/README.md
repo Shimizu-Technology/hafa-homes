@@ -44,6 +44,12 @@ Plain `.env` files are intentionally ignored by `mobile/.gitignore`.
 
 ## Current scope
 
+The native entry screen checks `https://hafahomes.com/service-status.json` before initializing Clerk or the application. A paused or failed check shows the local pause/recovery screen and blocks Rails API calls. Checks time out after five seconds and repeat on foreground or manual retry. Confirmed pause/unavailability unmounts the runtime, including native modals; brief checks that return available preserve the mounted runtime. Unsaved forms are discarded when the service becomes paused/unavailable.
+
+Privacy opens the static website in Safari's in-app browser. Support opens the user's mail app, with the support address shown when mail is unavailable. This does not replace working account-deletion initiation for public App Review. The backend must remain paused until an explicit resume decision.
+
+For isolated simulator recovery QA only, development builds accept `EXPO_PUBLIC_SERVICE_STATUS_URL`. Production bundles always use the canonical CDN URL regardless of this variable. Point `EXPO_PUBLIC_API_URL` at the owned API fixture too; never flip the deployed status to exercise a fixture.
+
 The current native build includes:
 
 - Hafa Homes app shell and branding
