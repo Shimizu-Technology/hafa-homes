@@ -10,7 +10,7 @@ Required native acceptance: check the static CDN before auth/API initialization;
 
 ## Execution ledger
 
-Agent executed N01–N07 on an isolated iPhone 17 Pro simulator, iOS 26.5, with Expo Go 57.0.9. Setup initially stalled; the first cached Expo Go 57.0.5 then lacked the current ExpoAsset module. Only the owned simulator was restarted and updated before acceptance execution. Physical iPhone acceptance belongs to Leon; his connected iPhones are unavailable. Source: branch `codex/hafa-homes-ios-pause-20261010` based on `bdd070c`. Tested implementation commit: `4f2a2e5f100c73f700298f495ebdf3ce34f3c857`. Signed archive and Apple delivery evidence remain pending.
+Agent executed N01–N07 on an isolated iPhone 17 Pro simulator, iOS 26.5, with Expo Go 57.0.9. Setup initially stalled; the first cached Expo Go 57.0.5 then lacked the current ExpoAsset module. Only the owned simulator was restarted and updated before acceptance execution. Physical iPhone acceptance belongs to Leon; his connected iPhones are unavailable. Source: branch `codex/hafa-homes-ios-pause-20261010` based on `bdd070c`. Tested implementation commit: `4f2a2e5f100c73f700298f495ebdf3ce34f3c857`. The signed production archive is verified; Apple processing and internal delivery are recorded below.
 
 | Case | Starting condition, action, expected outcome | Required | Result |
 |---|---|---|---|
@@ -21,8 +21,8 @@ Agent executed N01–N07 on an isolated iPhone 17 Pro simulator, iOS 26.5, with 
 | N05 | Background and foreground: status rechecks and pause remains; API stays blocked | yes | passed |
 | N06 | Isolated invalid/stalled status: unavailable appears within bounded timeout, retry recovers to pause | yes | passed |
 | N07 | Isolated available fixture: original runtime mounts; pause transition blocks further API; brief available recheck preserves runtime; confirmed pause/unavailable closes open native modals | yes | passed |
-| N08 | Signed production archive: correct bundle/version/build, entitlements, integrity, canonical CDN status | yes | not_run |
-| N09 | Upload exact archive: Apple processing valid and internal testers can install | yes | not_run |
+| N08 | Signed production archive: correct bundle/version/build, entitlements, integrity, canonical CDN status | yes | passed |
+| N09 | Upload exact archive: Apple processing valid and internal testers can install | yes | passed |
 | N10 | Physical iPhone and public-review readiness: accepted device matrix and working deletion intake | public only | blocked |
 
 ## Engineering and resources
@@ -42,3 +42,19 @@ N07: isolated available status mounted the original runtime against an owned HTT
 Screenshots retained outside Git: `Desktop/hafa-homes-ios-release-2026-10-10/native-pause.jpg` and `native-modal-paused.jpg`. Request log contains only status requests during paused/failed phases; original listing/intent calls occur only during available fixture phases. Production status remains paused throughout.
 
 Signed build attempts 21 and 22 failed in CocoaPods because the installed JSON 3 gem rejects ActiveSupport 7.2's `quirks_mode` argument. A process-scoped Ruby preload selects the already installed JSON 2 gem; shared Ruby gems were not changed. Build 23 is now archiving using existing EAS signing credentials. No IPA has been uploaded yet.
+
+## Signed production delivery
+
+- Merge/source: `a2375978e3e81df1b943b95dbc0685c98c10673a`, PR #42. Mobile tree matches the tested/reviewed implementation `4f2a2e5` exactly.
+- Release: iOS `1.0.5 (25)`, bundle `com.shimizutechnology.hafahomes`, minimum iOS 17.0.
+- EAS cloud build: `39d0b32a-2191-4e12-954b-e41652481634`, `FINISHED`.
+- EAS submission: `485b3a36-7eeb-4dec-b64e-6c188304a902`, successfully uploaded.
+- App Store Connect build: `4977073f-1af4-494e-8328-e98e1eec01ef`; processed and attached to existing internal `Team (Expo)` with one tester; its group build row explicitly shows `Testing`. Testing notes were saved directly in App Store Connect.
+- IPA: 18,584,621 bytes; SHA-256 `bd9dd0149876b24130a1f75900b35c818572891cb1f8c0a55cdb634c320c867f`.
+- Archive checks: ZIP integrity, version/bundle identity, and strict/deep code-signature verification passed. Signed entitlements contain native Apple sign-in, `applinks:hafahomes.com`, the expected Apple team, beta reports, and `get-task-allow=false`. The production Hermes bundle includes the canonical CDN status URL and excludes the loopback fixture.
+
+Local attempt 24 reproduced the compiler-probe pipe stall despite regular-file output and serialized jobs. The exact standalone Clang probe worked immediately, confirming a local SwiftBuild capture problem. The October Expo Free allowance had 7 of 15 iOS builds used before this job; build 25 used the existing free allowance. No subscription or paid upgrade was added. EAS's automatic changelog feature required Enterprise, so it was omitted from submission and the notes were saved through the existing Apple account instead.
+
+Public App Review and external beta review were not requested from Apple. N10 remains blocked: physical-iPhone acceptance is incomplete, and the paused app has email support rather than a functioning ordinary account-deletion initiation route. Apple's [account deletion requirements](https://developer.apple.com/help/app-review/guideline-reference/5-1-1-account-deletion) apply to existing accounts too. The public binary remains `1.0.3 (17)` and does not receive this pause screen. Store availability and existing public metadata were not changed.
+
+After merge/upload, production static status still reports paused and the Render API returns HTTP 503. Native QA servers and the isolated database were removed, and the owned simulator was shut down and deleted. Borrowed resources were left unchanged. Apple verification window and task worktree are cleaned at task completion; signed artifacts, screenshots, and a structured release manifest remain in `Desktop/hafa-homes-ios-release-2026-10-10/`.

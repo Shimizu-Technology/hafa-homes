@@ -1,15 +1,17 @@
 # Hafa Homes current product truth
 
-_Last verified: 2026-08-31 after iOS `1.0.4 (20)` entered internal TestFlight._
+_Last verified: 2026-10-10 after iOS `1.0.5 (25)` entered internal TestFlight._
 
 The canonical re-review, findings, rationale, and remediation sequence are in `2026-08-16-review-findings-and-remediation-plan.md`.
 
 This is the canonical, implementation-backed description of Hafa Homes. Older PRDs and meeting plans remain useful historical context, but they do not override this file.
 
+Hafa Homes is temporarily paused. The website serves static pause, privacy, and support pages; Render is suspended and Neon compute was verified idle. Native `1.0.5 (25)` recognizes the static pause status before initializing authentication or API traffic and is available to the existing internal TestFlight group. Public `1.0.3 (17)` lacks this behavior. The table describes implemented capabilities; backend-dependent features are unavailable during the pause. See `../qa/2026-10-10-native-pause.md` for source, acceptance, signed delivery, and outstanding public-review gates.
+
 | Capability | Current state | Pilot requirement |
 |---|---|---|
-| Public web search | Working | Replace demonstration inventory with authorized market data |
-| iOS application | `1.0.3 (17)` is live; `1.0.4 (20)` is valid and in internal TestFlight | Complete and explicitly accept the physical-iPhone matrix before broader distribution |
+| Public web search | Temporarily paused; static support/privacy remain available | Replace demonstration inventory with authorized market data |
+| iOS application | `1.0.3 (17)` is public; native pause update `1.0.5 (25)` is processed and in internal TestFlight | Complete and explicitly accept the physical-iPhone matrix and restore functioning account-deletion initiation before broader distribution |
 | Android | Expo codebase works cross-platform; no public release | Play Console release and policy completion |
 | Listing inventory | Demonstration facts and stock imagery, visibly labeled | Written MLS/IDX/feed authorization and compliant attribution |
 | Brokerage routing | Domain/native-slug resolution implemented | Add the pilot's approved domains and build-time native slug |
