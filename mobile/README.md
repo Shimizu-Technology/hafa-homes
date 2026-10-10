@@ -80,3 +80,12 @@ npm run audit:production
 ```
 
 The production audit fails every unaccepted high/critical advisory. A narrow, expiring exception may only cover an unpatched upstream build-tool issue whose affected parser cannot receive user-controlled data in the shipped app.
+
+### Temporary build-tool advisory exceptions — October 10, 2026
+
+The audit accepts only the following two additional advisory IDs until **October 24, 2026**. Both upstream advisories currently list no patched release; remove the exception and update the lockfile when a compatible fix becomes available. All other high/critical findings still fail the gate.
+
+- **1240912 / [GHSA-86w9-cpqp-85rv](https://github.com/advisories/GHSA-86w9-cpqp-85rv):** `expo@57.0.27` → `@expo/cli@57.0.28` → `node-forge@1.4.0`, directly and through `@expo/code-signing-certificates@0.0.6`. The affected RSA verification is used by CLI developer signing/certificate tooling (`build/src/utils/codesigning.js`, `build/src/run/ios/codeSigning/Security.js`, and the certificate package's `build/main.js`). These tools handle developer keys/certificates and Expo development certificates; the application does not accept user-supplied certificates or signatures through them. This remains a tooling risk, so use approved signing inputs and do not treat the library itself as fixed.
+- **1240992 / [GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm):** Metro's `metro-file-map@0.84.5` → `micromatch@4.0.8` → `braces@3.0.3`. `metro-file-map/src/watchers/common.js` matches repository file paths using build-configuration globs. Do not supply untrusted glob patterns to the build tooling. The native application does not import these packages or pass user inputs to this parser.
+
+Verification used Node 22.22.3 and Expo SDK 57 with `npx expo export --platform ios --platform android --source-maps`. Both Hermes exports passed. Their source maps contained 754 iOS and 752 Android source entries, with no `node-forge`, `@expo/code-signing-certificates`, affected CLI signing utilities, `braces`, `micromatch`, or `metro-file-map` sources. Expo CLI's separate `metro-require/require.js` module loader is included; it is not an affected signing or glob-parser path. This evidence covers production JavaScript bundles, not native device acceptance or a new store release.
