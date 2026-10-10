@@ -156,6 +156,14 @@ The first cloud attempt exhausted the free monthly iOS build quota after EAS adv
 
 Build `20` is for internal physical-device acceptance. Do not submit it for external beta review or public App Review until Leon completes and explicitly accepts the physical-iPhone matrix.
 
+## October 10, 2026 native pause release
+
+`1.0.5 (25)` is processed in App Store Connect and attached to the existing internal `Team (Expo)` group. Source: PR #42 merge `a2375978e3e81df1b943b95dbc0685c98c10673a`. EAS build `39d0b32a-2191-4e12-954b-e41652481634`; submission `485b3a36-7eeb-4dec-b64e-6c188304a902`; Apple build `4977073f-1af4-494e-8328-e98e1eec01ef`.
+
+The native app now checks the static website status before authentication/API startup, shows pause/support/privacy controls, bounds failed checks, and dismisses active native dialogs on a confirmed pause. Render remains suspended. Simulator N01–N07 and signed-archive N08 acceptance passed; delivery N09 is verified. Physical-device N10 remains outstanding. See `qa/2026-10-10-native-pause.md` for the full evidence and IPA checksum.
+
+Local builds encountered Ruby JSON compatibility and SwiftBuild probe-output failures. The successful cloud build used October's existing Expo Free allowance; no plan upgrade was made. Maintenance testing notes were saved directly in App Store Connect. Public App Review and external beta review were not submitted: the physical-device gate remains, and ordinary account-deletion initiation cannot depend only on email while the backend is paused. Public `1.0.3 (17)` remains the store binary and does not gain the new pause screen.
+
 ## Native Apple/Clerk setup for the next build
 
 The preferred production fix is native Sign in with Apple through Clerk Expo, not the browser OAuth fallback used in older Shimizu apps.
